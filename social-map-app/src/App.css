@@ -1,0 +1,85 @@
+/* Global CSS for RealMM App */
+
+/* Leaflet Marker Styling override */
+.leaflet-div-icon {
+    background: transparent !important;
+    border: none !important;
+}
+
+.avatar-group {
+    position: relative;
+    width: 60px;
+    height: 100px;
+    overflow: visible;
+    /* CRITICAL: Ensure bubble isn't clipped */
+}
+
+.thought-bubble {
+    position: absolute;
+    bottom: 105%;
+    /* Push it slightly higher */
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #333;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-bottom: 8px;
+    border: 2px solid #4285F4;
+    /* Brand color border for visibility */
+    z-index: 9999;
+    /* Max Z-Index */
+    animation: float 3s ease-in-out infinite;
+    pointer-events: none;
+    /* Let clicks pass through to marker */
+}
+
+.thought-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border: 6px solid transparent;
+    border-top-color: #4285F4;
+}
+
+@keyframes float {
+    0% {
+        transform: translateX(-50%) translateY(0);
+    }
+
+    50% {
+        transform: translateX(-50%) translateY(-5px);
+    }
+
+    100% {
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Avatar Visuals */
+.avatar-marker {
+    width: 60px;
+    height: 100px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    /* Clean look: No background shape */
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.avatar-marker:hover {
+    transform: scale(1.1) translateY(-5px);
+    z-index: 10001 !important;
+}
+
+.avatar-marker.self {
+    filter: drop-shadow(0 0 8px #4285F4);
+    z-index: 10000;
+}
