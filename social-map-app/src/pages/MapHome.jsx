@@ -228,8 +228,13 @@ export default function MapHome() {
                 if (updatedUser.id === currentUser.id) return; // Skip self
 
                 const dist = getDistanceFromLatLonInKm(location.lat, location.lng, updatedUser.latitude, updatedUser.longitude);
-                const isNearby = dist <= 0.3;
-                const isVisible = !updatedUser.is_ghost_mode && isNearby;
+                const isNearby = dist <= 0.3; // Strict 300m
+                
+                // Check if active (within last 5 mins) - Payload usually has this if updated
+                const lastActive = new Date(updatedUser.last_active);
+                const isActive = (new Date() - lastActive) < 5 * 60 * 1000;
+
+                const isVisible = !updatedUser.is_ghost_mode && isNearby && isActive;
 
                 setNearbyUsers(prev => {
                     const exists = prev.find(u => u.id === updatedUser.id);
@@ -242,8 +247,7 @@ export default function MapHome() {
                         else if (updatedUser.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
                         else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
 
-                        // Micro-jitter to prevent exact overlap if testing on same device
-                        // 0.0001 deg is approx 11 meters
+                        // Micro-jitter logic
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
                         const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
 
@@ -262,22 +266,32 @@ export default function MapHome() {
                         };
 
                         if (exists) {
-                            // Update existing
-                            return prev.map(u => u.id === updatedUser.id ? newUserObj : u);
+                             return prev.map(u => u.id === updatedUser.id ? newUserObj : u);
                         } else {
-                            // Add new
-                            return [...prev, newUserObj];
+                             return [...prev, newUserObj];
                         }
                     } else {
-                        // Remove if exists (moved away or turned ghost mode)
+                        // User moved out of range, went ghost, or went offline -> Remove
                         return exists ? prev.filter(u => u.id !== updatedUser.id) : prev;
                     }
                 });
             })
             .subscribe();
 
-        const interval = setInterval(fetchNearbyUsers, 5000); // Poll every 5s (keep for cleanup/timeouts)
-        fetchNearbyUsers(); // Initial fetch
+        // POLL & CLEANUP INTERVAL
+        // Fetches new users AND removes stale ones
+        const interval = setInterval(() => {
+            fetchNearbyUsers(); 
+            
+            // Client-side prune of stale users (e.g. if they just closed app without update)
+            setNearbyUsers(prev => prev.filter(u => {
+                 const lastActive = new Date(u.lastActive);
+                 const isStillActive = (new Date() - lastActive) < 5 * 60 * 1000;
+                 if (!isStillActive) console.log(`Removing stale user: ${u.name}`);
+                 return isStillActive;
+            }));
+
+        }, 5000); 
 
         return () => {
             clearInterval(interval);
