@@ -4,7 +4,8 @@ import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
 
-const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
+const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
+
 
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
