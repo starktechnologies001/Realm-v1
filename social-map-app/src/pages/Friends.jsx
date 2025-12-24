@@ -20,7 +20,7 @@ export default function Friends() {
                 .from('friendships')
                 .select(`
                     id, 
-                    requester:profiles!requester_id(id, full_name, username, avatar_url, status)
+                    requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender)
                 `)
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending');
@@ -39,8 +39,8 @@ export default function Friends() {
                     id,
                     requester_id,
                     receiver_id,
-                    requester:profiles!requester_id(id, full_name, username, avatar_url, status),
-                    receiver:profiles!receiver_id(id, full_name, username, avatar_url, status)
+                    requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
+                    receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
                 `)
                 .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
                 .eq('status', 'accepted');
@@ -92,7 +92,12 @@ export default function Friends() {
                     <div className="list">
                         {requests.map(req => (
                             <div key={req.id} className="friend-card request">
-                                <img src={req.avatar_url} alt="avatar" className="avatar" />
+                                <img src={(() => {
+                                    const safeName = encodeURIComponent(req.username || req.full_name || 'User');
+                                    if (req.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                    if (req.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                    return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                })()} alt="avatar" className="avatar" />
                                 <div className="info">
                                     <h3>{req.full_name || req.username}</h3>
                                     <span>wants to connect</span>
@@ -116,7 +121,12 @@ export default function Friends() {
                     <div className="list">
                         {friends.map(friend => (
                             <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
-                                <img src={friend.avatar_url} alt="avatar" className="avatar" />
+                                <img src={(() => {
+                                    const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
+                                    if (friend.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                    if (friend.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                    return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                })()} alt="avatar" className="avatar" />
                                 <div className="info">
                                     <h3>{friend.full_name || friend.username}</h3>
                                     <span className={`status-dot ${friend.status === 'Online' ? 'online' : ''}`}></span>

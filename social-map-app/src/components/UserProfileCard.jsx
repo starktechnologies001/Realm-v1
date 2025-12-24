@@ -17,15 +17,14 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     <div className="header-info">
                         <div className="name-row">
                             <h3>{user.name}</h3>
-                            {user.friendshipStatus === 'accepted' ? (
+                            {user.friendshipStatus === 'accepted' && (
                                 <span className="friend-badge" title="You are friends!">🤝 Friends</span>
-                            ) : (
-                                <button className="poke-icon-btn" onClick={() => onAction('poke', user)} title={`Poke ${user.name}`}>
-                                    👉
-                                </button>
+                            )}
+                            {user.friendshipStatus === 'pending' && (
+                                <span className="pending-badge" title="Poke sent">⏳ Pending</span>
                             )}
                         </div>
-                        <span className="mood-badge">{user.mood || 'Just vibing'}</span>
+                        <span className="mood-badge">{user.thought || user.mood || 'Just vibing'}</span>
                     </div>
                 </div>
 
@@ -44,9 +43,31 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                 </div>
 
                 <div className="popup-actions">
-                    <button className="primary-btn" onClick={() => onAction('message', user)}>
-                        💬 Message
-                    </button>
+                    {/* Show different buttons based on friendship status */}
+                    {!user.friendshipStatus && (
+                        <button className="primary-btn poke-btn" onClick={() => onAction('poke', user)}>
+                            👋 Send Poke
+                        </button>
+                    )}
+                    
+                    {user.friendshipStatus === 'pending' && (
+                        <button className="primary-btn pending-btn" disabled>
+                            ⏳ Poke Sent
+                        </button>
+                    )}
+                    
+                    {user.friendshipStatus === 'accepted' && (
+                        <button className="primary-btn" onClick={() => onAction('message', user)}>
+                            💬 Message
+                        </button>
+                    )}
+                    
+                    {user.friendshipStatus === 'declined' && (
+                        <button className="primary-btn poke-btn" onClick={() => onAction('poke', user)}>
+                            👋 Send Poke Again
+                        </button>
+                    )}
+
                     <div className="secondary-actions">
                         <button className="icon-btn danger" onClick={() => onAction('block', user)} title="Block">
                             🚫
@@ -193,13 +214,36 @@ export default function UserProfileCard({ user, onClose, onAction }) {
             box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
             cursor: default;
         }
-        
-        .poke-icon-btn:hover {
-            transform: scale(1.15) rotate(-10deg);
-            box-shadow: 0 0 25px rgba(255, 20, 147, 0.8);
+
+        .pending-badge {
+            background: linear-gradient(135deg, #FFA500, #FF8C00);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 12px;
+            box-shadow: 0 0 10px rgba(255, 165, 0, 0.4);
+            cursor: default;
         }
 
-        @keyframes pulse {
+        .poke-btn {
+            background: linear-gradient(135deg, #FF69B4, #FF1493) !important;
+            box-shadow: 0 0 15px rgba(255, 20, 147, 0.6);
+            animation: pulseButton 2s infinite;
+        }
+
+        .poke-btn:hover {
+            box-shadow: 0 0 25px rgba(255, 20, 147, 0.8);
+            transform: scale(1.05);
+        }
+
+        .pending-btn {
+            background: linear-gradient(135deg, #888, #666) !important;
+            opacity: 0.7;
+            cursor: not-allowed !important;
+        }
+
+        @keyframes pulseButton {
             0% { box-shadow: 0 0 0 0 rgba(255, 20, 147, 0.4); }
             70% { box-shadow: 0 0 0 10px rgba(255, 20, 147, 0); }
             100% { box-shadow: 0 0 0 0 rgba(255, 20, 147, 0); }

@@ -160,16 +160,39 @@ export default function Login() {
         if (signInError) throw signInError;
 
         if (data.session) {
-          const userMeta = data.session.user.user_metadata;
-          localStorage.setItem('currentUser', JSON.stringify({
-            id: data.session.user.id,
-            name: userMeta.username || data.session.user.email,
-            username: userMeta.username, // Needed for avatar
-            full_name: userMeta.full_name, // Fallback for avatar
-            gender: userMeta.gender, // CRITICAL for immediate avatar rendering
-            avatar: userMeta.avatar_url,
-            status: userMeta.status || 'Online'
-          }));
+          // Fetch complete profile from database to get avatar and all fields
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.session.user.id)
+            .single();
+
+          if (profileError) {
+            console.error('Profile fetch error:', profileError);
+            // Fallback to metadata if profile fetch fails
+            const userMeta = data.session.user.user_metadata;
+            localStorage.setItem('currentUser', JSON.stringify({
+              id: data.session.user.id,
+              name: userMeta.username || data.session.user.email,
+              username: userMeta.username,
+              full_name: userMeta.full_name,
+              gender: userMeta.gender,
+              avatar_url: userMeta.avatar_url,
+              status: userMeta.status || 'Online'
+            }));
+          } else {
+            // Use profile data from database (includes avatar_url from selfie)
+            localStorage.setItem('currentUser', JSON.stringify({
+              id: profile.id,
+              name: profile.username || profile.full_name,
+              username: profile.username,
+              full_name: profile.full_name,
+              gender: profile.gender,
+              avatar_url: profile.avatar_url, // This is the selfie avatar!
+              status: profile.status || 'Online',
+              interests: profile.interests
+            }));
+          }
           navigate('/map');
         }
       }

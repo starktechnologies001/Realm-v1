@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
+import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
 
 // Fix icon issues
@@ -87,6 +88,8 @@ export default function MapHome() {
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState(null);
     const [toastMsg, setToastMsg] = useState(null);
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportTarget, setReportTarget] = useState(null);
 
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
@@ -157,8 +160,31 @@ export default function MapHome() {
             })
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
-    }, [currentUser]);
+        // Listen for friendship changes (blocking/unblocking) to update map
+        const friendshipChannel = supabase
+            .channel('friendships_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'friendships',
+                filter: `status=eq.blocked`
+            }, (payload) => {
+                // If a block involves current user, refetch the map by reloading
+                if (payload.new?.requester_id === currentUser.id || 
+                    payload.new?.receiver_id === currentUser.id ||
+                    payload.old?.requester_id === currentUser.id ||
+                    payload.old?.receiver_id === currentUser.id) {
+                    // Trigger a re-fetch by updating a state or reloading
+                    window.location.reload(); // Simple approach to refresh map
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+            supabase.removeChannel(friendshipChannel);
+        };
+    }, [currentUser, location]);
 
     // Poll for nearby users
     useEffect(() => {
@@ -166,52 +192,74 @@ export default function MapHome() {
 
         const fetchNearbyUsers = async () => {
             try {
-                // Fetch all profiles that are not me
-                // In production, you'd plain using PostGIS 'st_dwithin' for efficiency
-                // but for MVP, fetching all (or limiting row count) and filtering in JS is fine.
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .neq('id', currentUser.id)
-                    .eq('is_ghost_mode', false)
-                    .gt('last_active', new Date(Date.now() - 5 * 60 * 1000).toISOString()); // Only active in last 5 mins
+                // Run both queries in parallel for faster loading
+                const [blockedResult, profilesResult] = await Promise.all([
+                    // Fetch blocked users (both directions)
+                    supabase
+                        .from('friendships')
+                        .select('requester_id, receiver_id')
+                        .eq('status', 'blocked')
+                        .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`),
+                    
+                    // Fetch all profiles with only needed fields
+                    supabase
+                        .from('profiles')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url')
+                        .neq('id', currentUser.id)
+                        .eq('is_ghost_mode', false)
+                        .not('latitude', 'is', null)
+                        .not('longitude', 'is', null)
+                ]);
 
-                if (error) {
-                    console.error('Error fetching users:', error);
+                // Create set of blocked user IDs
+                const blockedUserIds = new Set();
+                if (blockedResult.data) {
+                    blockedResult.data.forEach(block => {
+                        // If I blocked them, hide me from their map
+                        if (block.requester_id === currentUser.id) {
+                            blockedUserIds.add(block.receiver_id);
+                        }
+                        // If they blocked me, hide them from my map
+                        if (block.receiver_id === currentUser.id) {
+                            blockedUserIds.add(block.requester_id);
+                        }
+                    });
+                }
+
+                if (profilesResult.error) {
+                    console.error('Error fetching users:', profilesResult.error);
                     return;
                 }
 
-                // Client-side 300m filtering
-                const validUsers = data.filter(u => {
-                    if (!u.latitude || !u.longitude) return false;
-                    const dist = getDistanceFromLatLonInKm(location.lat, location.lng, u.latitude, u.longitude);
-                    return dist <= 0.3; // 300m
-                }).map(u => {
-                    // Gendered Avatar Logic for Map Privacy
-                    let mapAvatar = u.avatar_url;
-                    const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                    if (u.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                    else if (u.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                    else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`; // Fallback
+                // Filter and map users
+                const validUsers = profilesResult.data
+                    .filter(u => !blockedUserIds.has(u.id))
+                    .map(u => {
+                        // Gender-based Avatar for Map Privacy (Snapchat-style)
+                        const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+                        let mapAvatar;
+                        if (u.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                        else if (u.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
 
-                    // Micro-jitter for initial load too
-                    const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
-                    const renderLng = u.longitude + (Math.random() - 0.5) * 0.0002;
+                        // Micro-jitter for initial load
+                        const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
+                        const renderLng = u.longitude + (Math.random() - 0.5) * 0.0002;
 
-                    return {
-                        id: u.id,
-                        name: u.username || u.full_name || 'User',
-                        lat: renderLat,
-                        lng: renderLng,
-                        avatar: mapAvatar, // Use privacy avatar on map
-                        originalAvatar: u.avatar_url, // Keep real one if needed for details
-                        status: u.status,
-                        thought: u.status_message,
-                        lastActive: u.last_active,
-                        isLocationOn: true,
-                        isLocationShared: true
-                    };
-                });
+                        return {
+                            id: u.id,
+                            name: u.username || u.full_name || 'User',
+                            lat: renderLat,
+                            lng: renderLng,
+                            avatar: mapAvatar,
+                            originalAvatar: u.avatar_url,
+                            status: u.status,
+                            thought: u.status_message,
+                            lastActive: u.last_active,
+                            isLocationOn: true,
+                            isLocationShared: true
+                        };
+                    });
 
                 setNearbyUsers(validUsers);
             } catch (err) {
@@ -219,23 +267,23 @@ export default function MapHome() {
             }
         };
 
-        // Real-time Subscription for Instant Updates
+        // Real-time Subscription for Instant Updates (both UPDATE and INSERT)
         const channel = supabase
             .channel('public:profiles')
+            // Listen for location updates
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
                 const updatedUser = payload.new;
-                if (!location || !updatedUser.latitude || !updatedUser.longitude) return;
+                if (!updatedUser.latitude || !updatedUser.longitude) return;
                 if (updatedUser.id === currentUser.id) return; // Skip self
 
-                const dist = getDistanceFromLatLonInKm(location.lat, location.lng, updatedUser.latitude, updatedUser.longitude);
-                const isNearby = dist <= 0.3;
-                const isVisible = !updatedUser.is_ghost_mode && isNearby;
+                // Show all users globally (no distance check)
+                const isVisible = !updatedUser.is_ghost_mode && updatedUser.latitude && updatedUser.longitude;
 
                 setNearbyUsers(prev => {
                     const exists = prev.find(u => u.id === updatedUser.id);
 
                     if (isVisible) {
-                        // PREPARE MAP OBJECT
+                        // Gender-based Avatar for Map Privacy
                         let mapAvatar = updatedUser.avatar_url;
                         const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
                         if (updatedUser.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
@@ -243,7 +291,6 @@ export default function MapHome() {
                         else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
 
                         // Micro-jitter to prevent exact overlap if testing on same device
-                        // 0.0001 deg is approx 11 meters
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
                         const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
 
@@ -265,14 +312,53 @@ export default function MapHome() {
                             // Update existing
                             return prev.map(u => u.id === updatedUser.id ? newUserObj : u);
                         } else {
-                            // Add new
+                            // Add new user
                             return [...prev, newUserObj];
                         }
                     } else {
-                        // Remove if exists (moved away or turned ghost mode)
+                        // Remove if exists (ghost mode enabled)
                         return exists ? prev.filter(u => u.id !== updatedUser.id) : prev;
                     }
                 });
+            })
+            // Listen for new user logins (INSERT events)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, (payload) => {
+                const newUser = payload.new;
+                if (!newUser.latitude || !newUser.longitude) return;
+                if (newUser.id === currentUser.id) return; // Skip self
+
+                // Show new user if not in ghost mode
+                if (!newUser.is_ghost_mode) {
+                    // Gender-based Avatar for Map Privacy
+                    let mapAvatar = newUser.avatar_url;
+                    const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
+                    if (newUser.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                    else if (newUser.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                    else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+
+                    const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
+                    const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
+
+                    const newUserObj = {
+                        id: newUser.id,
+                        name: newUser.username || newUser.full_name || 'User',
+                        lat: renderLat,
+                        lng: renderLng,
+                        avatar: mapAvatar,
+                        originalAvatar: newUser.avatar_url,
+                        status: newUser.status,
+                        thought: newUser.status_message,
+                        lastActive: newUser.last_active,
+                        isLocationOn: true,
+                        isLocationShared: true
+                    };
+
+                    setNearbyUsers(prev => {
+                        // Check if user already exists (shouldn't, but safety check)
+                        const exists = prev.find(u => u.id === newUser.id);
+                        return exists ? prev : [...prev, newUserObj];
+                    });
+                }
             })
             .subscribe();
 
@@ -321,6 +407,31 @@ export default function MapHome() {
             return;
         }
 
+        // Get location immediately on mount for instant display
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                setLocation({ lat: latitude, lng: longitude });
+                localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
+                setLoading(false);
+
+                // Update DB immediately on login for instant avatar display
+                if (parsedUser.id) {
+                    await supabase.from('profiles').update({
+                        latitude: latitude,
+                        longitude: longitude,
+                        last_active: new Date().toISOString()
+                    }).eq('id', parsedUser.id);
+                }
+            },
+            (error) => {
+                console.error('Initial location error:', error);
+                setLoading(false);
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+
+        // Then start watching for continuous updates
         const watchId = navigator.geolocation.watchPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
@@ -328,14 +439,11 @@ export default function MapHome() {
                 // Update local state
                 setLocation({ lat: latitude, lng: longitude });
                 localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
-                setLoading(false);
 
-                // Update DB (Debounce this in prod, but every update is ok for test)
-                // Use a small throttle to avoid spamming DB but keep "Real Time" feel (e.g., every 30s or significant move)
-                // For now, on every GPS update is the most "Real Time".
+                // Update DB with throttle to avoid spam
                 const now = Date.now();
                 const lastUpdate = window.lastLocationUpdate || 0;
-                if (parsedUser.id && (now - lastUpdate > 30000)) { // 30s throttle
+                if (parsedUser.id && (now - lastUpdate > 15000)) { // 15s throttle for updates
                     window.lastLocationUpdate = now;
                     await supabase.from('profiles').update({
                         latitude: latitude,
@@ -475,6 +583,22 @@ export default function MapHome() {
         showToast('Thought posted! It will disappear in 1 hour.');
     };
 
+    // Calculate distance between two coordinates in meters (Haversine formula)
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distance in meters
+    };
+
     const handleUserAction = async (action, targetUser) => {
         if (!currentUser) return;
 
@@ -500,16 +624,27 @@ export default function MapHome() {
                     .from('friendships')
                     .select('*')
                     .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
-                    .single();
+                    .maybeSingle();
 
                 if (existing) {
-                    if (existing.status === 'accepted') showToast(`You are already friends with ${targetUser.name}!`);
-                    else if (existing.status === 'pending') showToast(`Request already sent/pending for ${targetUser.name}.`);
-                    else if (existing.status === 'blocked') showToast(`Cannot connect with this user.`);
-                    return;
+                    if (existing.status === 'accepted') {
+                        showToast(`You are already friends with ${targetUser.name}!`);
+                        return;
+                    }
+                    else if (existing.status === 'pending') {
+                        showToast(`Poke already sent to ${targetUser.name}!`);
+                        return;
+                    }
+                    else if (existing.status === 'declined') {
+                        // Allow re-poke: delete old declined request and create new one
+                        await supabase
+                            .from('friendships')
+                            .delete()
+                            .eq('id', existing.id);
+                    }
                 }
 
-                // Send Request
+                // Send Poke Request
                 const { error } = await supabase
                     .from('friendships')
                     .insert({
@@ -519,26 +654,71 @@ export default function MapHome() {
                     });
 
                 if (error) throw error;
-                showToast(`👉 Poked ${targetUser.name}! (Friend Request Sent)`);
-                setSelectedUser(null);
+                
+                showToast(`👋 Poked ${targetUser.name}!`);
+                
+                // Update UI immediately
+                setSelectedUser({ ...targetUser, friendshipStatus: 'pending' });
 
             } catch (err) {
                 console.error(err);
-                showToast("Failed to poke user.");
+                showToast("Failed to send poke.");
             }
         }
         else if (action === 'block') {
-            // We generally handle block in Chat/Friends, but can do here too.
-            showToast(`🚫 Blocked ${targetUser.name}`);
+            try {
+                // Check if friendship exists
+                const { data: existing } = await supabase
+                    .from('friendships')
+                    .select('*')
+                    .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                    .maybeSingle();
+
+                if (existing) {
+                    // Update existing friendship to blocked
+                    await supabase
+                        .from('friendships')
+                        .update({ status: 'blocked' })
+                        .eq('id', existing.id);
+                } else {
+                    // Create new blocked friendship
+                    await supabase
+                        .from('friendships')
+                        .insert({
+                            requester_id: currentUser.id,
+                            receiver_id: targetUser.id,
+                            status: 'blocked'
+                        });
+                }
+
+                showToast(`🚫 Blocked ${targetUser.name}`);
+                setSelectedUser(null);
+            } catch (err) {
+                console.error('Block error:', err);
+                showToast('Failed to block user');
+            }
         }
         else if (action === 'report') {
-            // Insert report
+            // Show report modal with reason options
+            setReportTarget(targetUser);
+            setShowReportModal(true);
+            setSelectedUser(null);
+        }
+    };
+
+    const handleReport = async (reason) => {
+        try {
             await supabase.from('reports').insert({
                 reporter_id: currentUser.id,
-                reported_id: targetUser.id,
-                reason: 'Harassment/Inappropriate'
+                reported_id: reportTarget.id,
+                reason: reason
             });
-            showToast(`⚠️ Reported ${targetUser.name}`);
+            showToast(`⚠️ Reported ${reportTarget.name}`);
+            setShowReportModal(false);
+            setReportTarget(null);
+        } catch (err) {
+            console.error('Report error:', err);
+            showToast('Failed to submit report');
         }
     };
 
@@ -739,7 +919,38 @@ export default function MapHome() {
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
             />
+            <PokeNotifications currentUser={currentUser} />
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
+
+            {/* Report Modal */}
+            {showReportModal && reportTarget && (
+                <div className="report-modal-overlay" onClick={() => setShowReportModal(false)}>
+                    <div className="report-modal-card" onClick={e => e.stopPropagation()}>
+                        <h3>⚠️ Report {reportTarget.name}</h3>
+                        <p>Please select a reason for reporting:</p>
+                        <div className="report-reasons">
+                            <button onClick={() => handleReport('Fake or Misleading Profile')}>
+                                🎭 Fake or Misleading Profile
+                            </button>
+                            <button onClick={() => handleReport('Harassment or Misbehavior')}>
+                                😡 Harassment or Misbehavior
+                            </button>
+                            <button onClick={() => handleReport('Location Misuse')}>
+                                📍 Location Misuse
+                            </button>
+                            <button onClick={() => handleReport('Underage or Safety Concern')}>
+                                🔞 Underage or Safety Concern
+                            </button>
+                            <button onClick={() => handleReport('Other')}>
+                                ❓ Other
+                            </button>
+                        </div>
+                        <button className="cancel-report-btn" onClick={() => setShowReportModal(false)}>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Thought Input Overlay */}
             {showThoughtInput && (
@@ -912,6 +1123,38 @@ export default function MapHome() {
                     background: #4285F4;
                     color: white;
                 }
+
+                /* Report Modal Styles */
+                .report-modal-overlay {
+                    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+                    display: flex; align-items: center; justify-content: center; z-index: 5000;
+                    backdrop-filter: blur(3px);
+                }
+                .report-modal-card {
+                    background: white; padding: 25px; border-radius: 20px; width: 85%; max-width: 360px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+                }
+                .report-modal-card h3 { margin: 0 0 10px 0; font-size: 1.2rem; color: #333; }
+                .report-modal-card p { margin: 0 0 15px 0; font-size: 0.9rem; color: #666; }
+                .report-reasons {
+                    display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;
+                }
+                .report-reasons button {
+                    padding: 12px 15px; background: rgba(255, 69, 58, 0.1);
+                    border: 1px solid rgba(255, 69, 58, 0.3); border-radius: 10px;
+                    color: #ff453a; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+                    text-align: left; transition: all 0.2s;
+                }
+                .report-reasons button:hover {
+                    background: rgba(255, 69, 58, 0.2); border-color: #ff453a;
+                    transform: translateX(5px);
+                }
+                .cancel-report-btn {
+                    width: 100%; padding: 12px; background: rgba(0,0,0,0.05);
+                    border: 1px solid rgba(0,0,0,0.1); border-radius: 10px;
+                    color: #666; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+                }
+                .cancel-report-btn:hover { background: rgba(0,0,0,0.1); }
 
             `}</style>
         </div>
