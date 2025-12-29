@@ -6,6 +6,8 @@ import Toast from '../components/Toast';
 
 const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
 
+import { useCall } from '../context/CallContext';
+
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
     const [chats, setChats] = useState([]);
@@ -13,6 +15,7 @@ export default function Chat() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const location = useLocation();
+    const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
 
     useEffect(() => {
         const initChat = async () => {
@@ -77,9 +80,9 @@ export default function Chat() {
             // Generate gender-based avatar
             const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
             let genderAvatar;
-            if (partner.gender === 'Male') genderAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-            else if (partner.gender === 'Female') genderAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-            else genderAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+            if (partner.gender === 'Male') genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=male-${safeName}`;
+            else if (partner.gender === 'Female') genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=female-${safeName}`;
+            else genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
 
             return {
                 id: partner.id,
@@ -122,129 +125,12 @@ export default function Chat() {
     };
 
     // Global Incoming Call State
-    const [incomingCall, setIncomingCall] = useState(null);
-    const [missedCall, setMissedCall] = useState(null);
-    const ringtoneRef = useRef(new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'));
-    const notificationRef = useRef(new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'));
-
-    useEffect(() => {
-        ringtoneRef.current.loop = true;
-    }, []);
-
-    // Handle Ringtone
-    useEffect(() => {
-        if (incomingCall && !incomingCall.answered) {
-            ringtoneRef.current.currentTime = 0;
-            const playPromise = ringtoneRef.current.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => console.log("Audio play failed (interaction needed):", error));
-            }
-        } else {
-            ringtoneRef.current.pause();
-            ringtoneRef.current.currentTime = 0;
-        }
-    }, [incomingCall]);
-
-    useEffect(() => {
-        if (!currentUser) return;
-
-        const channel = supabase.channel('global_calls')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls', filter: `receiver_id=eq.${currentUser.id}` }, async (payload) => {
-                if (payload.new.status === 'pending') {
-                    // Fetch caller details
-                    const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', payload.new.caller_id).single();
-                    if (callerProfile) {
-                        setIncomingCall({ ...payload.new, caller: callerProfile });
-                    }
-                }
-            })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: `receiver_id=eq.${currentUser.id}` }, async (payload) => {
-                // Check for Missed Call (status went to 'ended' without us answering)
-                if (payload.new.status === 'ended') {
-                    setIncomingCall(null); // Stop ringing
-
-                    // Logic: If status is 'ended' and we (receiver) didn't set it to 'active' or 'rejected', it's a missed call.
-                    // However, we rely on local state 'incomingCall' to know if it was just ringing.
-                    // If we have an incomingCall set and it disappears due to 'ended', it's a missed call.
-                    // Also need to fetch caller if logic is detached from state.
-
-                    // Simpler: Just trigger notification if we weren't the ones who rejected it.
-                    // We can check if it was 'rejected' by us (status would be rejected).
-                    // If status is 'ended', sender cancelled it.
-
-                    if (payload.old.status === 'pending') {
-                        // Caller cancelled -> Missed Call
-                        const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', payload.new.caller_id).single();
-                        setMissedCall({ caller: callerProfile, time: new Date() });
-                        notificationRef.current.play().catch(e => console.log(e));
-                    }
-                }
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-            ringtoneRef.current.pause();
-        };
-    }, [currentUser]);
-
-    const answerCall = async () => {
-        if (!incomingCall) return;
-        await supabase.from('calls').update({ status: 'active' }).eq('id', incomingCall.id);
-        ringtoneRef.current.pause();
-    };
-
-    const rejectCall = async () => {
-        if (!incomingCall) return;
-        await supabase.from('calls').update({ status: 'rejected' }).eq('id', incomingCall.id);
-        setIncomingCall(null);
-        ringtoneRef.current.pause();
-    };
-
-    // Quick Reply State
     const [showQuickReplyMenu, setShowQuickReplyMenu] = useState(false);
-
-    const sendQuickReply = async (text) => {
-        if (!incomingCall || !currentUser) return;
-
-        // 1. Send Message
-        await supabase.from('messages').insert({
-            sender_id: currentUser.id,
-            receiver_id: incomingCall.caller.id,
-            content: text,
-            type: 'text'
-        });
-
-        // 2. Reject Call
-        await supabase.from('calls').update({ status: 'rejected' }).eq('id', incomingCall.id);
-
-        // 3. Reset
-        setIncomingCall(null);
-        setShowQuickReplyMenu(false);
-        Toast.show && Toast.show("Message sent!");
-    };
 
     // --- Render Logic ---
 
     // 1. Missed Call Popup
-    if (missedCall) {
-        return (
-            <div className="incoming-call-overlay">
-                <div className="call-card" style={{ borderColor: '#ff4444', animation: 'fadeIn 0.3s' }}>
-                    <div className="call-avatar" style={{ backgroundImage: `url(${missedCall.caller.avatar_url})`, backgroundSize: 'cover', border: '4px solid #ff4444' }}></div>
-                    <h2 style={{ color: '#ff4444' }}>Missed Call</h2>
-                    <p>from {missedCall.caller.full_name || missedCall.caller.username}</p>
-                    <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>{missedCall.time.toLocaleTimeString()}</span>
-
-                    <div className="call-actions">
-                        <button className="reject-btn" style={{ width: '100%', borderRadius: '12px', background: '#333' }} onClick={() => setMissedCall(null)}>
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+    // The missedCall state is now managed by the CallContext and rendered by a global CallUI component.
 
     if (incomingCall && !incomingCall.answered) {
         return (
@@ -257,9 +143,8 @@ export default function Chat() {
                     {!showQuickReplyMenu ? (
                         <div className="call-actions">
                             <button className="ctrl-btn message-btn" onClick={() => setShowQuickReplyMenu(true)}>💬</button>
-                            <button className="reject-btn" onClick={rejectCall}>✖</button>
-                            <button className="answer-btn" onClick={() => {
-                                setIncomingCall(prev => ({ ...prev, answered: true }));
+                            <button className="reject-btn" onClick={rejectCall} style={{ background: '#ff4444', color: 'white' }}>✖</button>
+                            <button className="answer-btn" style={{ background: '#00cc66', color: 'white' }} onClick={() => {
                                 answerCall();
                             }}>📞</button>
                         </div>
@@ -267,10 +152,11 @@ export default function Chat() {
                         <div className="quick-replies-list">
                             <button className="close-replies" onClick={() => setShowQuickReplyMenu(false)}>✕</button>
                             <h4>Or send a quick message:</h4>
+                            <button onClick={() => sendQuickReply("I am busy right now, can’t talk. I’ll call you later.")}>
+                                I am busy right now, can’t talk. I’ll call you later.
+                            </button>
                             <button onClick={() => sendQuickReply("I'll call you back.")}>I'll call you back</button>
-                            <button onClick={() => sendQuickReply("Don't call.")}>Don't call</button>
                             <button onClick={() => sendQuickReply("Talk to you later.")}>Talk to you later</button>
-                            <button onClick={() => sendQuickReply("I am busy right now.")}>I am busy right now</button>
                         </div>
                     )}
                 </div>
@@ -302,17 +188,9 @@ export default function Chat() {
     }
 
     // If incoming call is answered, show overlay
-    if (incomingCall && incomingCall.answered) {
-        return (
-            <CallOverlay
-                callData={{ partner: incomingCall.caller, type: incomingCall.type, isIncoming: true }}
-                currentUser={currentUser}
-                onEnd={() => setIncomingCall(null)}
-            />
-        );
-    }
+    // CallOverlay is now handled by the global CallUI component in CallContext
 
-    if (activeChatUser && currentUser && !incomingCall) {
+    if (activeChatUser && currentUser) {
         return (
             <ChatRoom
                 currentUser={currentUser}
@@ -330,31 +208,72 @@ export default function Chat() {
 }
 
 function ChatList({ chats, onSelectChat, loading }) {
+    const [searchTerm, setSearchTerm] = useState('');
+    
+    // Filter chats
+    const filteredChats = chats?.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || [];
+
     return (
         <div className="chat-page-container">
-            <h1 className="page-title">Messages</h1>
+            <div className="ambient-glow"></div>
+            
+            <header className="glass-header">
+                <div className="header-top">
+                    <h1 className="page-title">Messages</h1>
+                    <button className="btn-icon settings-btn">⚙️</button>
+                </div>
+                <div className="search-bar">
+                    <span className="search-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        placeholder="Search chats..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </header>
+
             <div className="chat-list-scroll">
                 {loading ? (
-                    <div style={{ color: '#666', textAlign: 'center' }}>Loading chats...</div>
+                    <div className="loading-state">
+                        <div className="spinner"></div>
+                        <p>Syncing messages...</p>
+                    </div>
                 ) : (!chats || chats.length === 0) ? (
                     <div className="empty-state">
-                        <span style={{ fontSize: '3rem' }}>💤</span>
-                        <p>No connections yet.<br />Poke people on the map to make friends!</p>
+                        <div className="empty-icon">💬</div>
+                        <h3>No messages yet</h3>
+                        <p>Start a conversation from the map!</p>
                     </div>
                 ) : (
-                    chats.map(chat => (
+                    filteredChats.map(chat => (
                         <div key={chat.id} className="chat-item" onClick={() => onSelectChat(chat)}>
-                            <img src={chat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + chat.id} alt={chat.name} className="chat-avatar" />
+                            <div className="avatar-wrapper">
+                                <img src={(() => {
+                                    const user = chat.fullProfile || chat; 
+                                    const safeName = encodeURIComponent(chat.name || 'User');
+                                    const g = user.gender?.toLowerCase();
+                                    if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                                    if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                                    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                })()} alt={chat.name} className="chat-avatar" />
+                                {chat.unread > 0 && <span className="online-badge"></span>}
+                            </div>
+                            
                             <div className="chat-info">
                                 <div className="chat-header-row">
                                     <span className="chat-name">{chat.name}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {chat.isMuted && <span className="mute-icon" title="Muted">🔇</span>}
+                                    <div className="meta-info">
+                                        {chat.isMuted && <span className="mute-icon">🔇</span>}
                                         {chat.time && <span className="chat-time">{chat.time}</span>}
                                     </div>
                                 </div>
                                 <div className="chat-msg-row">
-                                    <span className="chat-preview">{chat.lastMsg}</span>
+                                    <p className={`chat-preview ${chat.unread > 0 ? 'bold' : ''}`}>
+                                        {chat.lastMsg}
+                                    </p>
                                     {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
                                 </div>
                             </div>
@@ -362,42 +281,180 @@ function ChatList({ chats, onSelectChat, loading }) {
                     ))
                 )}
             </div>
-            {/* Same styles as before */}
+
             <style>{`
-                .chat-page-container {
-                    background-color: var(--bg-color, #121212);
-                    min-height: 100vh;
-                    padding: 20px; padding-top: 20px; padding-bottom: 80px;
-                    color: white;
+                :root {
+                    --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+                    --glass-border: rgba(255, 255, 255, 0.15);
+                    --accent-cyan: #00d4ff;
+                    --text-primary: #ffffff;
+                    --text-secondary: #aaaaaa;
                 }
+
+                .chat-page-container {
+                    min-height: 100vh;
+                    background: radial-gradient(ellipse at top left, #1a1a2e 0%, #0a0a0a 60%);
+                    color: var(--text-primary);
+                    font-family: 'Inter', sans-serif;
+                    position: relative;
+                    padding-bottom: 80px;
+                }
+
+                .ambient-glow {
+                    position: absolute; top: -100px; right: -100px;
+                    width: 500px; height: 500px;
+                    background: radial-gradient(circle, rgba(189, 0, 255, 0.15) 0%, transparent 70%);
+                    filter: blur(80px); pointer-events: none;
+                }
+
+                .glass-header {
+                    padding: 20px 20px 15px 20px;
+                    background: rgba(10, 10, 10, 0.8);
+                    backdrop-filter: blur(20px);
+                    position: sticky; top: 0; z-index: 100;
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                }
+
+                .header-top { 
+                    display: flex; justify-content: space-between; align-items: center; 
+                    margin-bottom: 15px;
+                }
+
                 .page-title {
-                    font-size: 2rem; font-weight: 800; margin-bottom: 20px;
-                    background: var(--brand-gradient, linear-gradient(to right, #00f0ff, #bd00ff));
+                    font-size: 2rem; font-weight: 800; margin: 0;
+                    letter-spacing: -0.5px;
+                    background: linear-gradient(135deg, #fff 0%, #aaa 100%);
                     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
                 }
-                .chat-list-scroll { display: flex; flex-direction: column; gap: 12px; }
-                .chat-item {
-                    display: flex; align-items: center; gap: 15px; padding: 16px;
-                    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.05);
-                    border-radius: 20px; cursor: pointer; transition: all 0.2s;
+
+                .settings-btn {
+                    background: rgba(255,255,255,0.1); border: none;
+                    width: 40px; height: 40px; border-radius: 12px;
+                    cursor: pointer; transition: all 0.2s;
                 }
-                .chat-item:active { transform: scale(0.98); background: rgba(255,255,255,0.1); }
-                .chat-avatar { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #333; object-fit: cover; }
-                .chat-info { flex: 1; min-width: 0; }
-                .chat-header-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
-                .chat-name { font-weight: 700; font-size: 1.05rem; }
-                .chat-time { font-size: 0.8rem; color: #777; }
+                .settings-btn:hover { background: rgba(255,255,255,0.2); }
+
+                .search-bar {
+                    background: rgba(255,255,255,0.08);
+                    border-radius: 16px; padding: 10px 16px;
+                    display: flex; align-items: center; gap: 10px;
+                    border: 1px solid rgba(255,255,255,0.05);
+                    transition: all 0.2s;
+                }
+                .search-bar:focus-within {
+                    background: rgba(255,255,255,0.12);
+                    border-color: rgba(255,255,255,0.2);
+                    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+                }
+                .search-icon { opacity: 0.5; }
+                .search-bar input {
+                    background: transparent; border: none; outline: none;
+                    color: white; width: 100%; font-size: 1rem;
+                }
+                .search-bar input::placeholder { color: rgba(255,255,255,0.4); }
+
+                .chat-list-scroll { 
+                    display: flex; flex-direction: column; gap: 12px; 
+                    padding: 20px;
+                }
+
+                .chat-item {
+                    display: flex; align-items: center; gap: 16px; 
+                    padding: 16px;
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(12px);
+                    border: 1px solid var(--glass-border);
+                    border-radius: 20px;
+                    cursor: pointer; transition: all 0.2s;
+                    position: relative; overflow: hidden;
+                }
+                .chat-item:hover { 
+                    background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08));
+                    transform: translateY(-2px);
+                    border-color: rgba(255,255,255,0.3);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                }
+                .chat-item:active { transform: scale(0.98); }
+
+                .avatar-wrapper { position: relative; width: 60px; height: 60px; flex-shrink: 0; }
+                .chat-avatar { 
+                    width: 100%; height: 100%; border-radius: 20px; 
+                    object-fit: cover; background: rgba(0,0,0,0.3);
+                    box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+                }
+                .online-badge {
+                    position: absolute; bottom: -2px; right: -2px;
+                    width: 14px; height: 14px;
+                    background: #00f0ff; border: 3px solid #0f0f0f;
+                    border-radius: 50%;
+                }
+
+                .chat-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+                
+                .chat-header-row { display: flex; justify-content: space-between; align-items: center; }
+                .chat-name { font-weight: 700; font-size: 1.1rem; color: white; letter-spacing: 0.3px; }
+                
+                .meta-info { display: flex; align-items: center; gap: 6px; }
+                .mute-icon { font-size: 0.8rem; opacity: 0.6; }
+                .chat-time { font-size: 0.75rem; color: rgba(255,255,255,0.4); font-weight: 500; }
+
                 .chat-msg-row { display: flex; justify-content: space-between; align-items: center; }
-                .chat-preview { color: #aaa; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .unread-badge { background: #00f0ff; color: black; font-weight: bold; font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; }
-                .mute-icon { font-size: 0.9rem; opacity: 0.7; }
-                .empty-state { text-align: center; margin-top: 50px; color: #555; display: flex; flex-direction: column; gap: 10px; }
+                .chat-preview { 
+                    color: rgba(255,255,255,0.6); font-size: 0.95rem; 
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+                    flex: 1; margin: 0; padding-right: 15px;
+                }
+                .chat-preview.bold { color: white; font-weight: 600; }
+                
+                .unread-badge { 
+                    background: linear-gradient(135deg, #00f0ff, #0072ff); 
+                    color: white; font-weight: 800; font-size: 0.75rem; 
+                    padding: 4px 10px; border-radius: 12px; 
+                    box-shadow: 0 4px 10px rgba(0, 114, 255, 0.4);
+                }
+
+                .loading-state, .empty-state { 
+                    text-align: center; margin-top: 60px; color: rgba(255,255,255,0.5); 
+                    display: flex; flex-direction: column; align-items: center; gap: 15px;
+                }
+                .spinner {
+                    width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1);
+                    border-top-color: #00f0ff; border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+                .empty-icon { font-size: 4rem; opacity: 0.5; margin-bottom: 10px; }
+                .empty-state h3 { margin: 0; color: white; }
+                .empty-state p { margin: 0; font-size: 0.9rem; }
+
+                @keyframes spin { to { transform: rotate(360deg); } }
             `}</style>
         </div>
     );
 }
 
 function ChatRoom({ currentUser, targetUser, onBack }) {
+    // Local state for partner to handle real-time updates (e.g. online status)
+    const [partner, setPartner] = useState(targetUser);
+    const { startCall } = useCall();
+    
+    // Subscribe to partner profile changes
+    useEffect(() => {
+        setPartner(targetUser); // Reset on change
+        
+        const channel = supabase.channel(`profile_${targetUser.id}`)
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'profiles', 
+                filter: `id=eq.${targetUser.id}` 
+            }, (payload) => {
+                setPartner(prev => ({ ...prev, ...payload.new }));
+            })
+            .subscribe();
+
+        return () => supabase.removeChannel(channel);
+    }, [targetUser.id]);
+
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [showMenu, setShowMenu] = useState(false);
@@ -405,10 +462,6 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
-
-    // Call State
-    const [isCalling, setIsCalling] = useState(false);
-    const [callType, setCallType] = useState('video'); // 'audio' | 'video'
 
     // Image Viewer State
     const [viewingImage, setViewingImage] = useState(null);
@@ -431,6 +484,38 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         };
         fetchMuteSettings();
     }, [currentUser.id, targetUser.id]);
+
+    // Theme State
+    const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
+
+    const handleThemeChange = (newTheme) => {
+        setTheme(newTheme);
+        localStorage.setItem('chat_theme', newTheme);
+        setShowThemeMenu(false);
+        showToast(`Theme changed to ${newTheme} 🎨`);
+    };
+
+    // Mute Calls State
+    const [muteCalls, setMuteCalls] = useState(() => {
+        return localStorage.getItem(`mute_calls_${currentUser.id}_${targetUser.id}`) === 'true';
+    });
+
+    const toggleMuteCalls = () => {
+        const newState = !muteCalls;
+        setMuteCalls(newState);
+        localStorage.setItem(`mute_calls_${currentUser.id}_${targetUser.id}`, newState);
+        showToast(newState ? "Calls muted for this user 🔇" : "Calls unmuted 📞");
+        setShowMenu(false);
+    };
+
+    // Apply Theme Class
+    const getThemeClass = () => {
+        if (theme === 'auto') {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? '' : 'light-theme';
+        }
+        return theme === 'light' ? 'light-theme' : '';
+    };
 
     // Subscribe to real-time messages
     useEffect(() => {
@@ -576,9 +661,12 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
-    const startCall = (type) => {
-        setCallType(type);
-        setIsCalling(true);
+    const startVoiceCall = () => {
+        startCall(targetUser, 'audio');
+    };
+
+    const startVideoCall = () => {
+        startCall(targetUser, 'video');
     };
 
     const handleMuteChat = async (duration) => {
@@ -671,66 +759,138 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         if (diffMins < 2) return 'Online';
         
         // Minutes ago
-        if (diffMins < 60) return `Last seen ${diffMins} min ago`;
+        if (diffMins < 60) return `Seen ${diffMins}m ago`;
         
         // Hours ago
         if (diffHours < 24) {
-            return diffHours === 1 ? 'Last seen 1 hour ago' : `Last seen ${diffHours} hours ago`;
+            return `Seen ${diffHours}h ago`;
         }
         
         // Yesterday
-        if (diffDays === 1) return 'Last seen yesterday';
+        if (diffDays === 1) return 'Seen yesterday';
         
         // Days ago
-        if (diffDays < 7) return `Last seen ${diffDays} days ago`;
+        if (diffDays < 7) return `Seen ${diffDays}d ago`;
         
         // More than a week
-        return 'Last seen a while ago';
+        return 'Seen a while ago';
     };
 
     return (
         <div className="chat-room-container">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
-            <div className="chat-room-header">
-                <button onClick={onBack} className="back-btn">←</button>
+            
+            <div className="ambient-glow-chat"></div>
+
+            <div className="chat-room-header glass-header">
+                <button onClick={onBack} className="back-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+                </button>
                 <div className="header-user">
                     <img src={(() => {
-                        const safeName = encodeURIComponent(targetUser.username || targetUser.full_name || 'User');
-                        if (targetUser.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                        if (targetUser.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                        return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                    })()} className="header-avatar" />
+                        const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
+                        const g = partner.gender?.toLowerCase();
+                        if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                    })()} className="header-avatar" alt="avatar" />
                     <div className="header-text">
-                        <h3>{targetUser.full_name || targetUser.username}</h3>
-                        <span className={`user-status ${getLastSeenStatus(targetUser.last_active) === 'Online' ? 'online' : ''}`}>
-                            {getLastSeenStatus(targetUser.last_active)}
+                        <h3>{partner.full_name || partner.username}</h3>
+                        <span className={`user-status ${getLastSeenStatus(partner.last_active) === 'Online' ? 'online' : ''}`}>
+                            {getLastSeenStatus(partner.last_active)}
                         </span>
                     </div>
                 </div>
                 <div className="header-actions">
-                    <button title="Audio Call" onClick={() => startCall('audio')}>
-                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                    <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
+                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                     </button>
-                    <button title="Video Call" onClick={() => startCall('video')}>
-                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                    <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
+                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                     </button>
                     <div style={{ position: 'relative' }}>
-                        <button onClick={() => setShowMenu(!showMenu)}>⋮</button>
+                        <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
                         {showMenu && (
                             <div className="dropdown-menu">
-                                <button onClick={() => handleMenuAction('mute')}>
-                                    {isChatMuted() ? '🔔 Unmute Notifications' : '🔇 Mute Notifications'}
+                                <button onClick={toggleMuteCalls}>
+                                    <span className="icon">
+                                        {muteCalls ? (
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                        ) : (
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                        )}
+                                    </span>
+                                    {muteCalls ? 'Unmute Call' : 'Mute Call'}
                                 </button>
-                                <div style={{ height: '1px', background: '#555', margin: '4px 0' }}></div>
-                                <button onClick={() => handleMenuAction('block')} className="danger">🚫 Block</button>
-                                <button onClick={() => handleMenuAction('unfriend')} className="danger">💔 Unfriend</button>
+                                
+                                <button onClick={() => handleMenuAction('mute')}>
+                                    <span className="icon">
+                                        {isChatMuted() ? (
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
+                                        ) : (
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                        )}
+                                    </span>
+                                    {isChatMuted() ? 'Unmute Message' : 'Mute Message'}
+                                </button>
+
+                                <button onClick={() => {
+                                    setShowThemeMenu(true);
+                                    setShowMenu(false);
+                                }}>
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+                                    </span>
+                                    Theme
+                                </button>
+
+                                <div className="divider"></div>
+
+                                <button onClick={() => {
+                                    const reason = prompt("Reason for reporting:");
+                                    if (reason) showToast("Report submitted successfully ✅");
+                                    setShowMenu(false);
+                                }} className="danger">
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    </span>
+                                    Report
+                                </button>
+
+                                <button onClick={() => handleMenuAction('block')} className="danger">
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                                    </span>
+                                    Block
+                                </button>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            <div className="chat-messages">
+            {/* Theme Menu Modal */}
+            {showThemeMenu && (
+                <div className="mute-menu-modal" onClick={() => setShowThemeMenu(false)}>
+                    <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
+                        <h3>Choose Theme 🎨</h3>
+                        <div className="mute-options">
+                            <button onClick={() => handleThemeChange('auto')} className={`mute-option ${theme === 'auto' ? 'active' : ''}`}>
+                                🌓 Auto (System)
+                            </button>
+                            <button onClick={() => handleThemeChange('dark')} className={`mute-option ${theme === 'dark' ? 'active' : ''}`}>
+                                🌑 Dark
+                            </button>
+                            <button onClick={() => handleThemeChange('light')} className={`mute-option ${theme === 'light' ? 'active' : ''}`}>
+                                ☀️ Light
+                            </button>
+                        </div>
+                        <button onClick={() => setShowThemeMenu(false)} className="cancel-btn">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            <div className={`chat-messages ${getThemeClass()}`}>
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
                     const isImage = msg.message_type === 'image' || msg.type === 'image';
@@ -773,25 +933,30 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 <div ref={messagesEndRef} />
             </div>
 
-            <div className="chat-input-bar">
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    style={{ display: 'none' }}
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                />
-                <button onClick={() => fileInputRef.current.click()} disabled={uploading}>
-                    {uploading ? '⏳' : '📷'}
-                </button>
-                <input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && sendMessage()}
-                    placeholder="Message..."
-                    disabled={uploading}
-                />
-                <button onClick={() => sendMessage()} className="send-btn" disabled={uploading}>➤</button>
+            <div className="chat-input-container">
+                <div className="glass-input-bar">
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        style={{ display: 'none' }}
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                    />
+                    <button onClick={() => fileInputRef.current.click()} disabled={uploading} className="input-icon-btn">
+                        {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
+                    </button>
+                    <input
+                        className="msg-input"
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                        placeholder="Type a message..."
+                        disabled={uploading}
+                    />
+                    <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading)}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                    </button>
+                </div>
             </div>
 
             {/* Image Viewer Modal */}
@@ -807,24 +972,36 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             {/* Mute Menu Modal */}
             {showMuteMenu && (
                 <div className="mute-menu-modal" onClick={() => setShowMuteMenu(false)}>
-                    <div className="mute-menu-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
                         <h3>Mute Notifications</h3>
                         <p>You won't receive notifications from this chat</p>
                         <div className="mute-options">
                             {isChatMuted() ? (
-                                <button onClick={() => handleMuteChat('unmute')} className="mute-option">
-                                    🔔 Unmute
+                                <button onClick={() => handleMuteChat('unmute')} className="mute-option active">
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                    </span>
+                                    Unmute
                                 </button>
                             ) : (
                                 <>
                                     <button onClick={() => handleMuteChat('8h')} className="mute-option">
-                                        🔇 Mute for 8 hours
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M19.07 4.93L4.93 19.07M2 2l20 20M13.73 21a2 2 0 0 1-3.46 0M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path></svg>
+                                        </span>
+                                        Mute for 8 hours
                                     </button>
                                     <button onClick={() => handleMuteChat('1w')} className="mute-option">
-                                        🔇 Mute for 1 week
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M19.07 4.93L4.93 19.07M2 2l20 20M13.73 21a2 2 0 0 1-3.46 0M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path></svg>
+                                        </span>
+                                        Mute for 1 week
                                     </button>
                                     <button onClick={() => handleMuteChat('always')} className="mute-option">
-                                        🔇 Mute always
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M19.07 4.93L4.93 19.07M2 2l20 20M13.73 21a2 2 0 0 1-3.46 0M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path></svg>
+                                        </span>
+                                        Mute always
                                     </button>
                                 </>
                             )}
@@ -835,11 +1012,178 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             )}
 
             <style>{`
+                :root {
+                    --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+                    --glass-border: rgba(255, 255, 255, 0.15);
+                    --accent-gradient: linear-gradient(135deg, #00C6FF, #0072FF);
+                    --text-primary: #ffffff;
+                }
+
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: #121212; z-index: 10000;
+                    background: radial-gradient(ellipse at top, #1a1a2e 0%, #000 90%);
+                    z-index: 10000;
                     display: flex; flex-direction: column;
+                    font-family: 'Inter', sans-serif;
                 }
+                
+                .ambient-glow-chat {
+                    position: absolute; top: -10%; left: -10%; 
+                    width: 50vw; height: 50vh;
+                    background: radial-gradient(circle, rgba(0, 114, 255, 0.12) 0%, transparent 60%);
+                    filter: blur(80px); pointer-events: none;
+                }
+
+                .glass-header {
+                    background: rgba(10, 10, 10, 0.7);
+                    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+                    border-bottom: 1px solid rgba(255,255,255,0.08);
+                    padding: 15px 20px; display: flex; align-items: center; gap: 15px;
+                    z-index: 10;
+                }
+                
+                .back-btn { 
+                    background: rgba(255,255,255,0.1); color: white; border: none; 
+                    width: 40px; height: 40px; border-radius: 12px;
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; transition: all 0.2s;
+                }
+                .back-btn:hover { background: rgba(255,255,255,0.2); }
+
+                .header-user { flex: 1; display: flex; align-items: center; gap: 12px; }
+                .header-avatar { 
+                    width: 44px; height: 44px; border-radius: 14px; object-fit: cover; 
+                    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+                }
+                .header-text h3 { margin: 0; font-size: 1.05rem; color: white; font-weight: 600; }
+                .header-text .user-status { font-size: 0.8rem; color: #888; display: block; margin-top: 2px; }
+                .header-text .user-status.online { color: #00ff99; font-weight: 600; text-shadow: 0 0 10px rgba(0,255,153,0.3); }
+                
+                .header-actions { display: flex; gap: 10px; }
+                .icon-btn { 
+                    background: transparent; border: none; color: #ccc; 
+                    width: 40px; height: 40px; border-radius: 12px;
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; transition: all 0.2s;
+                }
+                .icon-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+                
+                /* Chat Area */
+                .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+                
+                .msg-bubble { 
+                    max-width: 75%; padding: 12px 16px; border-radius: 20px; 
+                    position: relative; word-wrap: break-word; font-size: 0.95rem;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                
+                .msg-bubble.me { 
+                    align-self: flex-end; 
+                    background: var(--accent-gradient); 
+                    color: white; 
+                    border-bottom-right-radius: 4px; 
+                    box-shadow: 0 4px 15px rgba(0, 114, 255, 0.3);
+                }
+                
+                .msg-bubble.them { 
+                    align-self: flex-start; 
+                    background: rgba(255,255,255,0.08); 
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.05);
+                    color: #eee; 
+                    border-bottom-left-radius: 4px; 
+                }
+                
+                .msg-text { display: block; line-height: 1.4; }
+                .msg-footer { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 4px; opacity: 0.7; }
+                .msg-time { font-size: 0.65rem; }
+                .msg-status { font-size: 0.7rem; }
+                .msg-status.read { color: #fff; font-weight: bold; }
+                
+                /* Input Area */
+                .chat-input-container {
+                    padding: 16px 20px;
+                    background: rgba(10, 10, 10, 0.6);
+                    backdrop-filter: blur(10px);
+                }
+                
+                .glass-input-bar {
+                    display: flex; align-items: center; gap: 10px;
+                    background: rgba(255,255,255,0.08);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 24px; padding: 6px 6px 6px 16px;
+                    transition: all 0.2s;
+                }
+                .glass-input-bar:focus-within {
+                    background: rgba(255,255,255,0.12);
+                    border-color: rgba(255,255,255,0.2);
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                }
+                
+                .msg-input {
+                    flex: 1; background: transparent; border: none; outline: none;
+                    color: white; font-size: 1rem; padding: 8px 0;
+                }
+                .msg-input::placeholder { color: rgba(255,255,255,0.3); }
+                
+                .input-icon-btn {
+                    color: #aaa; background: none; border: none;
+                    cursor: pointer; padding: 4px; transition: color 0.2s;
+                }
+                .input-icon-btn:hover { color: white; }
+                
+                .send-btn { 
+                    width: 44px; height: 44px; border-radius: 50%; border: none;
+                    background: var(--accent-gradient); color: white;
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; box-shadow: 0 4px 12px rgba(0, 114, 255, 0.4);
+                    transition: transform 0.2s;
+                }
+                .send-btn:hover { transform: scale(1.05); }
+                .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+                /* Dropdown & Modals */
+                .dropdown-menu {
+                    position: absolute; top: 110%; right: 0;
+                    background: rgba(20, 20, 20, 0.95);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px; padding: 8px;
+                    width: 220px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+                    z-index: 10001; 
+                }
+                .dropdown-menu button { 
+                    padding: 12px; width: 100%; text-align: left;
+                    background: none; border: none; color: #ddd;
+                    border-radius: 8px; cursor: pointer;
+                    display: flex; align-items: center; gap: 12px;
+                    font-size: 0.9rem; transition: background 0.2s;
+                }
+                .dropdown-menu button:hover { background: rgba(255,255,255,0.1); color: white; }
+                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
+                .dropdown-menu button.danger { color: #ff5555; }
+                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.15); }
+                
+                .glass-panel {
+                    background: rgba(20,20,20,0.8); backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 24px; padding: 24px;
+                    width: 90%; max-width: 320px;
+                }
+                
+                /* Light Theme */
+                .light-theme { background: #f0f2f5 !important; }
+                .light-theme .glass-header { background: rgba(255,255,255,0.85); border-bottom-color: rgba(0,0,0,0.1); }
+                .light-theme .header-text h3 { color: #000; }
+                .light-theme .back-btn, .light-theme .icon-btn { color: #333; }
+                .light-theme .back-btn:hover, .light-theme .icon-btn:hover { background: rgba(0,0,0,0.05); }
+                .light-theme .msg-bubble.them { background: #ffffff; color: #111; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: transparent; }
+                .light-theme .chat-input-container { background: rgba(255,255,255,0.8); }
+                .light-theme .glass-input-bar { background: #fff; border-color: #ddd; }
+                .light-theme .msg-input { color: #000; }
+                .light-theme .input-icon-btn { color: #555; }
+
                 .chat-room-header {
                     padding: 15px; display: flex; align-items: center; gap: 15px;
                     background: rgba(20,20,20,0.95); border-bottom: 1px solid #333; color: white;
@@ -854,14 +1198,39 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .header-actions button { background: none; border: none; font-size: 1.2rem; color: white; cursor: pointer; }
                 
                 .dropdown-menu {
-                    position: absolute; top: 100%; right: 0;
-                    background: #333; border-radius: 8px; padding: 5px;
-                    display: flex; flex-direction: column; gap: 5px; min-width: 250px;
-                    box-shadow: 0 5px 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); z-index: 10001; 
+                    position: absolute; top: 110%; right: 0;
+                    background: rgba(30, 30, 30, 0.95);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 12px;
+                    padding: 8px;
+                    display: flex; flex-direction: column; gap: 4px;
+                    min-width: 200px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    z-index: 10001; 
+                    animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    transform-origin: top right;
                 }
-                .dropdown-menu button { font-size: 0.9rem; color: white; padding: 8px; text-align: left; width: 100%; cursor: pointer; background: none; border: none; }
+                @keyframes slideDown {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                .dropdown-menu button { 
+                    font-size: 0.95rem; color: #ececec; 
+                    padding: 10px 12px; 
+                    text-align: left; width: 100%; 
+                    cursor: pointer; background: none; border: none; 
+                    border-radius: 8px;
+                    display: flex; align-items: center; gap: 10px;
+                    transition: all 0.2s ease;
+                    font-weight: 500;
+                }
+                .dropdown-menu button:hover { background: rgba(255,255,255,0.08); color: white; transform: translateX(2px); }
                 .dropdown-menu button.danger { color: #ff5555; }
-                .dropdown-menu button:hover { background: rgba(255,255,255,0.1); }
+                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.1); }
+                .dropdown-menu .icon { display: flex; align-items: center; justify-content: center; opacity: 0.8; }
+                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
 
                 .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
                 .msg-bubble { max-width: 75%; padding: 10px 15px; border-radius: 18px; color: white; position: relative; word-wrap: break-word; }
@@ -899,27 +1268,39 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     background: rgba(0,0,0,0.8); z-index: 14000;
                     display: flex; align-items: center; justify-content: center;
                     animation: fadeIn 0.2s;
+                    backdrop-filter: blur(5px);
                 }
                 .mute-menu-content {
-                    background: #1e1e1e; border-radius: 20px; padding: 25px;
-                    width: 85%; max-width: 320px; color: white;
+                    background: rgba(30,30,30,0.85); 
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-radius: 20px; padding: 25px;
+                    width: 85%; max-width: 340px; color: white;
                     border: 1px solid rgba(255,255,255,0.1);
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
                 }
-                .mute-menu-content h3 { margin: 0 0 10px 0; font-size: 1.2rem; }
-                .mute-menu-content p { margin: 0 0 20px 0; font-size: 0.85rem; color: #999; }
-                .mute-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+                .mute-menu-content h3 { margin: 0 0 8px 0; font-size: 1.3rem; font-weight: 600; }
+                .mute-menu-content p { margin: 0 0 20px 0; font-size: 0.9rem; color: #a0a0a0; }
+                .mute-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
                 .mute-option {
-                    padding: 12px; background: #2a2a2a; border: 1px solid rgba(255,255,255,0.1);
-                    border-radius: 10px; color: white; cursor: pointer; font-size: 0.95rem;
+                    padding: 14px 16px; background: rgba(255,255,255,0.05); 
+                    border: 1px solid rgba(255,255,255,0.05);
+                    border-radius: 12px; color: white; cursor: pointer; font-size: 1rem;
+                    display: flex; align-items: center; gap: 12px;
+                    transition: all 0.2s; font-weight: 500;
+                }
+                .mute-option:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+                .mute-option.active { border-color: #00f0ff; background: rgba(0, 240, 255, 0.15); color: #00f0ff; }
+                
+                .mute-option .icon { display: flex; align-items: center; justify-content: center; opacity: 0.9; }
+                
+                .cancel-btn {
+                    width: 100%; padding: 14px; background: transparent;
+                    border: 1px solid rgba(255,255,255,0.15); border-radius: 12px;
+                    color: white; cursor: pointer; font-size: 1rem;
                     transition: all 0.2s;
                 }
-                .mute-option:hover { background: #333; border-color: #00d4ff; }
-                .cancel-btn {
-                    width: 100%; padding: 12px; background: rgba(255,255,255,0.1);
-                    border: 1px solid rgba(255,255,255,0.2); border-radius: 10px;
-                    color: white; cursor: pointer; font-size: 0.95rem;
-                }
-                .cancel-btn:hover { background: rgba(255,255,255,0.15); }
+                .cancel-btn:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.3); }
 
                 @keyframes fadeIn {
                     from { opacity: 0; }
@@ -962,370 +1343,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     70% { box-shadow: 0 0 0 20px rgba(0, 240, 255, 0); }
                     100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
                 }
-
-                /* CALL OVERLAY */
-                .call-interface-overlay {
-                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: #000; z-index: 12000;
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                }
-                
-                /* Remote Video Container */
-                .remote-video-container {
-                    width: 100%; height: 100%; position: absolute; top: 0; left: 0;
-                }
-                .remote-video-container video {
-                    width: 100%; height: 100%; object-fit: cover;
-                }
-                
-                /* Remote Avatar (for audio calls or before video connects) */
-                .remote-avatar-container {
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    width: 100%; height: 100%;
-                }
-                .remote-avatar {
-                    width: 150px; height: 150px; border-radius: 50%;
-                    border: 4px solid rgba(255,255,255,0.2);
-                    object-fit: cover;
-                }
-                
-                /* Local Video */
-                .local-video {
-                    position: absolute; top: 20px; right: 20px;
-                    width: 120px; height: 160px; background: #222;
-                    border-radius: 16px; border: 2px solid rgba(255,255,255,0.3);
-                    z-index: 3; overflow: hidden;
-                }
-                .local-video video {
-                    width: 100%; height: 100%; object-fit: cover;
-                }
-                
-                /* Call Controls */
-                .call-controls {
-                    position: absolute; bottom: 50px; left: 0; right: 0;
-                    display: flex; justify-content: center; gap: 25px; z-index: 4;
-                }
-                .ctrl-btn {
-                    width: 65px; height: 65px; border-radius: 50%;
-                    border: none; background: rgba(255,255,255,0.25);
-                    backdrop-filter: blur(15px); color: white;
-                    font-size: 1.6rem; cursor: pointer; 
-                    display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s;
-                }
-                .ctrl-btn:hover { background: rgba(255,255,255,0.35); transform: scale(1.05); }
-                .ctrl-btn:active { transform: scale(0.95); }
-                .ctrl-btn.hangup { background: #ff4444; }
-                .ctrl-btn.hangup:hover { background: #ff2222; }
-                .ctrl-btn.muted { background: rgba(255,69,58,0.3); }
-                .ctrl-btn.camera-off { background: rgba(255,255,255,0.1); }
-                
-                /* Status Pill */
-                .status-pill {
-                    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-                    background: rgba(0,0,0,0.7); backdrop-filter: blur(10px);
-                    color: white; padding: 8px 20px; border-radius: 25px; 
-                    font-size: 0.9rem; font-weight: 600; z-index: 4;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                }
             `}</style>
-
-            {/* CALL OVERLAY COMPONENT */}
-            {(isCalling) && (
-                <CallOverlay
-                    callData={{
-                        partner: targetUser,
-                        type: callType,
-                        isIncoming: false
-                    }}
-                    currentUser={currentUser}
-                    onEnd={() => {
-                        setIsCalling(false);
-                        // Also update DB if we were the initiator
-                    }}
-                />
-            )}
-        </div>
-    );
-}
-
-// --- CALL OVERLAY COMPONENT ---
-function CallOverlay({ callData, currentUser, onEnd }) {
-    const [status, setStatus] = useState('Connecting...');
-    const [muted, setMuted] = useState(false);
-    const [cameraOff, setCameraOff] = useState(false);
-    const [callDuration, setCallDuration] = useState(0);
-    const [remoteUsers, setRemoteUsers] = useState([]);
-    
-    const localVideoRef = useRef(null);
-    const remoteVideoRef = useRef(null);
-    const clientRef = useRef(null);
-    const localAudioTrackRef = useRef(null);
-    const localVideoTrackRef = useRef(null);
-    const callStartTimeRef = useRef(null);
-    const durationIntervalRef = useRef(null);
-
-    useEffect(() => {
-        let mounted = true;
-        const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
-
-        if (!APP_ID || APP_ID === 'your_agora_app_id_here') {
-            setStatus('⚠️ Agora App ID not configured');
-            console.error('Please add VITE_AGORA_APP_ID to your .env file');
-            return;
-        }
-
-        const initializeCall = async () => {
-            try {
-                // Create Agora client
-                const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-                clientRef.current = client;
-
-                // Handle remote user events
-                client.on('user-published', async (user, mediaType) => {
-                    await client.subscribe(user, mediaType);
-                    console.log('Subscribed to remote user:', user.uid, mediaType);
-
-                    if (mediaType === 'video') {
-                        setRemoteUsers(prev => {
-                            const exists = prev.find(u => u.uid === user.uid);
-                            if (exists) return prev;
-                            return [...prev, user];
-                        });
-                        
-                        // Play remote video
-                        if (remoteVideoRef.current && user.videoTrack) {
-                            user.videoTrack.play(remoteVideoRef.current);
-                        }
-                    }
-
-                    if (mediaType === 'audio' && user.audioTrack) {
-                        user.audioTrack.play();
-                    }
-                });
-
-                client.on('user-unpublished', (user, mediaType) => {
-                    console.log('User unpublished:', user.uid, mediaType);
-                    if (mediaType === 'video') {
-                        setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
-                    }
-                });
-
-                client.on('user-left', (user) => {
-                    console.log('User left:', user.uid);
-                    setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
-                });
-
-                // Generate channel name from call participants
-                const channelName = `call_${[currentUser.id, callData.partner.id].sort().join('_')}`;
-
-                // If we are the caller, create/update call record with channel name
-                if (!callData.isIncoming) {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('last_active')
-                        .eq('id', callData.partner.id)
-                        .single();
-
-                    let initialStatus = 'Calling...';
-                    if (profile && profile.last_active) {
-                        const lastActive = new Date(profile.last_active);
-                        const diffMins = (new Date() - lastActive) / 1000 / 60;
-                        if (diffMins < 5) initialStatus = 'Ringing...';
-                    }
-                    setStatus(initialStatus);
-
-                    await supabase.from('calls').insert({
-                        caller_id: currentUser.id,
-                        receiver_id: callData.partner.id,
-                        type: callData.type,
-                        status: 'pending',
-                        channel_name: channelName
-                    });
-                }
-
-                // Create local tracks
-                const isVideoCall = callData.type === 'video';
-                
-                if (isVideoCall) {
-                    localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack();
-                    if (localVideoRef.current && mounted) {
-                        localVideoTrackRef.current.play(localVideoRef.current);
-                    }
-                }
-                
-                localAudioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
-
-                // Join channel with user ID
-                const uid = await client.join(APP_ID, channelName, null, currentUser.id);
-                console.log('Joined channel:', channelName, 'with UID:', uid);
-
-                // Publish local tracks
-                const tracksToPublish = [localAudioTrackRef.current];
-                if (isVideoCall && localVideoTrackRef.current) {
-                    tracksToPublish.push(localVideoTrackRef.current);
-                }
-                
-                await client.publish(tracksToPublish);
-                console.log('Published local tracks');
-
-                if (mounted) {
-                    setStatus('Connected');
-                    callStartTimeRef.current = Date.now();
-                    
-                    // Start duration timer
-                    durationIntervalRef.current = setInterval(() => {
-                        if (callStartTimeRef.current) {
-                            const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
-                            setCallDuration(elapsed);
-                        }
-                    }, 1000);
-                }
-
-                // Listen for call status changes
-                const channel = supabase.channel('current_call')
-                    .on('postgres_changes', { 
-                        event: 'UPDATE', 
-                        schema: 'public', 
-                        table: 'calls',
-                        filter: `channel_name=eq.${channelName}`
-                    }, (payload) => {
-                        if (payload.new.status === 'ended' || payload.new.status === 'rejected') {
-                            cleanup();
-                            onEnd();
-                        }
-                        if (payload.new.status === 'active' && mounted) {
-                            setStatus('Connected');
-                            if (!callStartTimeRef.current) {
-                                callStartTimeRef.current = Date.now();
-                            }
-                        }
-                    })
-                    .subscribe();
-
-                return () => {
-                    supabase.removeChannel(channel);
-                };
-
-            } catch (error) {
-                console.error('Call initialization error:', error);
-                setStatus('Connection Failed');
-            }
-        };
-
-        const cleanup = async () => {
-            mounted = false;
-            
-            // Stop duration timer
-            if (durationIntervalRef.current) {
-                clearInterval(durationIntervalRef.current);
-            }
-
-            // Close local tracks
-            if (localAudioTrackRef.current) {
-                localAudioTrackRef.current.close();
-            }
-            if (localVideoTrackRef.current) {
-                localVideoTrackRef.current.close();
-            }
-
-            // Leave channel
-            if (clientRef.current) {
-                await clientRef.current.leave();
-                console.log('Left channel');
-            }
-        };
-
-        initializeCall();
-
-        return () => {
-            cleanup();
-        };
-    }, []);
-
-    const toggleMute = async () => {
-        if (localAudioTrackRef.current) {
-            await localAudioTrackRef.current.setEnabled(muted);
-            setMuted(!muted);
-        }
-    };
-
-    const toggleCamera = async () => {
-        if (localVideoTrackRef.current) {
-            await localVideoTrackRef.current.setEnabled(cameraOff);
-            setCameraOff(!cameraOff);
-        }
-    };
-
-    const endCall = async () => {
-        // Update DB to end call
-        const channelName = `call_${[currentUser.id, callData.partner.id].sort().join('_')}`;
-        await supabase.from('calls')
-            .update({ status: 'ended' })
-            .eq('channel_name', channelName);
-        
-        onEnd();
-    };
-
-    const formatDuration = (seconds) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const isVideoCall = callData.type === 'video';
-
-    return (
-        <div className="call-interface-overlay">
-            <span className="status-pill">
-                {status === 'Connected' ? formatDuration(callDuration) : status}
-            </span>
-
-            {/* Remote Video/Avatar */}
-            {isVideoCall && remoteUsers.length > 0 ? (
-                <div ref={remoteVideoRef} className="remote-video-container"></div>
-            ) : (
-                <div className="remote-avatar-container">
-                    <img 
-                        src={callData.partner.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + callData.partner.id} 
-                        className="remote-avatar" 
-                        alt="Remote User" 
-                    />
-                    <h2 style={{ color: 'white', marginTop: '20px' }}>
-                        {callData.partner.full_name || callData.partner.username}
-                    </h2>
-                </div>
-            )}
-
-            {/* Local Video */}
-            {isVideoCall && !cameraOff && (
-                <div ref={localVideoRef} className="local-video"></div>
-            )}
-
-            {/* Call Controls */}
-            <div className="call-controls">
-                <button 
-                    className={`ctrl-btn ${muted ? 'muted' : ''}`} 
-                    onClick={toggleMute}
-                    title={muted ? 'Unmute' : 'Mute'}
-                >
-                    {muted ? '🔇' : '🎤'}
-                </button>
-                
-                <button className="ctrl-btn hangup" onClick={endCall} title="Hang Up">
-                    📞
-                </button>
-                
-                {isVideoCall && (
-                    <button 
-                        className={`ctrl-btn ${cameraOff ? 'camera-off' : ''}`} 
-                        onClick={toggleCamera}
-                        title={cameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
-                    >
-                        {cameraOff ? '📷' : '📹'}
-                    </button>
-                )}
-            </div>
         </div>
     );
 }

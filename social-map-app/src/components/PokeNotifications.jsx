@@ -142,9 +142,9 @@ export default function PokeNotifications({ currentUser }) {
                                 <img 
                                     src={(() => {
                                         const safeName = encodeURIComponent(poke.requester.username || poke.requester.full_name || 'User');
-                                        if (poke.requester.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                        if (poke.requester.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                        return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                        if (poke.requester.gender === 'Male') return `https://api.dicebear.com/7.x/avataaars/svg?seed=male-${safeName}`;
+                                        if (poke.requester.gender === 'Female') return `https://api.dicebear.com/7.x/avataaars/svg?seed=female-${safeName}`;
+                                        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                                     })()} 
                                     alt={poke.requester.full_name} 
                                     className="poke-avatar"

@@ -83,116 +83,210 @@ export default function Friends() {
 
     return (
         <div className="friends-page">
-            <h1 className="page-title">Social Circle</h1>
+            <div className="ambient-glow"></div>
+            
+            <header className="glass-header">
+                <button className="back-btn" onClick={() => navigate(-1)}>←</button>
+                <h1 className="page-title">Social Circle</h1>
+                <div style={{ width: 40 }}></div> {/* Spacer */}
+            </header>
 
-            {/* Requests Section */}
-            {requests.length > 0 && (
-                <div className="section">
-                    <h2 className="section-header">Pending Requests <span className="badge">{requests.length}</span></h2>
-                    <div className="list">
-                        {requests.map(req => (
-                            <div key={req.id} className="friend-card request">
-                                <img src={(() => {
-                                    const safeName = encodeURIComponent(req.username || req.full_name || 'User');
-                                    if (req.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                    if (req.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                    return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                })()} alt="avatar" className="avatar" />
-                                <div className="info">
-                                    <h3>{req.full_name || req.username}</h3>
-                                    <span>wants to connect</span>
+            <div className="scroll-content">
+                {/* Requests Section */}
+                {requests.length > 0 && (
+                    <div className="section">
+                        <h2 className="section-header">Pending Requests <span className="badge">{requests.length}</span></h2>
+                        <div className="list">
+                            {requests.map(req => (
+                                <div key={req.id} className="friend-card request">
+                                    <div className="avatar-container">
+                                        <img src={(() => {
+                                            const safeName = encodeURIComponent(req.username || req.full_name || 'User');
+                                            const g = req.gender?.toLowerCase();
+                                            if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                                            if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                                            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                        })()} alt="avatar" className="avatar" />
+                                    </div>
+                                    <div className="info">
+                                        <h3>{req.full_name || req.username}</h3>
+                                        <span className="subtitle">wants to connect</span>
+                                    </div>
+                                    <div className="actions">
+                                        <button className="btn-icon accept" onClick={() => handleAccept(req.friendship_id)}>✓</button>
+                                        <button className="btn-icon decline" onClick={() => handleDecline(req.friendship_id)}>✕</button>
+                                    </div>
                                 </div>
-                                <div className="actions">
-                                    <button className="btn-accept" onClick={() => handleAccept(req.friendship_id)}>Accept</button>
-                                    <button className="btn-decline" onClick={() => handleDecline(req.friendship_id)}>✕</button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Friends List */}
-            <div className="section">
-                <h2 className="section-header">Your Friends</h2>
-                {friends.length === 0 ? (
-                    <p className="empty-msg">No friends yet. Go explore the map! 🗺️</p>
-                ) : (
-                    <div className="list">
-                        {friends.map(friend => (
-                            <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
-                                <img src={(() => {
-                                    const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
-                                    if (friend.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                    if (friend.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                    return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                })()} alt="avatar" className="avatar" />
-                                <div className="info">
-                                    <h3>{friend.full_name || friend.username}</h3>
-                                    <span className={`status-dot ${friend.status === 'Online' ? 'online' : ''}`}></span>
-                                    <span className="status-text">{friend.status || 'Offline'}</span>
-                                </div>
-                                <button className="btn-chat">💬</button>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 )}
+
+                {/* Friends List */}
+                <div className="section">
+                    <h2 className="section-header">Your Friends</h2>
+                    {friends.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-icon">🌍</div>
+                            <p>Your circle is empty.</p>
+                            <button className="btn-explore" onClick={() => navigate('/map')}>Find People on Map</button>
+                        </div>
+                    ) : (
+                        <div className="list">
+                            {friends.map(friend => (
+                                <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
+                                    <div className="avatar-container">
+                                        <img src={(() => {
+                                            const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
+                                            const g = friend.gender?.toLowerCase();
+                                            if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                                            if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                                            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                        })()} alt="avatar" className="avatar" />
+                                        <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
+                                    </div>
+                                    <div className="info">
+                                        <h3>{friend.full_name || friend.username}</h3>
+                                        <span className="status-text">{friend.status || 'Offline'}</span>
+                                    </div>
+                                    <button className="btn-msg">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <style>{`
+                :root {
+                    --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+                    --glass-border: rgba(255, 255, 255, 0.15);
+                    --accent-cyan: #00d4ff;
+                    --text-primary: #ffffff;
+                    --text-secondary: #aaaaaa;
+                }
+
                 .friends-page {
                     min-height: 100vh;
-                    background: #0f0f0f;
-                    color: white;
-                    padding: 20px;
-                    padding-bottom: 80px;
+                    background: radial-gradient(ellipse at top, #1a1a2e 0%, #0a0a0a 60%);
+                    color: var(--text-primary);
+                    font-family: 'Inter', sans-serif;
+                    position: relative;
                 }
+
+                .ambient-glow {
+                    position: absolute; top: -100px; left: 50%; transform: translateX(-50%);
+                    width: 400px; height: 400px;
+                    background: radial-gradient(circle, rgba(0, 212, 255, 0.15) 0%, transparent 70%);
+                    filter: blur(60px); pointer-events: none;
+                }
+
+                .glass-header {
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 20px;
+                    position: sticky; top: 0; z-index: 10;
+                    backdrop-filter: blur(10px);
+                }
+
+                .back-btn {
+                    width: 40px; height: 40px;
+                    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 12px; color: white; font-size: 1.2rem;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center;
+                }
+
                 .page-title {
-                    font-size: 1.8rem; margin-bottom: 20px;
-                    background: linear-gradient(to right, #00f260, #0575E6);
+                    font-size: 1.2rem; margin: 0; font-weight: 700;
+                    background: linear-gradient(to right, #fff, #aaa);
                     -webkit-background-clip: text;
                     -webkit-text-fill-color: transparent;
                 }
+
+                .scroll-content { padding: 20px; padding-bottom: 100px; }
+
                 .section { margin-bottom: 30px; }
-                .section-header { font-size: 1rem; color: #888; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-                .badge { background: #ff453a; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; }
-                
-                .list { display: flex; flex-direction: column; gap: 10px; }
-                
+                .section-header { 
+                    font-size: 0.8rem; color: var(--accent-cyan); 
+                    text-transform: uppercase; letter-spacing: 1px;
+                    margin-bottom: 15px; font-weight: 700;
+                    display: flex; align-items: center; gap: 10px;
+                }
+                .badge { 
+                    background: #ff453a; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; 
+                    box-shadow: 0 2px 8px rgba(255, 69, 58, 0.4);
+                }
+
+                .list { display: flex; flex-direction: column; gap: 12px; }
+
                 .friend-card {
-                    display: flex; align-items: center; gap: 15px;
-                    padding: 12px;
-                    background: rgba(255,255,255,0.05);
-                    border-radius: 16px;
-                    cursor: pointer; transition: background 0.2s;
+                    display: flex; align-items: center; gap: 16px;
+                    padding: 16px;
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(12px);
+                    border: 1px solid var(--glass-border);
+                    border-radius: 20px;
+                    cursor: pointer; transition: all 0.2s;
+                    position: relative; overflow: hidden;
                 }
-                .friend-card:active { background: rgba(255,255,255,0.1); }
-                .friend-card.request { border: 1px solid rgba(66, 133, 244, 0.3); }
+                .friend-card:hover { 
+                    background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08));
+                    transform: translateY(-2px);
+                    border-color: rgba(255,255,255,0.3);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                }
+                .friend-card:active { transform: scale(0.98); }
 
-                .avatar { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; }
+                .avatar-container { position: relative; width: 56px; height: 56px; }
+                .avatar { 
+                    width: 100%; height: 100%; border-radius: 18px; object-fit: cover; 
+                    background: rgba(0,0,0,0.2);
+                }
+                .status-indicator {
+                    position: absolute; bottom: -2px; right: -2px;
+                    width: 14px; height: 14px;
+                    background: #666; border: 2px solid #1a1a2e;
+                    border-radius: 50%;
+                }
+                .status-indicator.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.5); }
+
                 .info { flex: 1; }
-                .info h3 { margin: 0; font-size: 1rem; font-weight: 600; }
-                .info span { font-size: 0.8rem; color: #aaa; }
-                
-                .actions { display: flex; gap: 8px; }
-                .btn-accept {
-                    background: #4285F4; color: white; border: none;
-                    padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer;
-                }
-                .btn-decline {
-                    background: rgba(255,255,255,0.1); color: #ccc; border: none;
-                    width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
-                }
-                .btn-chat {
-                    background: none; border: none; font-size: 1.2rem; cursor: pointer;
-                }
+                .info h3 { margin: 0; font-size: 1.05rem; font-weight: 600; color: white; margin-bottom: 4px; }
+                .status-text { font-size: 0.85rem; color: #888; display: block; }
+                .subtitle { font-size: 0.8rem; color: var(--accent-cyan); }
 
-                .status-dot {
-                    display: inline-block; width: 8px; height: 8px;
-                    background: #555; border-radius: 50%; margin-right: 5px;
+                .btn-msg {
+                    width: 44px; height: 44px;
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 14px; border: none;
+                    color: white; display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; transition: all 0.2s;
                 }
-                .status-dot.online { background: #00ff88; }
-                .empty-msg { color: #555; text-align: center; margin-top: 20px; font-style: italic; }
+                .btn-msg:hover { background: var(--accent-cyan); color: #000; }
+
+                .actions { display: flex; gap: 8px; }
+                .btn-icon {
+                    width: 36px; height: 36px; border-radius: 12px; border: none;
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; font-weight: bold; transition: all 0.2s;
+                }
+                .btn-icon.accept { background: #00ff88; color: #000; }
+                .btn-icon.accept:hover { box-shadow: 0 0 12px rgba(0,255,136,0.4); }
+                .btn-icon.decline { background: rgba(255,69,58,0.2); color: #ff453a; }
+                .btn-icon.decline:hover { background: #ff453a; color: white; }
+
+                .empty-state {
+                    text-align: center; padding: 40px 20px;
+                    color: #666;
+                }
+                .empty-icon { font-size: 3rem; margin-bottom: 15px; opacity: 0.5; }
+                .btn-explore {
+                    background: linear-gradient(135deg, #00C6FF, #0072FF);
+                    border: none; padding: 12px 24px; border-radius: 20px;
+                    color: white; font-weight: 600; margin-top: 20px;
+                    cursor: pointer; box-shadow: 0 4px 15px rgba(0,114,255,0.3);
+                }
             `}</style>
         </div>
     );

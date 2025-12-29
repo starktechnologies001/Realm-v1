@@ -90,6 +90,8 @@ export default function MapHome() {
     const [toastMsg, setToastMsg] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportTarget, setReportTarget] = useState(null);
+    const [showMuteModal, setShowMuteModal] = useState(false);
+    const [muteTarget, setMuteTarget] = useState(null);
 
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
@@ -117,13 +119,33 @@ export default function MapHome() {
 
             if (profile) {
                 // Check if mandatory fields are missing
-                if (!profile.gender || !profile.status || !profile.avatar_url || profile.avatar_url.includes('dicebear')) {
+                // Now DiceBear is valid (and standard), so just check gender/status/username
+                if (!profile.gender || !profile.status || !profile.username) {
                     setSetupData({
                         gender: profile.gender || '',
                         status: profile.status || ''
                     });
                     setShowProfileSetup(true);
-                    setLoading(false); // Stop loading to show modal
+                    setLoading(false); 
+                }
+                // Force Update Avatar if NOT Iran Liara (e.g. if it is DiceBear)
+                else if (!profile.avatar_url || !profile.avatar_url.includes('avatar.iran.liara.run')) {
+                    const safeName = encodeURIComponent(profile.username || profile.full_name || 'User');
+                    let newAvatar;
+                    if (profile.gender === 'Male') newAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                    else if (profile.gender === 'Female') newAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                    else newAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    
+                    await supabase.from('profiles')
+                        .update({ avatar_url: newAvatar })
+                        .eq('id', profile.id);
+
+                    // Update local state if current user
+                    if (profile.id === currentUser?.id) {
+                         const updated = { ...currentUser, avatar_url: newAvatar };
+                         setCurrentUser(updated);
+                         localStorage.setItem('currentUser', JSON.stringify(updated));
+                    }
                 }
             }
         };
@@ -161,21 +183,36 @@ export default function MapHome() {
             .subscribe();
 
         // Listen for friendship changes (blocking/unblocking) to update map
+        // Listen for ALL friendship changes (Pokes accepted, blocked, etc.)
         const friendshipChannel = supabase
             .channel('friendships_changes')
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'friendships',
-                filter: `status=eq.blocked`
+                table: 'friendships'
             }, (payload) => {
-                // If a block involves current user, refetch the map by reloading
-                if (payload.new?.requester_id === currentUser.id || 
-                    payload.new?.receiver_id === currentUser.id ||
-                    payload.old?.requester_id === currentUser.id ||
-                    payload.old?.receiver_id === currentUser.id) {
-                    // Trigger a re-fetch by updating a state or reloading
-                    window.location.reload(); // Simple approach to refresh map
+                const { old: oldRec, new: newRec } = payload;
+                const relevantId = newRec?.requester_id === currentUser.id ? newRec.receiver_id 
+                                 : newRec?.receiver_id === currentUser.id ? newRec.requester_id 
+                                 : oldRec?.requester_id === currentUser.id ? oldRec.receiver_id 
+                                 : oldRec?.receiver_id === currentUser.id ? oldRec.requester_id 
+                                 : null;
+
+                if (!relevantId) return; // Update not relevant to us
+
+                // CASE 1: BLOCKED (Reload Map to hide/show)
+                if (newRec?.status === 'blocked' || oldRec?.status === 'blocked') {
+                     window.location.reload(); 
+                     return;
+                }
+
+                // CASE 2: ACCEPTED (Update UI to "Friend")
+                if (newRec?.status === 'accepted') {
+                    showToast(`Friend request accepted! 🎉`);
+                    // Update selected user if open
+                    setSelectedUser(prev => prev && prev.id === relevantId ? { ...prev, friendshipStatus: 'accepted' } : prev);
+                    // Update nearby users list locally
+                    setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
                 }
             })
             .subscribe();
@@ -238,9 +275,9 @@ export default function MapHome() {
                         // Gender-based Avatar for Map Privacy (Snapchat-style)
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
                         let mapAvatar;
-                        if (u.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                        else if (u.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
 
                         // Micro-jitter for initial load
                         const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
@@ -286,8 +323,9 @@ export default function MapHome() {
                         // Gender-based Avatar for Map Privacy
                         let mapAvatar = updatedUser.avatar_url;
                         const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
-                        if (updatedUser.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                        else if (updatedUser.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                        const gender = updatedUser.gender?.toLowerCase();
+                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                         else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
 
                         // Micro-jitter to prevent exact overlap if testing on same device
@@ -329,13 +367,14 @@ export default function MapHome() {
 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    // Gender-based Avatar for Map Privacy
-                    let mapAvatar = newUser.avatar_url;
+                    // Gender-Specific Avatar (Iran Liara) to avoid "looking like a girl"
                     const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    if (newUser.gender === 'Male') mapAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                    else if (newUser.gender === 'Female') mapAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                    let mapAvatar;
+                    const gender = newUser.gender?.toLowerCase() || 'other';
+                    if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                    else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                     else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
-
+                    
                     const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
                     const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
 
@@ -698,6 +737,30 @@ export default function MapHome() {
                 showToast('Failed to block user');
             }
         }
+        else if (action === 'mute') {
+            if (targetUser.isMuted) {
+                // UNMUTE IMMEDIATELY
+                try {
+                    const isRequester = targetUser.requesterId === currentUser.id;
+                    const column = isRequester ? 'muted_until_by_requester' : 'muted_until_by_receiver';
+                    
+                    await supabase
+                        .from('friendships')
+                        .update({ [column]: null })
+                        .eq('id', targetUser.friendshipId);
+
+                    showToast(`Unmuted ${targetUser.name} 🔔`);
+                    setSelectedUser(prev => ({ ...prev, isMuted: false }));
+                } catch (err) {
+                    console.error("Unmute error:", err);
+                    showToast("Failed to unmute");
+                }
+            } else {
+                // OPEN MUTE MODAL for duration selection
+                setMuteTarget(targetUser);
+                setShowMuteModal(true);
+            }
+        }
         else if (action === 'report') {
             // Show report modal with reason options
             setReportTarget(targetUser);
@@ -744,9 +807,9 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [60, 100], // Tall for full body
-            iconAnchor: [30, 95], // Feet at location
-            popupAnchor: [0, -90]
+            iconSize: [80, 120], // Larger full body
+            iconAnchor: [40, 115], // Feet at location
+            popupAnchor: [0, -110]
         });
     };
 
@@ -879,9 +942,9 @@ export default function MapHome() {
                         icon={createAvatarIcon(
                             (() => {
                                 const safeName = encodeURIComponent(currentUser.username || currentUser.full_name || 'User');
-                                if (currentUser.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                if (currentUser.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                if (currentUser.gender === 'Male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                                if (currentUser.gender === 'Female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                             })(),
                             true,
                             currentUser.thought
@@ -903,11 +966,31 @@ export default function MapHome() {
                                 // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
                                 const { data } = await supabase
                                     .from('friendships')
-                                    .select('status')
+                                    .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
                                     .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
-                                    .maybeSingle(); // maybeSingle avoids error if null
+                                    .maybeSingle(); 
 
-                                setSelectedUser({ ...u, friendshipStatus: data?.status || null });
+                                let isMuted = false;
+                                if (data) {
+                                    let mutedUntil = null;
+                                    if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
+                                    else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
+                                    
+                                    if (mutedUntil && new Date(mutedUntil) > new Date()) {
+                                        isMuted = true;
+                                    }
+                                }
+
+                                setSelectedUser({ 
+                                    ...u, 
+                                    friendshipStatus: data?.status || null,
+                                    isMuted: isMuted,
+                                    friendshipId: data?.id,
+                                    requesterId: data?.requester_id,
+                                    receiverId: data?.receiver_id
+                                });
+
+
                             }
                         }}
                     />
@@ -919,6 +1002,7 @@ export default function MapHome() {
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
             />
+
             <PokeNotifications currentUser={currentUser} />
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
@@ -951,6 +1035,171 @@ export default function MapHome() {
                     </div>
                 </div>
             )}
+
+            {/* Mute Duration Modal */}
+            {showMuteModal && muteTarget && (
+                <div className="report-modal-overlay" onClick={() => setShowMuteModal(false)}>
+                    <div className="report-modal-card" onClick={e => e.stopPropagation()}>
+                        <h3>🔕 Mute {muteTarget.name}</h3>
+                        <p>Mute notifications for:</p>
+                        <div className="report-reasons">
+                            {[
+                                { label: '10 Minutes', val: 10 },
+                                { label: '30 Minutes', val: 30 },
+                                { label: '1 Hour', val: 60 },
+                                { label: '24 Hours', val: 1440 }
+                            ].map(opt => (
+                                <button key={opt.val} onClick={async () => {
+                                    try {
+                                        const mins = opt.val;
+                                        const future = new Date(new Date().getTime() + mins * 60000);
+                                        const isRequester = muteTarget.requesterId === currentUser.id;
+                                        const column = isRequester ? 'muted_until_by_requester' : 'muted_until_by_receiver';
+                                        
+                                        await supabase
+                                            .from('friendships')
+                                            .update({ [column]: future.toISOString() })
+                                            .eq('id', muteTarget.friendshipId);
+
+                                        showToast(`Muted ${muteTarget.name} for ${opt.label} 🔕`);
+                                        setShowMuteModal(false);
+                                        // Update local state if this user is still selected
+                                        if (selectedUser?.id === muteTarget.id) {
+                                            setSelectedUser(prev => ({ ...prev, isMuted: true }));
+                                        }
+                                        setMuteTarget(null);
+                                    } catch(err) {
+                                        console.error("Timed mute error", err);
+                                        showToast("Failed to mute");
+                                    }
+                                }}>
+                                    ⏳ {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        <button className="cancel-report-btn" onClick={() => setShowMuteModal(false)}>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                .report-modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0, 0, 0, 0.75);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 3000;
+                    animation: fadeIn 0.3s ease-out;
+                }
+
+                .report-modal-card {
+                    background: rgba(20, 20, 20, 0.9);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 24px;
+                    padding: 30px;
+                    width: 90%;
+                    max-width: 380px;
+                    text-align: center;
+                    box-shadow: 
+                        0 20px 60px rgba(0, 0, 0, 0.6),
+                        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+                    color: white;
+                    animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                /* Subtle top shimmer */
+                .report-modal-card::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0;
+                    height: 1px;
+                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+                }
+
+                .report-modal-card h3 {
+                    margin: 0 0 10px 0;
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                    background: linear-gradient(to right, #fff, #ccc);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }
+
+                .report-modal-card p {
+                    color: #888;
+                    margin-bottom: 25px;
+                    font-size: 0.95rem;
+                    font-weight: 400;
+                    line-height: 1.4;
+                }
+
+                .report-reasons {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    margin-bottom: 25px;
+                }
+
+                .report-reasons button {
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    color: #eee;
+                    padding: 16px;
+                    border-radius: 16px;
+                    font-size: 1rem;
+                    text-align: left;
+                    cursor: pointer;
+                    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    font-weight: 500;
+                }
+
+                .report-reasons button:hover {
+                    background: rgba(255, 69, 58, 0.1);
+                    border-color: rgba(255, 69, 58, 0.4);
+                    color: #ff5e55;
+                    transform: translateX(4px) scale(1.01);
+                    box-shadow: 0 4px 12px rgba(255, 69, 58, 0.1);
+                }
+
+                .report-reasons button:active {
+                    transform: scale(0.98);
+                }
+
+                .cancel-report-btn {
+                    width: 100%;
+                    padding: 14px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border: none;
+                    border-radius: 16px;
+                    color: #999;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    font-size: 1rem;
+                }
+
+                .cancel-report-btn:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: #fff;
+                }
+
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes scaleIn { 
+                    from { transform: scale(0.95) translateY(10px); opacity: 0; } 
+                    to { transform: scale(1) translateY(0); opacity: 1; } 
+                }
+            `}</style>
 
             {/* Thought Input Overlay */}
             {showThoughtInput && (
