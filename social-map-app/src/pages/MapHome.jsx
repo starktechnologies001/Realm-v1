@@ -241,7 +241,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url, avatar_3d_url')
                         .neq('id', currentUser.id)
                         .eq('is_ghost_mode', false)
                         .not('latitude', 'is', null)
@@ -273,11 +273,15 @@ export default function MapHome() {
                     .filter(u => !blockedUserIds.has(u.id))
                     .map(u => {
                         // Gender-based Avatar for Map Privacy (Snapchat-style)
+                        // Use existing avatar or generate one if missing
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                        let mapAvatar;
-                        if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        let mapAvatar = u.avatar_url;
+                        
+                        if (!mapAvatar) {
+                            if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        }
 
                         // Micro-jitter for initial load
                         const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
@@ -289,6 +293,7 @@ export default function MapHome() {
                             lat: renderLat,
                             lng: renderLng,
                             avatar: mapAvatar,
+                            avatar3d: u.avatar_3d_url,
                             originalAvatar: u.avatar_url,
                             status: u.status,
                             thought: u.status_message,
@@ -321,12 +326,16 @@ export default function MapHome() {
 
                     if (isVisible) {
                         // Gender-based Avatar for Map Privacy
+                        // Use existing avatar or generate if missing
                         let mapAvatar = updatedUser.avatar_url;
-                        const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
-                        const gender = updatedUser.gender?.toLowerCase();
-                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        
+                        if (!mapAvatar) {
+                             const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
+                             const gender = updatedUser.gender?.toLowerCase();
+                             if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                             else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                             else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        }
 
                         // Micro-jitter to prevent exact overlap if testing on same device
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
@@ -338,6 +347,7 @@ export default function MapHome() {
                             lat: renderLat,
                             lng: renderLng,
                             avatar: mapAvatar,
+                            avatar3d: updatedUser.avatar_3d_url,
                             originalAvatar: updatedUser.avatar_url,
                             status: updatedUser.status,
                             thought: updatedUser.status_message,
@@ -367,13 +377,16 @@ export default function MapHome() {
 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    // Gender-Specific Avatar (Iran Liara) to avoid "looking like a girl"
-                    const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    let mapAvatar;
-                    const gender = newUser.gender?.toLowerCase() || 'other';
-                    if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                    else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                    else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    // Use existing avatar or generate if missing
+                    let mapAvatar = newUser.avatar_url;
+                    
+                    if (!mapAvatar) {
+                        const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
+                        const gender = newUser.gender?.toLowerCase() || 'other';
+                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    }
                     
                     const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
                     const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
@@ -384,6 +397,7 @@ export default function MapHome() {
                         lat: renderLat,
                         lng: renderLng,
                         avatar: mapAvatar,
+                        avatar3d: newUser.avatar_3d_url,
                         originalAvatar: newUser.avatar_url,
                         status: newUser.status,
                         thought: newUser.status_message,
@@ -785,7 +799,32 @@ export default function MapHome() {
         }
     };
 
-    const createAvatarIcon = (url, isSelf = false, thought = null) => {
+    const createAvatarIcon = (url, isSelf = false, thought = null, avatar3d = null) => {
+        // If 3D is available, use it!
+        if (avatar3d) {
+             const thoughtHTML = thought ? `<div class="thought-bubble-3d">${thought}</div>` : '';
+             // We use a slightly different structure for 3D to ensure it's visible
+             return L.divIcon({
+                className: 'custom-avatar-3d',
+                html: `
+                    <div class="avatar-group-3d">
+                        ${thoughtHTML}
+                        <model-viewer 
+                            src="${avatar3d}" 
+                            alt="3D Avatar"
+                            auto-rotate
+                            camera-controls
+                            interaction-prompt="none"
+                            style="width: 120px; height: 180px; --poster-color: transparent; background-color: transparent;"
+                        ></model-viewer>
+                    </div>
+                `,
+                iconSize: [120, 180],
+                iconAnchor: [60, 170], // Anchor at feet
+                popupAnchor: [0, -160]
+            });
+        }
+
         let className = 'avatar-marker';
         // Ensure no background clutter
         let style = `background-image: url('${url}')`;
@@ -947,7 +986,8 @@ export default function MapHome() {
                                 return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                             })(),
                             true,
-                            currentUser.thought
+                            currentUser.thought,
+                            currentUser.avatar_3d_url
                         )}
                         eventHandlers={{ click: () => setSelectedUser(null) }}
                     />
@@ -957,7 +997,7 @@ export default function MapHome() {
                     <Marker
                         key={u.id}
                         position={[u.lat, u.lng]}
-                        icon={createAvatarIcon(u.avatar, false, u.thought)}
+                        icon={createAvatarIcon(u.avatar, false, u.thought, u.avatar3d)}
                         eventHandlers={{
                             click: async () => {
                                 // Fetch friendship status synchronously to update UI instantly

@@ -37,11 +37,24 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     
                     <div className="card-header">
                         <div className="avatar-large-container">
-                            <img 
-                                src={user.avatar?.replace('size=96', 'size=200')} 
-                                alt={user.name} 
-                                className="avatar-large"
-                            />
+                            {user.avatar3d || user.avatar_3d_url ? (
+                                <div className="avatar-3d-card-view">
+                                    <model-viewer
+                                        src={user.avatar3d || user.avatar_3d_url}
+                                        alt={user.name}
+                                        auto-rotate
+                                        camera-controls
+                                        interaction-prompt="none"
+                                        style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
+                                    ></model-viewer>
+                                </div>
+                            ) : (
+                                <img 
+                                    src={user.avatar?.replace('size=96', 'size=200')} 
+                                    alt={user.name} 
+                                    className="avatar-large"
+                                />
+                            )}
                             <div className={`status-dot ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         
@@ -181,6 +194,12 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                         /* Removed gradient usage based on user preference to keep it clean */
                         background: transparent;
                         border-radius: 50%;
+                        display: flex; justify-content: center;
+                    }
+
+                    .avatar-3d-card-view {
+                        width: 140px; height: 180px;
+                        margin-top: -30px; margin-bottom: -20px;
                     }
 
                     .avatar-large {
