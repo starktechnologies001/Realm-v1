@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
+import AvatarCreator from '../components/AvatarCreator';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -10,6 +11,7 @@ export default function Profile() {
     const [toastMsg, setToastMsg] = useState(null);
     const [blockedUsers, setBlockedUsers] = useState([]);
     const [showBlockedModal, setShowBlockedModal] = useState(false);
+    const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
     useEffect(() => {
         fetchProfile();
@@ -42,8 +44,11 @@ export default function Profile() {
 
                 // Check mismatch - now using DiceBear Adventurer as standard
                 const isAdventurer = currentAvatar.includes('dicebear.com/9.x/adventurer');
-                
-                if (gender === 'male' && (!currentAvatar.includes('hair=short') || !isAdventurer)) {
+                const isRPM = currentAvatar.includes('readyplayer.me');
+
+                if (isRPM) {
+                    shouldUpdate = false; // Trust custom avatars
+                } else if (gender === 'male' && (!currentAvatar.includes('hair=short') || !isAdventurer)) {
                     newAvatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
                     shouldUpdate = true;
                 } else if (gender === 'female' && (!currentAvatar.includes('hair=long') || !isAdventurer)) {
@@ -228,6 +233,15 @@ export default function Profile() {
 
     return (
         <div className="profile-page">
+            {showAvatarCreator && (
+                <AvatarCreator 
+                    onClose={() => setShowAvatarCreator(false)}
+                    onAvatarExported={(pngUrl) => {
+                        updateProfile({ avatar_url: pngUrl });
+                        setShowAvatarCreator(false);
+                    }}
+                />
+            )}
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             {/* Ambient Background Gradient */}
             <div className="ambient-glow"></div>
@@ -235,13 +249,16 @@ export default function Profile() {
             {/* Header Card */}
             <div className="profile-header-card">
                 <div className="avatar-wrapper">
-                    <img src={(() => {
+                    <img src={user.avatar_url || (() => {
                         const safeName = encodeURIComponent(user.username || user.full_name || 'User');
                         const gender = user.gender?.toLowerCase();
                         if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
                         if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                         return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                     })()} alt="Avatar" className="profile-avatar" />
+                    <button className="edit-avatar-badge" onClick={() => setShowAvatarCreator(true)}>
+                        ✏️
+                    </button>
                     <div className="status-indicator"></div>
                 </div>
                 <div className="profile-info">

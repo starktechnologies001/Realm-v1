@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
+import AvatarCreator from '../components/AvatarCreator';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
 
@@ -87,6 +88,7 @@ export default function MapHome() {
     const [isGhostMode, setGhostMode] = useState(false);
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState(null);
+    const [showAvatarCreator, setShowAvatarCreator] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportTarget, setReportTarget] = useState(null);
@@ -128,23 +130,42 @@ export default function MapHome() {
                     setShowProfileSetup(true);
                     setLoading(false); 
                 }
-                // Force Update Avatar if NOT Iran Liara (e.g. if it is DiceBear)
-                else if (!profile.avatar_url || !profile.avatar_url.includes('avatar.iran.liara.run')) {
-                    const safeName = encodeURIComponent(profile.username || profile.full_name || 'User');
-                    let newAvatar;
-                    if (profile.gender === 'Male') newAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                    else if (profile.gender === 'Female') newAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                    else newAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                // Check mismatch - now using DiceBear Adventurer as standard
+                else {
+                    const currentAvatar = profile.avatar_url || '';
+                    const isAdventurer = currentAvatar.includes('dicebear.com/9.x/adventurer');
+                    const isRPM = currentAvatar.includes('readyplayer.me');
                     
-                    await supabase.from('profiles')
-                        .update({ avatar_url: newAvatar })
-                        .eq('id', profile.id);
+                    if (isRPM) {
+                        // Trust custom avatars - Do nothing
+                    } else {
+                        const safeName = encodeURIComponent(profile.username || profile.full_name || 'User');
+                        let needsUpdate = false;
+                        let newAvatar = currentAvatar;
 
-                    // Update local state if current user
-                    if (profile.id === currentUser?.id) {
-                         const updated = { ...currentUser, avatar_url: newAvatar };
-                         setCurrentUser(updated);
-                         localStorage.setItem('currentUser', JSON.stringify(updated));
+                        if (profile.gender === 'Male' && (!currentAvatar.includes('hair=short') || !isAdventurer)) {
+                            newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            needsUpdate = true;
+                        } else if (profile.gender === 'Female' && (!currentAvatar.includes('hair=long') || !isAdventurer)) {
+                            newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            needsUpdate = true;
+                        } else if ((!profile.gender) && !currentAvatar) {
+                             newAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                             needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            await supabase.from('profiles')
+                                .update({ avatar_url: newAvatar })
+                                .eq('id', profile.id);
+        
+                            // Update local state if current user
+                            if (profile.id === currentUser?.id) {
+                                 const updated = { ...currentUser, avatar_url: newAvatar };
+                                 setCurrentUser(updated);
+                                 localStorage.setItem('currentUser', JSON.stringify(updated));
+                            }
+                        }
                     }
                 }
             }
@@ -274,10 +295,13 @@ export default function MapHome() {
                     .map(u => {
                         // Gender-based Avatar for Map Privacy (Snapchat-style)
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                        let mapAvatar;
-                        if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        let mapAvatar = u.avatar_url;
+                        
+                        if (!mapAvatar) {
+                            if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        }
 
                         // Micro-jitter for initial load
                         const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
@@ -320,13 +344,15 @@ export default function MapHome() {
                     const exists = prev.find(u => u.id === updatedUser.id);
 
                     if (isVisible) {
-                        // Gender-based Avatar for Map Privacy
+                        // Use DB avatar or fallback
                         let mapAvatar = updatedUser.avatar_url;
-                        const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
-                        const gender = updatedUser.gender?.toLowerCase();
-                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        if (!mapAvatar) {
+                            const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
+                            const gender = updatedUser.gender?.toLowerCase();
+                            if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        }
 
                         // Micro-jitter to prevent exact overlap if testing on same device
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
@@ -367,13 +393,14 @@ export default function MapHome() {
 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    // Gender-Specific Avatar (Iran Liara) to avoid "looking like a girl"
-                    const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    let mapAvatar;
-                    const gender = newUser.gender?.toLowerCase() || 'other';
-                    if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                    else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                    else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    let mapAvatar = newUser.avatar_url;
+                    if (!mapAvatar) {
+                        const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
+                        const gender = newUser.gender?.toLowerCase() || 'other';
+                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    }
                     
                     const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
                     const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
@@ -824,6 +851,28 @@ export default function MapHome() {
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
 
+    // AVATAR EXPORT HANDLER
+    const handleAvatarExported = async (pngUrl, glbUrl) => {
+        // Save to Supabase
+        const { error } = await supabase
+            .from('profiles')
+            .update({ 
+                avatar_url: pngUrl,
+                // model_url: glbUrl // Optional: Save 3D model URL if column exists
+            })
+            .eq('id', currentUser.id);
+
+        if (!error) {
+            // Update local state
+            setCurrentUser(prev => ({ ...prev, avatar_url: pngUrl }));
+            setShowAvatarCreator(false);
+            showToast("Avatar Updated! 🤵");
+        } else {
+            console.error(error);
+            showToast("Failed to save avatar");
+        }
+    };
+
     return (
         <div className="map-container">
             {/* BLOCKING ONBOARDING MODAL */}
@@ -888,6 +937,21 @@ export default function MapHome() {
                 </div>
             )}
 
+            {showAvatarCreator && (
+                <AvatarCreator 
+                    onClose={() => setShowAvatarCreator(false)}
+                    onAvatarExported={handleAvatarExported}
+                />
+            )}
+
+            <button 
+                className="customize-avatar-btn"
+                onClick={() => setShowAvatarCreator(true)}
+                title="Customize Avatar"
+            >
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle><line x1="19" y1="8" x2="21" y2="8"></line><line x1="20" y1="7" x2="20" y2="9"></line></svg>
+            </button>
+
             <MapContainer
                 center={[location.lat, location.lng]}
                 zoom={18}
@@ -940,7 +1004,7 @@ export default function MapHome() {
                     <Marker
                         position={[location.lat, location.lng]}
                         icon={createAvatarIcon(
-                            (() => {
+                            currentUser.avatar_url || (() => {
                                 const safeName = encodeURIComponent(currentUser.username || currentUser.full_name || 'User');
                                 if (currentUser.gender === 'Male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
                                 if (currentUser.gender === 'Female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
