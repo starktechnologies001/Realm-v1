@@ -74,73 +74,214 @@
     transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Ensure Profile Page matches Map */
+/* Ensure Profile Page matches Map - Simplified Clean Look */
 .avatar-wrapper {
     position: relative;
-    width: 140px; /* Larger on profile */
-    height: 210px; /* 2:3 aspect ratio */
-    margin: 0 auto;
+    width: 140px;
+    height: 180px; /* Restore height for full body visibility */
+    margin: 0 auto -90px auto; /* Maximum negative margin */
+    /* No border or background as requested */
+}
+
+.profile-header-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 5;
+}
+
+.profile-header-card h1 {
+    margin-top: 0 !important;
+    margin-bottom: 5px;
+    font-size: 1.8rem;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.2); /* Slight backing to separate text from legs if needed */
+    padding: 0 10px;
+    border-radius: 10px;
+    backdrop-filter: blur(2px);
+}
+
+/* Position the green dot closer to the avatar content */
+.avatar-wrapper .status-indicator {
+    position: absolute;
+    bottom: 100px; /* adjusted for the overlap */
+    right: 20px;
+    width: 16px; height: 16px;
+    background: #00ff00;
+    border-radius: 50%;
+    border: 2px solid #1a1a1a;
+    box-shadow: 0 0 10px #00ff00;
+    z-index: 5;
 }
 
 .profile-avatar {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* Full body visible */
+    object-fit: contain;
     object-position: center bottom;
-    filter: drop-shadow(0 0 10px rgba(66, 133, 244, 0.5));
+    filter: drop-shadow(0 0 15px rgba(66, 133, 244, 0.4));
+    transition: transform 0.3s ease;
+}
+.profile-avatar.clickable {
+    cursor: zoom-in;
+}
+.profile-avatar:hover {
+    transform: scale(1.05); /* Subtle zoom on hover */
 }
 
-.avatar-marker:hover {
-    transform: scale(1.15) translateY(-5px);
-    z-index: 10001 !important;
-}
-
-.avatar-marker.self {
-    filter: drop-shadow(0 0 8px #4285F4);
-    z-index: 10000;
-}
-
-/* Customize Avatar Button */
-.customize-avatar-btn {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 50px; height: 50px;
-    background: var(--glass-bg, rgba(30, 30, 30, 0.8));
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+/* New Small Edit Button for Status Row */
+.icon-btn-small {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-secondary);
+    width: 28px; height: 28px;
     border-radius: 50%;
-    color: white;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
-    z-index: 1000;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    transition: all 0.2s;
+    margin-left: 8px; /* Space from status tag */
+}
+.icon-btn-small:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: white;
+}
+
+/* Image Viewer Modal */
+.image-viewer-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(10px);
+    z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.full-view-image {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    animation: zoomIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    filter: drop-shadow(0 0 30px rgba(66, 133, 244, 0.3));
+}
+
+.close-viewer {
+    position: absolute;
+    top: 20px; right: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes zoomIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Profile Menu Styles (iOS Setting Look) */
+.section-label {
+    padding-left: 16px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.menu-group {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.menu-item:last-child {
+    border-bottom: none;
+}
+.menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.menu-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1rem;
+    color: rgba(255,255,255,0.9);
+}
+.menu-item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.9rem;
+}
+.menu-icon {
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: rgba(66, 133, 244, 0.2);
+    color: #4285F4;
+}
+/* Specific Icon Colors */
+.icon-personal .menu-icon { background: rgba(52, 168, 83, 0.2); color: #34A853; }
+.icon-interests .menu-icon { background: rgba(251, 188, 5, 0.2); color: #FBBC05; }
+.icon-notif .menu-icon { background: rgba(234, 67, 53, 0.2); color: #EA4335; }
+.icon-lock .menu-icon { background: rgba(161, 66, 244, 0.2); color: #A142F4; }
+.icon-logout .menu-icon { background: rgba(255, 255, 255, 0.1); color: #999; }
+
+.chip-grid {
+    display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px;
+    background: rgba(0,0,0,0.2);
+}
+.chip-option {
+    background: rgba(255,255,255,0.1); border: none; color: white;
+    padding: 6px 12px; border-radius: 20px; cursor: pointer;
+    font-size: 0.85rem;
+}
+.chip-option.active {
+    background: #4285F4; color: white;
+}
+
+/* Bio Style */
+.profile-bio {
+    margin-top: 10px;
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    max-width: 85%;
+    cursor: pointer;
+    line-height: 1.4;
+    font-style: italic;
+    background: rgba(0,0,0,0.2);
+    padding: 8px 16px;
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.05);
     transition: all 0.2s;
 }
-.customize-avatar-btn:hover {
-    transform: scale(1.1);
-    background: rgba(255,255,255,0.2);
+.profile-bio:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
 }
 
-/* Edit Avatar Badge on Profile */
-.edit-avatar-badge {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    width: 36px; height: 36px;
-    background: var(--primary-color, #4285F4);
-    border-radius: 50%;
-    border: 2px solid var(--bg-color, #1a1a1a);
-    color: white;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    font-size: 1.2rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    transition: transform 0.2s;
-    z-index: 10;
-}
-.edit-avatar-badge:hover {
-    transform: scale(1.1);
-    background: white;
-    color: var(--primary-color);
-}
+/* Birthday Icon Color */
+.icon-birthday .menu-icon { background: rgba(255, 105, 180, 0.2); color: #FF69B4; }

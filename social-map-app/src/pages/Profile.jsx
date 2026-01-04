@@ -12,10 +12,13 @@ export default function Profile() {
     const [blockedUsers, setBlockedUsers] = useState([]);
     const [showBlockedModal, setShowBlockedModal] = useState(false);
     const [showAvatarCreator, setShowAvatarCreator] = useState(false);
+    const [viewingAvatar, setViewingAvatar] = useState(false);
 
     useEffect(() => {
         fetchProfile();
     }, []);
+
+
 
     const fetchProfile = async () => {
         try {
@@ -243,28 +246,48 @@ export default function Profile() {
                 />
             )}
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
+            {viewingAvatar && (
+                <div className="image-viewer-overlay" onClick={() => setViewingAvatar(false)}>
+                    <img src={user.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'} alt="Full View" className="full-view-image" onClick={e => e.stopPropagation()} />
+                     <button className="close-viewer" onClick={() => setViewingAvatar(false)}>✕</button>
+                </div>
+            )}
             {/* Ambient Background Gradient */}
             <div className="ambient-glow"></div>
 
             {/* Header Card */}
             <div className="profile-header-card">
                 <div className="avatar-wrapper">
-                    <img src={user.avatar_url || (() => {
-                        const safeName = encodeURIComponent(user.username || user.full_name || 'User');
-                        const gender = user.gender?.toLowerCase();
-                        if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-                    })()} alt="Avatar" className="profile-avatar" />
-                    <button className="edit-avatar-badge" onClick={() => setShowAvatarCreator(true)}>
-                        ✏️
-                    </button>
+                    <img 
+                        src={user.avatar_url || (() => {
+                            const safeName = encodeURIComponent(user.username || user.full_name || 'User');
+                            const gender = user.gender?.toLowerCase();
+                            if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        })()} 
+                        alt="Avatar" 
+                        className="profile-avatar clickable" 
+                        onClick={() => setViewingAvatar(true)}
+                    />
                     <div className="status-indicator"></div>
                 </div>
                 <div className="profile-info">
                     <h1>{user.full_name || user.username}</h1>
                     <div className="tags-row">
                         {user.status && <span className="tag status">{user.status}</span>}
+                        <button className="icon-btn-small" onClick={() => setShowAvatarCreator(true)}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div className="profile-bio" onClick={() => {
+                        const newBio = prompt("Enter your bio:", user.bio || "");
+                        if (newBio !== null) updateProfile({ bio: newBio });
+                    }}>
+                        {user.bio || "Tap to add a bio..."}
                     </div>
                 </div>
                 {/* Simple Edit for Name for now */}
@@ -293,6 +316,16 @@ export default function Profile() {
                         label="Interests" 
                         value={user.interests?.join(', ') || 'Add interests'} 
                         iconClass="icon-interests"
+                    />
+                    <MenuItem
+                        icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 1 4 1 3-1 4-1 2 1 2 1 5-1 4-1"/><path d="M2 21h20"/><path d="M7 8v2"/><path d="M12 8v2"/><path d="M17 8v2"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/></svg>}
+                        label="Birthday"
+                        value={user.birthday || 'Add details'}
+                        iconClass="icon-birthday"
+                        onClick={() => {
+                            const bday = prompt("Enter your Birthday (YYYY-MM-DD):", user.birthday || "");
+                            if (bday) updateProfile({ birthday: bday });
+                        }}
                     />
                 </div>
 
