@@ -230,7 +230,7 @@ export default function Profile() {
         <div className="profile-page">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             {/* Ambient Background Gradient */}
-            <div className="ambient-glow"></div>
+            {/* Ambient Background Gradient Removed */}
 
             {/* Header Card */}
             <div className="profile-header-card">
@@ -249,6 +249,10 @@ export default function Profile() {
                     <div className="tags-row">
                         {user.status && <span className="tag status">{user.status}</span>}
                     </div>
+                    {/* Bio Section */}
+                    <div className={`user-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
+                        {user.bio || "Tap to add a bio..."}
+                    </div>
                 </div>
                 {/* Simple Edit for Name for now */}
                 <button className="edit-btn" onClick={() => {
@@ -264,18 +268,24 @@ export default function Profile() {
                     <MenuItem
                         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 10a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v11H9V10z"/></svg>}
                         label="Institute / Work"
-                        value={user.institute || 'Add Institute'}
+                        value={user.institute || 'Add Institute / Work'} 
                         iconClass="icon-personal"
-                        onClick={() => {
-                            const inst = prompt("Enter your Institute Name:", user.institute || "");
-                            if (inst) updateProfile({ institute: inst });
-                        }}
+                        onClick={() => setActiveModal('edit-institute')}
                     />
                     <MenuItem 
                         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>}
                         label="Interests" 
                         value={user.interests?.join(', ') || 'Add interests'} 
                         iconClass="icon-interests"
+                        onClick={() => setActiveModal('edit-interests')}
+                    />
+                    <MenuItem
+                        icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>}
+                        label="Birthday"
+                        value={user.birth_date ? new Date(user.birth_date).toLocaleDateString() : 'Add Birthday'}
+                        iconClass="icon-birthday"
+
+                        onClick={() => setActiveModal('edit-birthday')}
                     />
                 </div>
 
@@ -308,6 +318,14 @@ export default function Profile() {
                             </div>
                         </div>
                     )}
+                    
+                    <MenuItem
+                        icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>}
+                        label="Chat Wallpaper"
+                        hasArrow
+                        iconClass="icon-interests"
+                        onClick={() => setActiveModal('wallpaper')}
+                    />
 
                     <MenuItem
                         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
@@ -409,6 +427,131 @@ export default function Profile() {
                                 </div>
                             </>
                         )}
+
+
+
+                        {activeModal === 'edit-bio' && (
+                            <>
+                                <div className="modal-header"><h3>Edit Bio</h3></div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    updateProfile({ bio: e.target.elements.bio.value });
+                                    setActiveModal(null);
+                                }} className="modal-form">
+                                    <div className="input-group">
+                                        <label>About You</label>
+                                        <textarea 
+                                            name="bio" 
+                                            defaultValue={user.bio} 
+                                            placeholder="Tell us about yourself..." 
+                                            rows="3"
+                                            autoFocus 
+                                            style={{ resize: 'none' }}
+                                        />
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save</button>
+                                    </div>
+                                </form>
+                            </>
+                        )}
+                        
+                        {activeModal === 'edit-institute' && (
+                            <>
+                                <div className="modal-header"><h3>Edit Institute / Work</h3></div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    updateProfile({ institute: e.target.elements.inst.value });
+                                    setActiveModal(null);
+                                }} className="modal-form">
+                                    <div className="input-group">
+                                        <label>Institute / Workspace</label>
+                                        <input name="inst" defaultValue={user.institute} placeholder="e.g. MIT, Google" autoFocus />
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save</button>
+                                    </div>
+                                </form>
+                            </>
+                        )}
+                        {activeModal === 'edit-interests' && (
+                            <>
+                                <div className="modal-header"><h3>Edit Interests</h3></div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    updateProfile({ interests: e.target.elements.interests.value.split(',').map(s => s.trim()).filter(Boolean) });
+                                    setActiveModal(null);
+                                }} className="modal-form">
+                                    <div className="input-group">
+                                        <label>Interests (comma separated)</label>
+                                        <input name="interests" defaultValue={user.interests?.join(', ')} placeholder="singing, coding, hiking" autoFocus />
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save</button>
+                                    </div>
+                                </form>
+                            </>
+                        )}
+                        {activeModal === 'edit-birthday' && (
+                            <>
+                                <div className="modal-header"><h3>Edit Birthday</h3></div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    updateProfile({ birth_date: e.target.elements.bday.value });
+                                    setActiveModal(null);
+                                }} className="modal-form">
+                                    <div className="input-group">
+                                        <label>Select Date</label>
+                                        <input 
+                                            type="date" 
+                                            name="bday" 
+                                            defaultValue={user.birth_date} 
+                                            style={{ colorScheme: 'dark' }} // Force dark calendar
+                                            onClick={(e) => e.target.showPicker && e.target.showPicker()} // Force open
+                                        />
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save</button>
+                                    </div>
+                                </form>
+                            </>
+                        )}
+                        {activeModal === 'wallpaper' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>Chat Wallpaper</h3>
+                                </div>
+                                <div className="wallpaper-grid">
+                                    {[
+                                        { name: 'Default', value: '' }, // Null/Empty = Default Theme
+                                        { name: 'Sunset', value: 'linear-gradient(to bottom, #ff7e5f, #feb47b)' },
+                                        { name: 'Ocean', value: 'linear-gradient(to bottom, #2b5876, #4e4376)' },
+                                        { name: 'Forest', value: 'linear-gradient(to bottom, #134e5e, #71b280)' },
+                                        { name: 'Cyber', value: 'linear-gradient(to bottom, #0f0c29, #302b63, #24243e)' },
+                                        { name: 'Love', value: 'linear-gradient(to bottom, #DA4453, #89216B)' },
+                                    ].map(wp => (
+                                        <div 
+                                            key={wp.name}
+                                            className={`wallpaper-option ${user.chat_background === wp.value ? 'active' : ''}`}
+                                            style={{ background: wp.value || '#333' }}
+                                            onClick={() => {
+                                                updateProfile({ chat_background: wp.value });
+                                                setActiveModal(null);
+                                            }}
+                                        >
+                                            {user.chat_background === wp.value && <span className="check-icon">✓</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -458,113 +601,96 @@ export default function Profile() {
 
             <style>{`
                 :root {
-                    --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-                    --glass-border: rgba(255, 255, 255, 0.2);
-                    --glass-highlight: rgba(255, 255, 255, 0.4);
-                    --bg-primary: #0a0a0a;
+                    /* Solid Professional Theme */
+                    --card-bg: #1e1e1e;
+                    --card-bg-hover: #2a2a2a;
+                    --bg-dark: #0a0a0a;
+                    --border-subtle: #333333;
                     --text-primary: #ffffff;
-                    --text-secondary: #b0b0b0;
+                    --text-secondary: #a0a0a0;
                     --accent-cyan: #00d4ff;
-                    --accent-gradient: linear-gradient(135deg, #00C6FF, #0072FF);
                 }
 
                 .profile-page {
                     min-height: 100vh;
-                    background: radial-gradient(ellipse at top, #1a1a2e 0%, var(--bg-primary) 50%);
+                    background: var(--bg-dark);
                     color: var(--text-primary);
                     padding-bottom: 80px;
                     position: relative;
                     overflow-x: hidden;
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    font-family: 'Inter', -apple-system, sans-serif;
                 }
 
-                /* Ambient Glow */
-                .ambient-glow {
-                    position: absolute; top: -150px; left: 50%; transform: translateX(-50%);
-                    width: 500px; height: 500px;
-                    background: radial-gradient(circle, rgba(0, 198, 255, 0.15) 0%, transparent 70%);
-                    pointer-events: none; z-index: 0;
-                    filter: blur(60px);
-                }
+                /* Removed Ambient Glow */
+                .ambient-glow { display: none; }
 
-                /* Glass Header Card with Highlights */
+                /* Header Card */
                 .profile-header-card {
-                    margin: 15px;
-                    margin-top: 50px;
-                    background: transparent; /* Removed background */
-                    border: none; /* Removed border */
-                    padding: 35px 25px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    text-align: center;
-                    gap: 18px;
-                    position: relative;
-                    z-index: 1;
-                    box-shadow: none; /* Removed shadow */
+                    margin: 15px; margin-top: 20px;
+                    background: transparent;
+                    border: none;
+                    padding: 20px 25px;
+                    display: flex; flex-direction: column; align-items: center;
+                    text-align: center; gap: 18px;
+                    position: relative; z-index: 1;
                 }
-
-                /* Top highlight bar removed */
 
                 .avatar-wrapper { 
-                    position: relative;
-                    padding: 0; /* Removed padding */
-                    background: transparent; /* Removed blue gradient */
+                    position: relative; padding: 0; background: transparent; 
                     border-radius: 50%;
-                    box-shadow: none; /* Removed blue glow */
                 }
 
                 .profile-avatar {
-                    width: 90px; height: 90px; border-radius: 50%; object-fit: cover;
-                    border: 3px solid var(--bg-primary);
+                    width: 100px; height: 100px; border-radius: 50%; object-fit: cover;
+                    border: 4px solid #1a1a2e; /* Dark border outline */
                     box-shadow: 0 4px 16px rgba(0,0,0,0.5);
                 }
 
                 .status-indicator {
                     position: absolute; bottom: 8px; right: 8px;
-                    width: 16px; height: 16px; 
+                    width: 18px; height: 18px; 
                     background: #00ff88;
-                    border: 3px solid var(--bg-primary); 
+                    border: 3px solid #1a1a2e; 
                     border-radius: 50%;
-                    box-shadow: 0 0 12px rgba(0, 255, 136, 0.8);
                 }
 
                 .profile-info { display: flex; flex-direction: column; align-items: center; }
                 .profile-info h1 { 
-                    margin: 0; font-size: 1.6rem; font-weight: 700; margin-bottom: 8px;
+                    margin: 0; font-size: 1.8rem; font-weight: 700; margin-bottom: 8px;
                     color: var(--text-primary);
-                    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
                 }
 
-                .tags-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+                .tags-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
                 .tag {
                     font-size: 0.8rem; padding: 6px 14px; border-radius: 14px;
-                    background: linear-gradient(135deg, rgba(0, 198, 255, 0.2), rgba(0, 198, 255, 0.1));
-                    border: 1px solid rgba(0, 198, 255, 0.4);
+                    background: rgba(0, 212, 255, 0.1); 
+                    border: 1px solid rgba(0, 212, 255, 0.3);
                     color: var(--accent-cyan);
                     font-weight: 600;
-                    backdrop-filter: blur(10px);
-                    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
                 }
 
+                .user-bio {
+                    font-size: 0.95rem; color: var(--text-primary); /* Brighter text */
+                    font-weight: 600; /* Bold */
+                    max-width: 85%; 
+                    white-space: pre-wrap; word-break: break-word; /* Allow multi-line */
+                    cursor: pointer; padding: 6px 14px; border-radius: 10px;
+                    transition: background 0.2s;
+                    margin-top: 6px;
+                    text-align: center;
+                }
+                .user-bio:hover { background: rgba(255,255,255,0.05); color: white; }
+                .user-bio.empty { font-style: italic; opacity: 0.6; }
+
                 .edit-btn {
-                    position: absolute; top: 18px; right: 18px;
-                    padding: 8px 16px; border-radius: 18px;
-                    background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08));
-                    backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255,255,255,0.25);
-                    color: white;
+                    position: absolute; top: 0; right: 0;
+                    padding: 8px 16px; border-radius: 20px;
+                    background: #333;
+                    border: none; color: white;
                     font-size: 0.85rem; font-weight: 600;
                     cursor: pointer; transition: all 0.2s;
-                    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
                 }
-                .edit-btn:hover { 
-                    background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.12));
-                    border-color: var(--accent-cyan);
-                    box-shadow: 
-                        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-                        0 0 12px rgba(0, 212, 255, 0.3);
-                }
+                .edit-btn:hover { background: #444; color: white; }
                 .edit-btn:active { transform: scale(0.96); }
 
                 .scroll-content { 
@@ -572,167 +698,165 @@ export default function Profile() {
                     display: flex; flex-direction: column; gap: 12px; 
                 }
 
+                /* Flat Professional List Style */
                 .section-label {
-                    margin: 24px 0 10px 8px;
-                    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px;
-                    color: var(--accent-cyan); font-weight: 700;
-                    text-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+                    margin: 25px 0 10px 16px;
+                    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;
+                    color: var(--text-secondary); font-weight: 600; opacity: 0.7;
                 }
 
-                /* Glass Menu Groups with Highlights */
                 .menu-group {
-                    background: rgba(30, 30, 30, 0.6);
-                    backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    border-radius: 16px;
-                    overflow: hidden;
-                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
-                    margin-bottom: 24px;
+                    background: transparent; /* Removed Box Background */
+                    border: none; /* Removed Box Border */
+                    border-radius: 0;
+                    overflow: visible;
+                    margin-bottom: 10px;
                 }
 
                 .menu-item {
-                    display: flex; align-items: center; padding: 16px;
+                    display: flex; align-items: center; padding: 18px 16px;
                     cursor: pointer; transition: background 0.2s;
-                    border-bottom: 1px solid rgba(255,255,255,0.05);
-                    position: relative;
+                    border-bottom: 1px solid #1a1a1a; /* Very subtle separator */
+                    background: transparent;
                 }
                 .menu-item:last-child { border-bottom: none; }
-                .menu-item:hover { 
-                    background: rgba(255,255,255,0.05);
-                }
-                .menu-item:active { background: rgba(255,255,255,0.08); }
+                .menu-item:hover { background: rgba(255,255,255,0.03); border-radius: 12px; }
 
                 .menu-icon-wrapper {
-                    width: 32px; height: 32px; border-radius: 8px;
+                    width: 38px; height: 38px; border-radius: 10px;
                     display: flex; align-items: center; justify-content: center;
-                    margin-right: 14px;
-                    color: white; font-size: 1.1rem;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    margin-right: 16px; color: white; font-size: 1.2rem;
                 }
 
                 .menu-content { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-                .menu-label { font-size: 1rem; color: #fff; font-weight: 500; }
-                .menu-value { font-size: 0.85rem; color: #888; margin-top: 2px; }
-                .menu-chevron { 
-                    color: #555; font-size: 1.1rem; 
-                    transform: rotate(0deg); transition: transform 0.3s;
+                .menu-label { font-size: 1.05rem; color: var(--text-primary); font-weight: 500; }
+                .menu-value { font-size: 0.9rem; color: #666; margin-top: 4px; }
+                .menu-chevron { color: #333; font-size: 1.2rem; transition: transform 0.3s; }
+                .menu-chevron.expanded { transform: rotate(90deg); }                    margin-right: 14px; color: white; font-size: 1.1rem;
                 }
+                .menu-label { font-size: 1rem; color: #fff; font-weight: 500; }
+                .menu-value { 
+                    font-size: 0.95rem; 
+                    background: linear-gradient(90deg, #00C6FF, #00FF7F); /* Blue -> Green */
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    font-weight: 700; 
+                    margin-top: 2px;
+                    letter-spacing: 0.3px;
+                }
+                .menu-chevron { color: #555; font-size: 1.1rem; transition: transform 0.3s; }
                 .menu-chevron.expanded { transform: rotate(90deg); }
+                /* Professional Icon Tints (No Gradients) */
+                .icon-personal { background: rgba(0, 122, 255, 0.15); color: #4facfe; } /* Blue */
+                .icon-interests { background: rgba(255, 45, 85, 0.15); color: #ff2d55; } /* Pink */
+                .icon-birthday { background: rgba(255, 149, 0, 0.15); color: #ff9500; } /* Orange */
+                .icon-notif { background: rgba(255, 204, 0, 0.15); color: #ffcc00; } /* Yellow */
+                .icon-lock { background: rgba(142, 142, 147, 0.15); color: #999; } /* Gray */
+                .icon-block { background: rgba(88, 86, 214, 0.15); color: #5856d6; } /* Purple */
+                .icon-safety { background: rgba(52, 199, 89, 0.15); color: #34c759; } /* Green */
+                .icon-delete { background: rgba(255, 59, 48, 0.15); color: #ff3b30; } /* Red */
+                
+                .menu-icon-wrapper svg { stroke-width: 2px; }
 
-                /* Specific Icon Gradients */
-                .icon-personal { background: linear-gradient(135deg, #00C6FF, #0072FF); }
-                .icon-interests { background: linear-gradient(135deg, #FF512F, #DD2476); }
-                .icon-notif { background: linear-gradient(135deg, #F09819, #EDDE5D); }
-                .icon-lock { background: linear-gradient(135deg, #434343, #000000); border: 1px solid rgba(255,255,255,0.2); }
-                .icon-block { background: linear-gradient(135deg, #FF416C, #FF4B2B); }
-                .icon-safety { background: linear-gradient(135deg, #11998e, #38ef7d); }
-                .icon-delete { background: rgba(255, 69, 58, 0.15); color: #ff453a; }
-
-                /* Glass Submenu */
+                /* Solid Submenu */
                 .inner-submenu {
-                    background: rgba(0, 0, 0, 0.3);
-                    padding: 16px;
-                    border-top: 1px solid rgba(255,255,255,0.05);
+                    background: transparent;
+                    padding: 4px 16px 16px 54px; /* Indented alignment */
+                    border-top: none;
                 }
                 .submenu-hint { 
-                    font-size: 0.8rem; color: #aaa; margin-bottom: 12px; 
-                    font-weight: 500;
+                    font-size: 0.8rem; color: #aaa; margin-bottom: 12px; font-weight: 500;
                 }
                 .chip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
                 .chip-option {
-                    background: rgba(255,255,255,0.05);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    color: #aaa; 
-                    padding: 8px 4px; border-radius: 8px;
-                    font-size: 0.75rem; 
-                    cursor: pointer; transition: all 0.2s;
+                    background: #222; border: 1px solid #333;
+                    color: #aaa; padding: 8px 4px; border-radius: 8px;
+                    font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
                 }
-                .chip-option:hover { background: rgba(255,255,255,0.1); color: white; }
+                .chip-option:hover { background: #333; color: white; }
                 .chip-option.active { 
-                    background: var(--accent-gradient); 
-                    color: white; border-color: transparent; 
-                    box-shadow: 0 4px 12px rgba(0, 114, 255, 0.3);
+                    background: var(--accent-cyan); color: black; border-color: transparent; font-weight: bold;
                 }
 
                 .logout-btn {
                     width: 100%; padding: 16px; border-radius: 16px;
-                    background: rgba(255, 69, 58, 0.1);
+                    background: transparent;
                     border: 1px solid rgba(255, 69, 58, 0.3);
                     color: #ff453a; font-weight: 600; font-size: 1rem;
-                    cursor: pointer; margin-top: 10px; margin-bottom: 30px;
+                    cursor: pointer; margin-top: 20px;
                     transition: all 0.2s;
                 }
-                .logout-btn:hover { background: rgba(255, 69, 58, 0.2); }
+                .logout-btn:hover { background: rgba(255, 69, 58, 0.1); }
                 
-                .version-info { text-align: center; color: #444; font-size: 0.75rem; padding-bottom: 20px; }
+                .version-info { text-align: center; color: #333; font-size: 0.75rem; padding: 20px 0; }
 
-                /* Modal Styles */
+                /* Modal Styles (Solid) */
                 .modal-backdrop {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.8); backdrop-filter: blur(12px);
+                    background: rgba(0,0,0,0.8);
                     z-index: 10000; display: flex; align-items: center; justify-content: center;
-                    animation: fadeIn 0.3s ease;
                 }
                 .modal-content {
-                    background: rgba(30,30,30,0.85); 
-                    backdrop-filter: blur(25px) saturate(180%);
-                    -webkit-backdrop-filter: blur(25px) saturate(180%);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: #1e1e1e; 
+                    border: 1px solid #333;
                     border-radius: 24px; padding: 32px; width: 90%; max-width: 380px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-                    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
                     display: flex; flex-direction: column; gap: 20px;
                 }
                 
                 .modal-header { display: flex; align-items: center; gap: 15px; margin-bottom: 5px; }
                 .icon-wrapper {
                     width: 44px; height: 44px; border-radius: 12px;
-                    background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
-                    display: flex; align-items: center; justify-content: center;
-                    color: white; border: 1px solid rgba(255,255,255,0.1);
+                    background: #252525; display: flex; align-items: center; justify-content: center;
+                    color: white; border: 1px solid #333;
                 }
-                .desc-lock { color: #00d4ff; box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); }
+                .desc-lock { color: var(--accent-cyan); }
                 
                 .modal-content h3 { margin: 0; color: white; font-size: 1.3rem; font-weight: 600; }
-                
                 .modal-form { display: flex; flex-direction: column; gap: 16px; }
                 
                 .input-group { display: flex; flex-direction: column; gap: 8px; text-align: left; }
                 .input-group label { font-size: 0.85rem; color: #aaa; font-weight: 500; margin-left: 4px; }
                 .input-group input {
                     width: 100%; padding: 14px 16px;
-                    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+                    background: #111; border: 1px solid #333;
                     border-radius: 12px; color: white; font-size: 0.95rem; outline: none;
                     transition: all 0.2s;
                 }
                 .input-group input:focus { 
-                    border-color: #0072ff; background: rgba(0, 114, 255, 0.05); 
-                    box-shadow: 0 0 0 3px rgba(0, 114, 255, 0.15);
+                    border-color: var(--accent-cyan);
                 }
 
                 .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; }
                 .btn-sec { 
                     background: transparent; color: #888; border: none; padding: 12px 18px; 
-                    cursor: pointer; font-size: 0.95rem; font-weight: 500; transition: color 0.2s;
+                    cursor: pointer; font-size: 0.95rem; font-weight: 500;
                 }
                 .btn-sec:hover { color: white; }
                 
-                .btn-pri { 
-                    box-shadow: 
-                        0 4px 12px rgba(255, 69, 58, 0.3),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+                /* Blocked list */
+                .blocked-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+                .blocked-user-item { display: flex; align-items: center; gap: 10px; padding: 10px; background: #222; border-radius: 12px; }
+                .blocked-avatar { width: 40px; height: 40px; border-radius: 50%; }
+                .blocked-info { flex: 1; color: white; font-size: 0.9rem; }
+                .unblock-btn { padding: 6px 12px; border-radius: 8px; border: none; background: #333; color: white; cursor: pointer; }
+                
+                .icon-warn { font-size: 3rem; margin-bottom: 8px; display: block; }
+                .btn-danger { background: #ff453a; color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; }
+            
+                /* Wallpaper Grid */
+                .wallpaper-grid {
+                    display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 10px 0;
                 }
-                .btn-danger:hover { 
-                    box-shadow: 
-                        0 6px 16px rgba(255, 69, 58, 0.4),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+                .wallpaper-option {
+                    aspect-ratio: 1; border-radius: 16px; cursor: pointer;
+                    border: 2px solid transparent; position: relative;
+                    display: flex; align-items: center; justify-content: center;
+                    transition: transform 0.2s;
                 }
-                .modal-footer button:active { transform: scale(0.96); }
-
-                .icon-warn { 
-                    font-size: 3rem; margin-bottom: 8px; display: block;
-                }
+                .wallpaper-option:hover { transform: scale(1.05); }
+                .wallpaper-option.active { border-color: var(--accent-cyan); box-shadow: 0 0 15px rgba(0, 212, 255, 0.3); }
+                .check-icon { font-weight: bold; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
             `}</style>
         </div>
     );

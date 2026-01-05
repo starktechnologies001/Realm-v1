@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
+import FullProfileModal from '../components/FullProfileModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
 
@@ -92,6 +93,8 @@ export default function MapHome() {
     const [reportTarget, setReportTarget] = useState(null);
     const [showMuteModal, setShowMuteModal] = useState(false);
     const [muteTarget, setMuteTarget] = useState(null);
+    const [showFullProfile, setShowFullProfile] = useState(false);
+    const [fullProfileUser, setFullProfileUser] = useState(null);
 
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
@@ -767,6 +770,21 @@ export default function MapHome() {
             setShowReportModal(true);
             setSelectedUser(null);
         }
+        else if (action === 'report') {
+            // Show report modal with reason options
+            setReportTarget(targetUser);
+            setShowReportModal(true);
+            setSelectedUser(null);
+            setShowFullProfile(false); // Close full profile if open
+        }
+        else if (action === 'view-profile') {
+            setFullProfileUser(targetUser);
+            setShowFullProfile(true);
+            setSelectedUser(null); // Close small card
+        }
+        else if (action === 'call-audio' || action === 'call-video') {
+            showToast("Calls coming soon! 📞");
+        }
     };
 
     const handleReport = async (reason) => {
@@ -997,11 +1015,21 @@ export default function MapHome() {
                 ))}
             </MapContainer>
 
-            <UserProfileCard
-                user={selectedUser}
-                onClose={() => setSelectedUser(null)}
+            <UserProfileCard 
+                user={selectedUser} 
+                onClose={() => setSelectedUser(null)} 
                 onAction={handleUserAction}
             />
+
+            {showFullProfile && fullProfileUser && (
+                <FullProfileModal 
+                    user={fullProfileUser}
+                    currentUser={currentUser}
+                    onClose={() => setShowFullProfile(false)}
+                    onAction={handleUserAction}
+                />
+            )}
+
 
             <PokeNotifications currentUser={currentUser} />
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}

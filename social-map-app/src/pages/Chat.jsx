@@ -25,6 +25,8 @@ export default function Chat() {
                 return;
             }
             setCurrentUser(user);
+            
+
 
             // If navigated with a target user (from Map or Friends), open that chat immediately
             if (location.state?.targetUser) {
@@ -73,7 +75,8 @@ export default function Chat() {
                 .select('muted_until')
                 .eq('user_id', userId)
                 .eq('partner_id', partner.id)
-                .single();
+                .eq('partner_id', partner.id)
+                .maybeSingle();
 
             const isMuted = muteData && muteData.muted_until && new Date(muteData.muted_until) > new Date();
 
@@ -284,35 +287,33 @@ function ChatList({ chats, onSelectChat, loading }) {
 
             <style>{`
                 :root {
-                    --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-                    --glass-border: rgba(255, 255, 255, 0.15);
-                    --accent-cyan: #00d4ff;
+                    /* Solid Professional Theme */
+                    --card-bg: #1e1e1e;
+                    --card-bg-hover: #2a2a2a;
+                    --bg-dark: #0a0a0a;
+                    --border-subtle: #333333;
                     --text-primary: #ffffff;
-                    --text-secondary: #aaaaaa;
+                    --text-secondary: #a0a0a0;
+                    --accent: #4285F4;
                 }
 
                 .chat-page-container {
                     min-height: 100vh;
-                    background: radial-gradient(ellipse at top left, #1a1a2e 0%, #0a0a0a 60%);
+                    background: var(--bg-dark);
                     color: var(--text-primary);
                     font-family: 'Inter', sans-serif;
                     position: relative;
                     padding-bottom: 80px;
                 }
 
-                .ambient-glow {
-                    position: absolute; top: -100px; right: -100px;
-                    width: 500px; height: 500px;
-                    background: radial-gradient(circle, rgba(189, 0, 255, 0.15) 0%, transparent 70%);
-                    filter: blur(80px); pointer-events: none;
-                }
+                /* Removed Ambient Glow/Blur for professional crisp look */
+                .ambient-glow { display: none; }
 
                 .glass-header {
                     padding: 20px 20px 15px 20px;
-                    background: rgba(10, 10, 10, 0.8);
-                    backdrop-filter: blur(20px);
+                    background: var(--bg-dark);
                     position: sticky; top: 0; z-index: 100;
-                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                    border-bottom: 1px solid var(--border-subtle);
                 }
 
                 .header-top { 
@@ -321,60 +322,60 @@ function ChatList({ chats, onSelectChat, loading }) {
                 }
 
                 .page-title {
-                    font-size: 2rem; font-weight: 800; margin: 0;
+                    font-size: 2rem; font-weight: 700; margin: 0;
                     letter-spacing: -0.5px;
-                    background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                    color: var(--text-primary);
                 }
 
                 .settings-btn {
-                    background: rgba(255,255,255,0.1); border: none;
+                    background: var(--card-bg); border: 1px solid var(--border-subtle);
                     width: 40px; height: 40px; border-radius: 12px;
                     cursor: pointer; transition: all 0.2s;
                 }
-                .settings-btn:hover { background: rgba(255,255,255,0.2); }
+                .settings-btn:hover { background: var(--card-bg-hover); border-color: #555; }
 
                 .search-bar {
-                    background: rgba(255,255,255,0.08);
-                    border-radius: 16px; padding: 10px 16px;
+                    background: var(--card-bg);
+                    border-radius: 12px; padding: 12px 16px;
                     display: flex; align-items: center; gap: 10px;
-                    border: 1px solid rgba(255,255,255,0.05);
+                    border: 1px solid var(--border-subtle);
                     transition: all 0.2s;
                 }
                 .search-bar:focus-within {
-                    background: rgba(255,255,255,0.12);
-                    border-color: rgba(255,255,255,0.2);
-                    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+                    border-color: var(--accent);
+                    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
                 }
-                .search-icon { opacity: 0.5; }
+                .search-icon { opacity: 0.5; color: var(--text-secondary); }
                 .search-bar input {
                     background: transparent; border: none; outline: none;
-                    color: white; width: 100%; font-size: 1rem;
+                    color: var(--text-primary); width: 100%;
+                    font-size: 1rem;
                 }
-                .search-bar input::placeholder { color: rgba(255,255,255,0.4); }
+                .search-bar input::placeholder { color: #666; }
 
                 .chat-list-scroll { 
-                    display: flex; flex-direction: column; gap: 12px; 
-                    padding: 20px;
+                    display: flex; flex-direction: column; gap: 0; 
+                    padding: 10px 0;
                 }
 
                 .chat-item {
                     display: flex; align-items: center; gap: 16px; 
-                    padding: 16px;
-                    background: var(--glass-bg);
-                    backdrop-filter: blur(12px);
-                    border: 1px solid var(--glass-border);
-                    border-radius: 20px;
-                    cursor: pointer; transition: all 0.2s;
+                    padding: 16px 20px;
+                    background: transparent;
+                    border: none;
+                    border-bottom: 1px solid var(--border-subtle);
+                    border-radius: 0;
+                    cursor: pointer; transition: background 0.2s;
                     position: relative; overflow: hidden;
                 }
+                .chat-item:last-child { border-bottom: none; }
+                
                 .chat-item:hover { 
-                    background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08));
-                    transform: translateY(-2px);
-                    border-color: rgba(255,255,255,0.3);
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                    background: var(--card-bg-hover);
+                    transform: none;
+                    box-shadow: none;
                 }
-                .chat-item:active { transform: scale(0.98); }
+                .chat-item:active { background: #333; }
 
                 .avatar-wrapper { position: relative; width: 60px; height: 60px; flex-shrink: 0; }
                 .chat-avatar { 
@@ -478,7 +479,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .select('*')
                 .eq('user_id', currentUser.id)
                 .eq('partner_id', targetUser.id)
-                .single();
+                .eq('partner_id', targetUser.id)
+                .maybeSingle();
             
             if (data) setMuteSettings(data);
         };
@@ -488,6 +490,35 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     // Theme State
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
+
+    // Wallpaper State
+    const [chatBackground, setChatBackground] = useState(null);
+    const [showWallpaperMenu, setShowWallpaperMenu] = useState(false);
+
+    // Fetch Wallpaper
+    useEffect(() => {
+        const fetchWallpaper = async () => {
+            const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+            if (data?.chat_background) setChatBackground(data.chat_background);
+        };
+        fetchWallpaper();
+    }, [currentUser.id]);
+
+    const handleWallpaperChange = async (bg) => {
+        setChatBackground(bg);
+        setShowWallpaperMenu(false);
+        await supabase.from('profiles').update({ chat_background: bg }).eq('id', currentUser.id);
+        showToast("Wallpaper updated 🖼️");
+    };
+
+    const WALLPAPERS = [
+        { name: 'Midnight', value: 'linear-gradient(to bottom, #0f0c29, #302b63, #24243e)' },
+        { name: 'Synthwave', value: 'linear-gradient(to bottom, #2b0c29, #302b63)' },
+        { name: 'Forest', value: 'linear-gradient(to bottom, #134e5e, #71b280)' },
+        { name: 'Ocean', value: 'linear-gradient(to bottom, #00c6ff, #0072ff)' },
+        { name: 'Minimal Dark', value: '#1a1a1a' },
+        { name: 'Pure Black', value: '#000000' }
+    ];
 
     const handleThemeChange = (newTheme) => {
         setTheme(newTheme);
@@ -835,6 +866,16 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 </button>
 
                                 <button onClick={() => {
+                                    setShowWallpaperMenu(true);
+                                    setShowMenu(false);
+                                }}>
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                    </span>
+                                    Chat Wallpaper
+                                </button>
+                                
+                                <button onClick={() => {
                                     setShowThemeMenu(true);
                                     setShowMenu(false);
                                 }}>
@@ -890,7 +931,50 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 </div>
             )}
 
-            <div className={`chat-messages ${getThemeClass()}`}>
+            {/* Wallpaper Menu Modal */}
+            {showWallpaperMenu && (
+                <div className="mute-menu-modal" onClick={() => setShowWallpaperMenu(false)}>
+                    <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
+                        <h3>Choose Wallpaper 🖼️</h3>
+                        <div className="wallpaper-grid">
+                            {WALLPAPERS.map((wp) => (
+                                <button 
+                                    key={wp.name} 
+                                    className={`wallpaper-option ${chatBackground === wp.value ? 'active' : ''}`}
+                                    style={{ background: wp.value }}
+                                    onClick={() => handleWallpaperChange(wp.value)}
+                                >
+                                    {wp.name}
+                                </button>
+                            ))}
+                            <button 
+                                className="wallpaper-option default"
+                                onClick={() => handleWallpaperChange(null)}
+                            >
+                                Default
+                            </button>
+                        </div>
+                        <button onClick={() => setShowWallpaperMenu(false)} className="cancel-btn">Cancel</button>
+                    </div>
+                    <style>{`
+                        .wallpaper-grid {
+                            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+                            margin: 20px 0;
+                        }
+                        .wallpaper-option {
+                            height: 60px; border-radius: 12px; border: 2px solid transparent;
+                            color: white; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+                            cursor: pointer; transition: transform 0.2s;
+                            display: flex; align-items: center; justify-content: center;
+                        }
+                        .wallpaper-option:hover { transform: scale(1.02); }
+                        .wallpaper-option.active { border-color: #00f0ff; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+                        .wallpaper-option.default { background: #333; grid-column: auto; }
+                    `}</style>
+                </div>
+            )}
+
+            <div className={`chat-messages ${getThemeClass()}`} style={{ background: chatBackground || '', backgroundImage: chatBackground || '' }}>
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
                     const isImage = msg.message_type === 'image' || msg.type === 'image';

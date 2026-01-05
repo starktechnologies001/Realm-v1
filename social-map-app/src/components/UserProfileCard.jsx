@@ -36,7 +36,7 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     <div className="card-drag-handle" />
                     
                     <div className="card-header">
-                        <div className="avatar-large-container">
+                        <div className="avatar-large-container" onClick={() => onAction('view-profile', user)}>
                             <img 
                                 src={user.avatar?.replace('size=96', 'size=200')} 
                                 alt={user.name} 
@@ -46,7 +46,7 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                         </div>
                         
                         <div className="user-info-area">
-                            <h2>{user.name}</h2>
+                            <h2 onClick={() => onAction('view-profile', user)} style={{ cursor: 'pointer' }}>{user.name} <span>›</span></h2>
                             <div className="badges-row">
                                 {user.friendshipStatus === 'accepted' && (
                                     <span className="badge-pill status" style={{ background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', border: '1px solid rgba(52, 199, 89, 0.3)' }}>
@@ -56,6 +56,9 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                                 <span className="badge-pill status">{user.status || 'Available'}</span>
                                 <span className="badge-pill active-time">{getLastActive(user.lastActive)}</span>
                             </div>
+                            {user.friendshipStatus === 'accepted' && (
+                                <button className="view-profile-sm" onClick={() => onAction('view-profile', user)}>View Profile</button>
+                            )}
                         </div>
                     </div>
 
@@ -233,6 +236,21 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     .badge-pill.active-time {
                         background: rgba(255, 255, 255, 0.05);
                         color: #aaa;
+                    }
+                    
+                    .view-profile-sm {
+                        background: transparent;
+                        border: 1px solid rgba(255,255,255,0.2);
+                        color: #ccc;
+                        padding: 4px 12px;
+                        border-radius: 20px;
+                        font-size: 0.75rem;
+                        cursor: pointer;
+                        margin-top: 10px;
+                        transition: all 0.2s;
+                    }
+                    .view-profile-sm:hover {
+                        border-color: white; color: white; background: rgba(255,255,255,0.05);
                     }
 
                     .thought-bubble-large {
