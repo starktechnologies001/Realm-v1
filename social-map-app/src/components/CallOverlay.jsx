@@ -55,8 +55,9 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                 client.on('user-unpublished', (user, mediaType) => {
                     console.log('User unpublished:', user.uid, mediaType);
+                    // Do NOT remove user from remoteUsers, just trigger re-render so UI updates
                     if (mediaType === 'video') {
-                        setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+                         setRemoteUsers(prev => prev.map(u => u.uid === user.uid ? user : u));
                     }
                 });
 
@@ -178,8 +179,11 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             } catch (error) {
                 console.error('Call initialization error:', error);
                 
-                // If it's a UID conflict that persisted after retries, suggest refresh
-                if (error.code === 'UID_CONFLICT') {
+                // Detailed Error Handling
+                if (error.code === 'PERMISSION_DENIED' || error.name === 'NotAllowedError') {
+                    setStatus('⚠️ Camera/Mic access denied. Please allow perms.');
+                    // Optional: You could show a more prominent actionable button here
+                } else if (error.code === 'UID_CONFLICT') {
                     setStatus('Connection stuck. Please refresh the page.');
                 } else {
                     setStatus(`Failed: ${error.message || JSON.stringify(error)}`);
@@ -226,9 +230,10 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
     // Effect to play Remote Video when ready
     useEffect(() => {
-        if (remoteVideoRef.current && remoteUsers.length > 0) {
+        if (remoteUsers.length > 0) {
             remoteUsers.forEach(user => {
-                if (user.videoTrack) {
+                // If user has video track and we have a ref container
+                if (user.videoTrack && remoteVideoRef.current) {
                     user.videoTrack.play(remoteVideoRef.current);
                 }
             });
@@ -281,6 +286,8 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     };
 
     const isVideoCall = callData.type === 'video';
+    // Check if remote user has active video track
+    const hasRemoteVideo = remoteUsers.length > 0 && remoteUsers[0].videoTrack;
 
     return (
         <div className="call-interface-overlay">
@@ -290,17 +297,26 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             </span>
 
             {/* Remote Video/Avatar */}
-            {isVideoCall && remoteUsers.length > 0 ? (
+            {isVideoCall && hasRemoteVideo ? (
                 <div ref={remoteVideoRef} className="remote-video-container"></div>
             ) : (
                 <div className="remote-avatar-container">
                     <img 
-                        src={callData.partner.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + callData.partner.id} 
+                        src={(() => {
+                            const u = callData.partner;
+                            if (u.avatar_url) return u.avatar_url;
+                            const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+                            const g = u.gender?.toLowerCase();
+                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        })()}
                         className="remote-avatar" 
                         alt="Remote User" 
                     />
                     <h2 style={{ color: 'white', marginTop: '24px', fontSize: '1.5rem', fontWeight: '600', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
                         {callData.partner.full_name || callData.partner.username}
+                        {!hasRemoteVideo && status === 'Connected' && <span style={{display:'block', fontSize:'0.9rem', opacity: 0.7, marginTop:'8px'}}>Camera Off</span>}
                     </h2>
                 </div>
             )}

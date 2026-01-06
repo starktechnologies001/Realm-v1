@@ -11,58 +11,63 @@ export default function Friends() {
     const [viewingProfile, setViewingProfile] = useState(null);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [activeTab, setActiveTab] = useState('friends');
+    
+    // Unfriend Modal State
+    const [showUnfriendModal, setShowUnfriendModal] = useState(false);
+    const [friendToUnfriend, setFriendToUnfriend] = useState(null);
+
     const navigate = useNavigate();
 
+    const fetchFriendsData = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        setCurrentUser(user);
+
+        // Fetch Pending Requests (where I am receiver)
+        const { data: pending } = await supabase
+            .from('friendships')
+            .select(`
+                id, 
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender)
+            `)
+            .eq('receiver_id', user.id)
+            .eq('status', 'pending');
+
+        if (pending) {
+            setRequests(pending.map(p => ({
+                friendship_id: p.id,
+                ...p.requester
+            })));
+        }
+
+        // Fetch Friends (I am requester OR receiver, status accepted)
+        const { data: myFriends } = await supabase
+            .from('friendships')
+            .select(`
+                id,
+                requester_id,
+                receiver_id,
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
+            `)
+            .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
+            .eq('status', 'accepted');
+
+        if (myFriends) {
+            const formatted = myFriends.map(f => {
+                const isRequester = f.requester_id === user.id;
+                const profile = isRequester ? f.receiver : f.requester;
+                return {
+                    friendship_id: f.id,
+                    ...profile
+                };
+            });
+            setFriends(formatted);
+        }
+        setLoading(false);
+    };
+
     useEffect(() => {
-        const fetchFriendsData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-            setCurrentUser(user);
-
-            // Fetch Pending Requests (where I am receiver)
-            const { data: pending } = await supabase
-                .from('friendships')
-                .select(`
-                    id, 
-                    requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender)
-                `)
-                .eq('receiver_id', user.id)
-                .eq('status', 'pending');
-
-            if (pending) {
-                setRequests(pending.map(p => ({
-                    friendship_id: p.id,
-                    ...p.requester
-                })));
-            }
-
-            // Fetch Friends (I am requester OR receiver, status accepted)
-            const { data: myFriends } = await supabase
-                .from('friendships')
-                .select(`
-                    id,
-                    requester_id,
-                    receiver_id,
-                    requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
-                    receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
-                `)
-                .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
-                .eq('status', 'accepted');
-
-            if (myFriends) {
-                const formatted = myFriends.map(f => {
-                    const isRequester = f.requester_id === user.id;
-                    const profile = isRequester ? f.receiver : f.requester;
-                    return {
-                        friendship_id: f.id,
-                        ...profile
-                    };
-                });
-                setFriends(formatted);
-            }
-            setLoading(false);
-        };
-
         fetchFriendsData();
     }, []);
 
@@ -86,13 +91,95 @@ export default function Friends() {
         return () => document.removeEventListener('click', handleClickOutside);
     }, []);
 
-    const handleUnfriend = async (e, friendshipId) => {
+    const confirmUnfriend = (e, friend) => {
         e.stopPropagation();
-        if(confirm("Are you sure you want to remove this friend?")) {
-            await supabase.from('friendships').delete().eq('id', friendshipId);
-            setFriends(friends.filter(f => f.friendship_id !== friendshipId));
-            setActiveMenuId(null);
+        console.log("Confirm unfriend clicked for:", friend);
+        setFriendToUnfriend(friend);
+        setShowUnfriendModal(true);
+        setActiveMenuId(null);
+    };
+
+    const handleUnfriend = async () => {
+        try {
+            console.log("handleUnfriend called. friendToUnfriend:", friendToUnfriend);
+            if (!friendToUnfriend) {
+                alert("Error: No friend selected to unfriend.");
+                return;
+            }
+            
+            if (!currentUser) {
+                alert("Error: Current user not found. Please reload.");
+                return;
+            }
+
+            console.log("Attempting unfriend via pair match...");
+            const query = `and(requester_id.eq.${currentUser.id},receiver_id.eq.${friendToUnfriend.id}),and(requester_id.eq.${friendToUnfriend.id},receiver_id.eq.${currentUser.id})`;
+            
+            // DEBUG: Check existence first
+            const { data: exists, error: existError } = await supabase
+                .from('friendships')
+                .select('*')
+                .or(query);
+
+            if (existError) {
+                alert("Debug Error Checking: " + existError.message);
+                return;
+            }
+
+            if (!exists || exists.length === 0) {
+                 alert("Debug: Friendship row NOT FOUND in DB. It may have been deleted already.");
+                 setFriends(prev => prev.filter(f => f.id !== friendToUnfriend.id)); // Sync UI
+                 await fetchFriendsData();
+                 setShowUnfriendModal(false);
+                 return;
+            }
+
+            console.log("Debug: Found row(s) to delete:", exists);
+            const rowId = exists[0].id;
+
+            // Robust Unfriend: Delete by matching the pair of users
+            const { error, count } = await supabase
+                .from('friendships')
+                .delete({ count: 'exact' })
+                .eq('id', rowId);
+            
+            if (error) {
+                console.error("Error deleting friendship:", error);
+                alert("Error unfriending: " + error.message);
+                await fetchFriendsData();
+                return;
+            }
+            
+            console.log("Deleted count:", count);
+
+            if (count === 0) {
+                 // If we found it but couldn't delete it -> RLS Issue
+                 alert(`Debug: Row matches but DELETE returned 0. This is likely a Database Permission (RLS) issue. Row ID: ${rowId}`);
+                 await fetchFriendsData();
+                 return;
+            }
+
+            // Optimistic Update
+            setFriends(prev => prev.filter(f => f.id !== friendToUnfriend.id));
+
+            await fetchFriendsData();
+            
+            setShowUnfriendModal(false);
+            setFriendToUnfriend(null);
+            
+            alert("Friend removed successfully.");
+
+        } catch (err) {
+            console.error("Unexpected error in handleUnfriend:", err);
+            alert("An unexpected error occurred: " + err.message);
+            await fetchFriendsData(); 
         }
+    };
+
+    const cancelUnfriend = () => {
+        console.log("Unfriend cancelled");
+        setShowUnfriendModal(false);
+        setFriendToUnfriend(null);
     };
 
     const toggleMenu = (e, id) => {
@@ -105,7 +192,7 @@ export default function Friends() {
         const userObj = {
             id: friend.id,
             name: friend.full_name || friend.username,
-            avatar: friend.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend.username}`,
+            avatar: friend.avatar_url || (friend.gender === 'Male' ? `https://avatar.iran.liara.run/public/boy?username=${encodeURIComponent(friend.username)}` : friend.gender === 'Female' ? `https://avatar.iran.liara.run/public/girl?username=${encodeURIComponent(friend.username)}` : `https://avatar.iran.liara.run/public?username=${encodeURIComponent(friend.username)}`),
             status: friend.status,
             gender: friend.gender,
             friendshipStatus: 'accepted' // For UserProfileCard logic
@@ -167,11 +254,12 @@ export default function Friends() {
                                     <div key={req.id} className="friend-card request">
                                         <div className="avatar-container">
                                             <img src={(() => {
+                                                if (req.avatar_url) return req.avatar_url;
                                                 const safeName = encodeURIComponent(req.username || req.full_name || 'User');
                                                 const g = req.gender?.toLowerCase();
-                                                if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                                                if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                                if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                                if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
                                             })()} alt="avatar" className="avatar" />
                                         </div>
                                         <div className="info">
@@ -212,11 +300,12 @@ export default function Friends() {
                                     <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
                                         <div className="avatar-container">
                                             <img src={(() => {
+                                                if (friend.avatar_url) return friend.avatar_url;
                                                 const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
                                                 const g = friend.gender?.toLowerCase();
-                                                if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                                                if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                                if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                                if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
                                             })()} alt="avatar" className="avatar" />
                                             <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
@@ -225,8 +314,8 @@ export default function Friends() {
                                             <span className="status-text">{friend.status || 'Offline'}</span>
                                         </div>
                                         
-                                        {/* Action Menu Button */}
                                         <div className="menu-wrapper">
+                                            <span className="friend-badge">🤝 Friend</span>
                                             <button className="btn-menu" onClick={(e) => toggleMenu(e, friend.id)}>
                                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                     <circle cx="12" cy="12" r="1"></circle>
@@ -239,7 +328,7 @@ export default function Friends() {
                                             {activeMenuId === friend.id && (
                                                 <div className="dropdown-menu">
 
-                                                    <button className="danger" onClick={(e) => handleUnfriend(e, friend.friendship_id)}>
+                                                    <button className="danger" onClick={(e) => confirmUnfriend(e, friend)}>
                                                         Unfriend
                                                     </button>
                                                 </div>
@@ -259,6 +348,44 @@ export default function Friends() {
                 onClose={() => setViewingProfile(null)} 
                 onAction={handleCardAction}
             />
+
+            {/* Unfriend Confirmation Modal */}
+            {showUnfriendModal && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        <h3>Unfriend {friendToUnfriend?.full_name || friendToUnfriend?.username}?</h3>
+                        <p>Are you sure you want to remove this friend? You will need to poke them again to reconnect.</p>
+                        <div className="modal-actions">
+                            <button className="btn-cancel" onClick={cancelUnfriend}>No, Keep</button>
+                            <button className="btn-confirm danger" onClick={handleUnfriend}>Yes, Unfriend</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                .modal-overlay {
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+                    display: flex; justify-content: center; align-items: center;
+                    z-index: 2000;
+                }
+                .modal-content {
+                    background: #1a1a1a; padding: 25px; border-radius: 20px;
+                    width: 90%; max-width: 350px; text-align: center;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                }
+                .modal-content h3 { margin: 0 0 10px 0; color: white; }
+                .modal-content p { color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 25px; }
+                .modal-actions { display: flex; gap: 10px; justify-content: center; }
+                .btn-cancel, .btn-confirm {
+                    padding: 12px 20px; border-radius: 12px; border: none;
+                    font-weight: 600; cursor: pointer; flex: 1;
+                }
+                .btn-cancel { background: rgba(255,255,255,0.1); color: white; }
+                .btn-confirm.danger { background: #ef4444; color: white; }
+            `}</style>
 
             <style>{`
                 .tab-container {
@@ -292,8 +419,16 @@ export default function Friends() {
                 }
                 .empty-icon { font-size: 3rem; opacity: 0.5; }
 
-                /* Action Menu */
-                .menu-wrapper { position: relative; }
+                .menu-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
+                .friend-badge {
+                    font-size: 0.75rem; 
+                    background: rgba(40, 200, 60, 0.15); 
+                    color: #4ade80; 
+                    padding: 4px 8px; 
+                    border-radius: 12px;
+                    font-weight: 600;
+                    border: 1px solid rgba(40, 200, 60, 0.2);
+                }
                 .btn-menu {
                     width: 40px; height: 40px;
                     background: transparent; border: none;

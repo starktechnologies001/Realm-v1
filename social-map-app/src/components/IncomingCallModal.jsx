@@ -30,15 +30,23 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
 
     return (
         <div className="incoming-call-overlay">
-            <div className="incoming-call-card">
+            <div className="incoming-call-card glass-panel">
                 <div className="caller-info">
                     <img 
-                        src={incomingCall.caller.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + incomingCall.caller.id} 
+                        src={(() => {
+                            const u = incomingCall.caller;
+                            if (u.avatar_url) return u.avatar_url;
+                            const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+                            const g = u.gender?.toLowerCase();
+                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        })()} 
                         alt="Caller" 
                         className="caller-avatar"
                     />
                     <h3>{incomingCall.caller.full_name || incomingCall.caller.username}</h3>
-                    <p>Incoming {incomingCall.type} call...</p>
+                    <p className="call-type">Incoming {incomingCall.type} call...</p>
                 </div>
                 
                 <div className="incoming-actions">
@@ -46,21 +54,30 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                         className="action-btn decline" 
                         onClick={() => handleAction(onReject)}
                     >
-                        <span className="icon">📞</span> Decline
+                        <div className="icon-circle decline-bg">
+                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                        </div>
+                        <span>Decline</span>
                     </button>
                     
                     <button 
                         className="action-btn message"
                         onClick={() => handleAction(onRejectWithMessage)}
                     >
-                        <span className="icon">💬</span> Message
+                         <div className="icon-circle message-bg">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        </div>
+                        <span>Message</span>
                     </button>
 
                     <button 
                         className="action-btn accept" 
                         onClick={() => handleAction(onAnswer)}
                     >
-                        <span className="icon">📞</span> Accept
+                        <div className="icon-circle accept-bg">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                        </div>
+                        <span>Accept</span>
                     </button>
                 </div>
             </div>
@@ -68,44 +85,75 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
             <style>{`
                 .incoming-call-overlay {
                     position: fixed; inset: 0; z-index: 9999;
-                    background: rgba(0,0,0,0.85);
-                    backdrop-filter: blur(8px);
+                    background: rgba(0,0,0,0.8);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
                     display: flex; align-items: center; justify-content: center;
                     animation: fadeIn 0.3s ease-out;
                 }
                 .incoming-call-card {
-                    background: rgba(30,30,30,0.9);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    padding: 40px; border-radius: 24px;
-                    display: flex; flex-direction: column; align-items: center; gap: 32px;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-                    width: 90%; max-width: 360px;
+                    background: rgba(30, 30, 30, 0.6);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 50px 30px; border-radius: 32px;
+                    display: flex; flex-direction: column; align-items: center; gap: 40px;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                    width: 90%; max-width: 380px;
+                }
+                .caller-info {
+                    display: flex; flex-direction: column; align-items: center;
+                    width: 100%;
                 }
                 .caller-avatar {
-                    width: 100px; height: 100px; object-fit: cover; border-radius: 50%;
+                    width: 120px; height: 120px; object-fit: cover; border-radius: 50%;
                     border: 4px solid rgba(255,255,255,0.1);
-                    margin-bottom: 16px;
+                    margin-bottom: 24px;
+                    box-shadow: 0 0 30px rgba(0,0,0,0.3);
                     animation: pulse 2s infinite;
                 }
+                .caller-info h3 {
+                    margin: 0; font-size: 1.8rem; font-weight: 700; color: white;
+                    text-align: center; margin-bottom: 8px;
+                }
+                .call-type {
+                    margin: 0; font-size: 1rem; color: rgba(255,255,255,0.6);
+                    text-transform: uppercase; letter-spacing: 1px; font-weight: 500;
+                }
+
                 .incoming-actions {
-                    display: flex; gap: 16px; width: 100%; justify-content: space-between;
+                    display: flex; gap: 20px; width: 100%; justify-content: space-evenly;
+                    margin-top: 10px;
                 }
                 .action-btn {
-                    flex: 1; padding: 12px; border-radius: 16px; border: none;
-                    display: flex; flex-direction: column; align-items: center; gap: 8px;
-                    font-size: 0.8rem; font-weight: 500; cursor: pointer;
-                    transition: transform 0.2s;
-                    color: white;
+                    background: transparent; border: none; padding: 0;
+                    display: flex; flex-direction: column; align-items: center; gap: 12px;
+                    cursor: pointer; transition: transform 0.2s;
                 }
-                .action-btn:active { transform: scale(0.95); }
-                .action-btn.decline { background: rgba(255, 59, 48, 0.2); color: #ff3b30; }
-                .action-btn.message { background: rgba(10, 132, 255, 0.2); color: #0a84ff; }
-                .action-btn.accept { background: #34c759; color: white; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3); }
-                .action-btn .icon { font-size: 1.5rem; }
+                .action-btn:active { transform: scale(0.9); }
+                .action-btn span {
+                    color: rgba(255,255,255,0.8); font-size: 0.9rem; font-weight: 500;
+                }
+
+                .icon-circle {
+                    width: 64px; height: 64px; border-radius: 50%;
+                    display: flex; align-items: center; justify-content: center;
+                    color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                    transition: filter 0.2s;
+                }
+                .icon-circle:hover { filter: brightness(1.1); }
+
+                .decline-bg {
+                    background: #ff3b30;
+                }
+                .message-bg {
+                    background: rgba(255,255,255,0.15); /* Neutral/Glass */
+                }
+                .accept-bg {
+                    background: #34c759;
+                }
                 
                 @keyframes pulse {
                     0% { box-shadow: 0 0 0 0 rgba(255,255,255, 0.4); }
-                    70% { box-shadow: 0 0 0 10px rgba(255,255,255, 0); }
+                    70% { box-shadow: 0 0 0 15px rgba(255,255,255, 0); }
                     100% { box-shadow: 0 0 0 0 rgba(255,255,255, 0); }
                 }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

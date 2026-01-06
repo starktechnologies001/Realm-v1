@@ -39,8 +39,8 @@ export default function Chat() {
     }, [location.state]);
 
     const fetchChats = async (userId) => {
-        // Fetch all accepted friendships
-        const { data: friendships, error } = await supabase
+        // 1. Fetch all accepted friendships (for "Friend" status, if needed later)
+        const { data: friendships, error: friendError } = await supabase
             .from('friendships')
             .select(`
                 id,
@@ -50,17 +50,59 @@ export default function Chat() {
             .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
             .eq('status', 'accepted');
 
-        if (error) {
-            console.error("Error fetching chats:", error);
+        if (friendError) {
+            console.error("Error fetching chats:", friendError);
+            setLoading(false);
+            return;
+        }
+
+        // 2. Fetch all unique users I have exchanged messages with (to include non-friends)
+        // We fetch distinct sender/receiver IDs from messages involving me.
+        const { data: sentMessages } = await supabase
+            .from('messages')
+            .select('receiver_id')
+            .eq('sender_id', userId);
+            
+        const { data: receivedMessages } = await supabase
+            .from('messages')
+            .select('sender_id')
+            .eq('receiver_id', userId);
+
+        // Collect all unique Partner IDs
+        const partnerIds = new Set();
+        
+        // Add friends first
+        friendships.forEach(f => {
+            const isRequester = f.requester.id === userId;
+            partnerIds.add(isRequester ? f.receiver.id : f.requester.id);
+        });
+
+        // Add message partners
+        if (sentMessages) sentMessages.forEach(m => partnerIds.add(m.receiver_id));
+        if (receivedMessages) receivedMessages.forEach(m => partnerIds.add(m.sender_id));
+
+        // Remove self if somehow present
+        partnerIds.delete(userId);
+
+        if (partnerIds.size === 0) {
+            setChats([]);
+            setLoading(false);
+            return;
+        }
+
+        // 3. Fetch Profiles for ALL these partners
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, username, avatar_url, status, gender')
+            .in('id', Array.from(partnerIds));
+
+        if (!profiles) {
             setLoading(false);
             return;
         }
 
         // Format into a clean list of "Chat Partners"
-        const formattedChats = await Promise.all(friendships.map(async f => {
-            const isRequester = f.requester.id === userId;
-            const partner = isRequester ? f.receiver : f.requester;
-
+        const formattedChats = await Promise.all(profiles.map(async partner => {
             // Fetch unread count
             const { count } = await supabase
                 .from('messages')
@@ -75,17 +117,19 @@ export default function Chat() {
                 .select('muted_until')
                 .eq('user_id', userId)
                 .eq('partner_id', partner.id)
-                .eq('partner_id', partner.id)
                 .maybeSingle();
 
             const isMuted = muteData && muteData.muted_until && new Date(muteData.muted_until) > new Date();
 
-            // Generate gender-based avatar
-            const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
-            let genderAvatar;
-            if (partner.gender === 'Male') genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=male-${safeName}`;
-            else if (partner.gender === 'Female') genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=female-${safeName}`;
-            else genderAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+            // Avatar Logic: Prefer stored avatar, else generate consistent one
+            // similar to MapHome logic
+            let genderAvatar = partner.avatar_url;
+            if (!genderAvatar) {
+                 const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
+                 if (partner.gender === 'Male') genderAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                 else if (partner.gender === 'Female') genderAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                 else genderAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+            }
 
             return {
                 id: partner.id,
@@ -101,16 +145,23 @@ export default function Chat() {
         setChats(formattedChats);
 
         // Subscribe for real-time unread updates in list
-        const channel = supabase.channel('chat_list_updates')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${userId}` }, (payload) => {
+        const channelName = `chat_list_${userId}_${Date.now()}`;
+        const channel = supabase.channel(channelName)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+                // Client-side filter: Only care about messages sent TO me
+                if (String(payload.new.receiver_id) !== String(userId)) return;
+
                 setChats(prev => prev.map(chat => {
-                    if (chat.id === payload.new.sender_id) {
+                    if (String(chat.id) === String(payload.new.sender_id)) {
                         return { ...chat, unread: chat.unread + 1 };
                     }
                     return chat;
                 }));
             })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `receiver_id=eq.${userId}` }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+                // Client-side filter: Only care about messages sent TO me
+                if (String(payload.new.receiver_id) !== String(userId)) return;
+
                 // If message marked as read (is_read became true)
                 if (payload.new.is_read && !payload.old.is_read) {
                     setChats(prev => prev.map(chat => {
@@ -121,11 +172,89 @@ export default function Chat() {
                     }));
                 }
             })
-            .subscribe();
+            .subscribe((status) => {
+               if (status === 'SUBSCRIBED') {
+                   console.log(`Subscribed to chat list updates on ${channelName}`);
+               } else {
+                   console.log(`Subscription status for chat list: ${status}`);
+               }
+            });
 
         setLoading(false);
         return () => supabase.removeChannel(channel);
+
     };
+
+    // Real-time Friendship Updates for Chat List removal/addition
+    useEffect(() => {
+        if (!currentUser) return;
+
+        const channel = supabase.channel(`friendship_updates_chat_${currentUser.id}`)
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'friendships' 
+            }, async (payload) => {
+                const { eventType, old: oldRec, new: newRec } = payload;
+                
+                // HANDLE UNFRIEND (DELETE)
+                if (eventType === 'DELETE') {
+                     // We don't have the partner ID easily in DELETE payload (only row ID).
+                     // But we can filter our 'chats' list to see if any match the friendship_id?
+                     // Wait, we don't store friendship_id in 'chats' state currently.
+                     // Alternative: Refresh the entire list? Or just rely on activeChatUser check?
+                     
+                     // If we are in active chat, checking is critical.
+                     if (activeChatUser) {
+                        // Optimistic check: if we can't verify, we might fetch to be sure.
+                        const { data } = await supabase
+                            .from('friendships')
+                             .select('id')
+                             .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                             .or(`requester_id.eq.${activeChatUser.id},receiver_id.eq.${activeChatUser.id}`)
+                             .eq('status', 'accepted')
+                             .maybeSingle();
+
+                        if (!data) {
+                            setActiveChatUser(null);
+                            Toast.show("Friendship ended.");
+                            fetchChats(currentUser.id); // Refresh list
+                            return;
+                        }
+                     }
+                     // Always refresh list on delete to be safe
+                     fetchChats(currentUser.id); 
+                }
+
+                // HANDLE NEW FRIEND (INSERT/UPDATE)
+                if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                    const rec = newRec;
+                    if (rec.status === 'accepted') {
+                        // Check if it involves me
+                        if (rec.requester_id === currentUser.id || rec.receiver_id === currentUser.id) {
+                            fetchChats(currentUser.id); // Refresh list to show new friend
+                        }
+                    }
+                    // Handle Block logic if needed (handled by refresh)
+                    if (rec.status === 'blocked') {
+                        if (rec.requester_id === currentUser.id || rec.receiver_id === currentUser.id) {
+                             if (activeChatUser) {
+                                 const partnerId = rec.requester_id === currentUser.id ? rec.receiver_id : rec.requester_id;
+                                 if (activeChatUser.id === partnerId) {
+                                     setActiveChatUser(null);
+                                 }
+                             }
+                             fetchChats(currentUser.id);
+                        }
+                    }
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser, activeChatUser]);
 
     // Global Incoming Call State
     const [showQuickReplyMenu, setShowQuickReplyMenu] = useState(false);
@@ -220,15 +349,23 @@ function ChatList({ chats, onSelectChat, loading }) {
 
     return (
         <div className="chat-page-container">
-            <div className="ambient-glow"></div>
-            
+            {/* Header */}
             <header className="glass-header">
                 <div className="header-top">
                     <h1 className="page-title">Messages</h1>
-                    <button className="btn-icon settings-btn">⚙️</button>
+                    <button className="settings-btn" onClick={() => {}}>
+                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
                 </div>
+
                 <div className="search-bar">
-                    <span className="search-icon">🔍</span>
+                    <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
                     <input 
                         type="text" 
                         placeholder="Search chats..." 
@@ -242,27 +379,25 @@ function ChatList({ chats, onSelectChat, loading }) {
                 {loading ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
-                        <p>Syncing messages...</p>
+                        <p>Syncing conversations...</p>
                     </div>
-                ) : (!chats || chats.length === 0) ? (
+                ) : filteredChats.length === 0 ? (
                     <div className="empty-state">
                         <div className="empty-icon">💬</div>
                         <h3>No messages yet</h3>
-                        <p>Start a conversation from the map!</p>
+                        <p>Start a conversation from your Friends list!</p>
                     </div>
                 ) : (
                     filteredChats.map(chat => (
-                        <div key={chat.id} className="chat-item" onClick={() => onSelectChat(chat)}>
+                        <div 
+                            key={chat.id} 
+                            className={`chat-item ${chat.unread > 0 ? 'unread' : ''}`}
+                            onClick={() => onSelectChat(chat)}
+                        >
                             <div className="avatar-wrapper">
-                                <img src={(() => {
-                                    const user = chat.fullProfile || chat; 
-                                    const safeName = encodeURIComponent(chat.name || 'User');
-                                    const g = user.gender?.toLowerCase();
-                                    if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                                    if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                                    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-                                })()} alt={chat.name} className="chat-avatar" />
-                                {chat.unread > 0 && <span className="online-badge"></span>}
+                                <img src={chat.avatar} alt={chat.name} className="chat-avatar" />
+                                {/* We can verify online status if needed, assuming true for demo or passed in */}
+                                <div className="online-badge"></div>
                             </div>
                             
                             <div className="chat-info">
@@ -270,11 +405,11 @@ function ChatList({ chats, onSelectChat, loading }) {
                                     <span className="chat-name">{chat.name}</span>
                                     <div className="meta-info">
                                         {chat.isMuted && <span className="mute-icon">🔇</span>}
-                                        {chat.time && <span className="chat-time">{chat.time}</span>}
+                                        <span className="chat-time">{chat.time}</span>
                                     </div>
                                 </div>
                                 <div className="chat-msg-row">
-                                    <p className={`chat-preview ${chat.unread > 0 ? 'bold' : ''}`}>
+                                    <p className="chat-preview">
                                         {chat.lastMsg}
                                     </p>
                                     {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
@@ -287,147 +422,223 @@ function ChatList({ chats, onSelectChat, loading }) {
 
             <style>{`
                 :root {
-                    /* Solid Professional Theme */
-                    --card-bg: #1e1e1e;
-                    --card-bg-hover: #2a2a2a;
-                    --bg-dark: #0a0a0a;
-                    --border-subtle: #333333;
+                    --bg-dark: #000000;
+                    --bg-card: #1c1c1e;
+                    --bg-card-hover: #2c2c2e;
                     --text-primary: #ffffff;
-                    --text-secondary: #a0a0a0;
-                    --accent: #4285F4;
+                    --text-secondary: #8e8e93;
+                    --accent-blue: #0a84ff;
+                    --separator: rgba(84, 84, 88, 0.65);
                 }
 
                 .chat-page-container {
+                    background-color: var(--bg-dark);
                     min-height: 100vh;
-                    background: var(--bg-dark);
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                     color: var(--text-primary);
-                    font-family: 'Inter', sans-serif;
-                    position: relative;
-                    padding-bottom: 80px;
+                    padding-bottom: 80px; /* Space for bottom nav */
                 }
-
-                /* Removed Ambient Glow/Blur for professional crisp look */
-                .ambient-glow { display: none; }
 
                 .glass-header {
-                    padding: 20px 20px 15px 20px;
-                    background: var(--bg-dark);
-                    position: sticky; top: 0; z-index: 100;
-                    border-bottom: 1px solid var(--border-subtle);
+                    position: sticky;
+                    top: 0;
+                    z-index: 100;
+                    background: rgba(28, 28, 30, 0.85); /* iOS-like dark tab bar style */
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    padding: 16px 20px 10px 20px;
+                    border-bottom: 0.5px solid var(--separator);
                 }
 
-                .header-top { 
-                    display: flex; justify-content: space-between; align-items: center; 
-                    margin-bottom: 15px;
+                .header-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 24px; /* Increased from 12px */
                 }
 
                 .page-title {
-                    font-size: 2rem; font-weight: 700; margin: 0;
+                    margin: 0;
+                    font-size: 34px;
+                    font-weight: 700;
                     letter-spacing: -0.5px;
-                    color: var(--text-primary);
                 }
 
                 .settings-btn {
-                    background: var(--card-bg); border: 1px solid var(--border-subtle);
-                    width: 40px; height: 40px; border-radius: 12px;
-                    cursor: pointer; transition: all 0.2s;
+                    background: rgba(255, 255, 255, 0.1);
+                    border: none;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    color: var(--accent-blue);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: background 0.2s;
                 }
-                .settings-btn:hover { background: var(--card-bg-hover); border-color: #555; }
+                .settings-btn:active {
+                    background: rgba(255, 255, 255, 0.2);
+                }
 
                 .search-bar {
-                    background: var(--card-bg);
-                    border-radius: 12px; padding: 12px 16px;
-                    display: flex; align-items: center; gap: 10px;
-                    border: 1px solid var(--border-subtle);
-                    transition: all 0.2s;
+                    background: rgba(118, 118, 128, 0.24);
+                    border-radius: 10px;
+                    padding: 8px 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 20px; /* Added spacing */
                 }
-                .search-bar:focus-within {
-                    border-color: var(--accent);
-                    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
-                }
-                .search-icon { opacity: 0.5; color: var(--text-secondary); }
-                .search-bar input {
-                    background: transparent; border: none; outline: none;
-                    color: var(--text-primary); width: 100%;
-                    font-size: 1rem;
-                }
-                .search-bar input::placeholder { color: #666; }
 
-                .chat-list-scroll { 
-                    display: flex; flex-direction: column; gap: 0; 
-                    padding: 10px 0;
+                .search-icon {
+                    color: var(--text-secondary);
+                    opacity: 0.7;
+                }
+
+                .search-bar input {
+                    background: transparent;
+                    border: none;
+                    outline: none;
+                    color: var(--text-primary);
+                    font-size: 17px;
+                    width: 100%;
+                }
+                .search-bar input::placeholder {
+                    color: var(--text-secondary);
+                }
+
+                .chat-list-scroll {
+                    padding: 0;
                 }
 
                 .chat-item {
-                    display: flex; align-items: center; gap: 16px; 
-                    padding: 16px 20px;
-                    background: transparent;
-                    border: none;
-                    border-bottom: 1px solid var(--border-subtle);
-                    border-radius: 0;
-                    cursor: pointer; transition: background 0.2s;
-                    position: relative; overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    padding: 12px 20px;
+                    gap: 12px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                    border-bottom: 0.5px solid rgba(84, 84, 88, 0.4); /* Separator */
                 }
-                .chat-item:last-child { border-bottom: none; }
                 
-                .chat-item:hover { 
-                    background: var(--card-bg-hover);
-                    transform: none;
-                    box-shadow: none;
+                .chat-item:active {
+                    background-color: var(--bg-card-hover);
                 }
-                .chat-item:active { background: #333; }
+                .chat-item:last-child {
+                    border-bottom: none;
+                }
 
-                .avatar-wrapper { position: relative; width: 60px; height: 60px; flex-shrink: 0; }
-                .chat-avatar { 
-                    width: 100%; height: 100%; border-radius: 20px; 
-                    object-fit: cover; background: rgba(0,0,0,0.3);
-                    box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+                .avatar-wrapper {
+                    position: relative;
                 }
+
+                .chat-avatar {
+                    width: 52px;
+                    height: 52px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                    background-color: #333;
+                }
+
                 .online-badge {
-                    position: absolute; bottom: -2px; right: -2px;
-                    width: 14px; height: 14px;
-                    background: #00f0ff; border: 3px solid #0f0f0f;
+                    position: absolute;
+                    bottom: 2px;
+                    right: 0;
+                    width: 12px;
+                    height: 12px;
+                    background-color: #30d158; /* iOS Green */
+                    border: 2px solid var(--bg-dark);
                     border-radius: 50%;
                 }
 
-                .chat-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-                
-                .chat-header-row { display: flex; justify-content: space-between; align-items: center; }
-                .chat-name { font-weight: 700; font-size: 1.1rem; color: white; letter-spacing: 0.3px; }
-                
-                .meta-info { display: flex; align-items: center; gap: 6px; }
-                .mute-icon { font-size: 0.8rem; opacity: 0.6; }
-                .chat-time { font-size: 0.75rem; color: rgba(255,255,255,0.4); font-weight: 500; }
-
-                .chat-msg-row { display: flex; justify-content: space-between; align-items: center; }
-                .chat-preview { 
-                    color: rgba(255,255,255,0.6); font-size: 0.95rem; 
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-                    flex: 1; margin: 0; padding-right: 15px;
-                }
-                .chat-preview.bold { color: white; font-weight: 600; }
-                
-                .unread-badge { 
-                    background: linear-gradient(135deg, #00f0ff, #0072ff); 
-                    color: white; font-weight: 800; font-size: 0.75rem; 
-                    padding: 4px 10px; border-radius: 12px; 
-                    box-shadow: 0 4px 10px rgba(0, 114, 255, 0.4);
+                .chat-info {
+                    flex: 1;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
                 }
 
-                .loading-state, .empty-state { 
-                    text-align: center; margin-top: 60px; color: rgba(255,255,255,0.5); 
-                    display: flex; flex-direction: column; align-items: center; gap: 15px;
+                .chat-header-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                }
+
+                .chat-name {
+                    font-size: 17px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+
+                .chat-time {
+                    font-size: 14px;
+                    color: var(--text-secondary);
+                }
+
+                .chat-msg-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .chat-preview {
+                    margin: 0;
+                    font-size: 15px;
+                    color: var(--text-secondary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 85%;
+                    line-height: 1.3;
+                }
+
+                .chat-item.unread .chat-name {
+                    /* font-weight: 700; maybe? */
+                }
+                .chat-item.unread .chat-preview {
+                    color: var(--text-primary);
+                    font-weight: 500;
+                }
+
+                .unread-badge {
+                    background-color: var(--accent-blue);
+                    color: white;
+                    font-size: 14px;
+                    font-weight: 600;
+                    min-width: 20px;
+                    height: 20px;
+                    border-radius: 10px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0 6px;
+                }
+
+                .mute-icon {
+                    font-size: 12px;
+                    margin-right: 4px;
+                    color: var(--text-secondary);
+                }
+                
+                /* Loading / Empty States */
+                .loading-state, .empty-state {
+                    padding-top: 100px;
+                    text-align: center;
+                    color: var(--text-secondary);
                 }
                 .spinner {
-                    width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1);
-                    border-top-color: #00f0ff; border-radius: 50%;
+                    margin: 0 auto 20px;
+                    width: 32px; height: 32px;
+                    border: 3px solid rgba(255,255,255,0.1);
+                    border-top-color: var(--accent-blue);
+                    border-radius: 50%;
                     animation: spin 1s linear infinite;
                 }
-                .empty-icon { font-size: 4rem; opacity: 0.5; margin-bottom: 10px; }
-                .empty-state h3 { margin: 0; color: white; }
-                .empty-state p { margin: 0; font-size: 0.9rem; }
-
-                @keyframes spin { to { transform: rotate(360deg); } }
+                @keyframes spin { 100% { transform: rotate(360deg); } }
+                
+                .empty-icon { font-size: 48px; margin-bottom: 16px; display: block;}
             `}</style>
         </div>
     );
@@ -511,14 +722,63 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         showToast("Wallpaper updated 🖼️");
     };
 
+    const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
+    const wallpaperInputRef = useRef(null);
+
     const WALLPAPERS = [
+        // Gradients
         { name: 'Midnight', value: 'linear-gradient(to bottom, #0f0c29, #302b63, #24243e)' },
         { name: 'Synthwave', value: 'linear-gradient(to bottom, #2b0c29, #302b63)' },
         { name: 'Forest', value: 'linear-gradient(to bottom, #134e5e, #71b280)' },
         { name: 'Ocean', value: 'linear-gradient(to bottom, #00c6ff, #0072ff)' },
+        { name: 'Sunset', value: 'linear-gradient(to bottom, #ff512f, #dd2476)' },
+        { name: 'Northern Lights', value: 'linear-gradient(to bottom, #43cea2, #185a9d)' },
+        { name: 'Royal', value: 'linear-gradient(to bottom, #536976, #292e49)' },
+        
+        // Solid Colors
         { name: 'Minimal Dark', value: '#1a1a1a' },
-        { name: 'Pure Black', value: '#000000' }
+        { name: 'Pure Black', value: '#000000' },
+        { name: 'Deep Blue', value: '#141E30' },
+        { name: 'Charcoal', value: '#2C3E50' },
+        { name: 'Warm Dark', value: '#232526' },
+        
+        // Patterns (using CSS gradients)
+        { name: 'Stripes', value: 'repeating-linear-gradient(45deg, #1b1b1b, #1b1b1b 10px, #222 10px, #222 20px)' },
+        { name: 'Grid', value: 'radial-gradient(#333 1px, transparent 1px) 0 0 / 20px 20px, radial-gradient(#333 1px, transparent 1px) 10px 10px / 20px 20px, #1a1a1a' }
     ];
+
+    const handleWallpaperUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+             showToast("Image too large (Max 5MB) ⚠️");
+             return;
+        }
+
+        setUploadingWallpaper(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `wallpapers/${currentUser.id}_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('chat-images') // Reuse bucket
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage.from('chat-images').getPublicUrl(fileName);
+            
+            // Apply as URL
+            await handleWallpaperChange(`url('${data.publicUrl}')`);
+            
+        } catch (error) {
+            console.error('Wallpaper upload failed:', error);
+            showToast("Upload failed ❌");
+        } finally {
+            setUploadingWallpaper(false);
+        }
+    };
 
     const handleThemeChange = (newTheme) => {
         setTheme(newTheme);
@@ -571,15 +831,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         fetchMessages();
 
         const channel = supabase
-            .channel('chat_room')
+            .channel(`chat_room_${currentUser.id}_${targetUser.id}_${Date.now()}`)
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
-                table: 'messages',
-                filter: `receiver_id=eq.${currentUser.id}`
+                table: 'messages'
             }, async (payload) => {
-                // If the message is from the user we are currently chatting with
-                if (payload.new.sender_id === targetUser.id) {
+                // Client-side Filter:
+                // 1. Must be sent to me (receiver = currentUser)
+                // 2. Must be from the partner (sender = targetUser)
+                if (String(payload.new.receiver_id) === String(currentUser.id) && 
+                    String(payload.new.sender_id) === String(targetUser.id)) {
                     setMessages(prev => {
                         // Replace optimistic message if exists
                         const withoutOptimistic = prev.filter(m => !m.tempId);
@@ -596,17 +858,52 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
-                table: 'messages',
-                filter: `sender_id=eq.${currentUser.id}`
+                table: 'messages'
             }, (payload) => {
+                // Filter: check if it concerns a message I sent
+                if (String(payload.new.sender_id) !== String(currentUser.id)) return;
+
                 // Update message status in UI
                 setMessages(prev => prev.map(m => 
                     m.id === payload.new.id ? payload.new : m
                 ));
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log(`Chat room subscription status: ${status}`);
+            });
 
         return () => { supabase.removeChannel(channel); };
+    }, [currentUser.id, targetUser.id]);
+
+    // Polling Fallback: Fetch messages every 3 seconds to ensure delivery if realtime fails
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const fetchLatest = async () => {
+                 const { data, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                    .order('created_at', { ascending: true });
+
+                if (data) {
+                    setMessages(prev => {
+                        // Only update if count is different or last message is different
+                        // Simple heuristic to avoid aggressive re-renders
+                        if (prev.length !== data.length) return data;
+                        if (prev.length > 0 && data.length > 0 && prev[prev.length - 1].id !== data[data.length - 1].id) return data;
+                        return prev;
+                    });
+                     // Mark UNREAD messages from this user as READ
+                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read).map(m => m.id);
+                    if (unreadIds.length > 0) {
+                        await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
+                    }
+                }
+            };
+            fetchLatest();
+        }, 3000); // Poll every 3 seconds
+
+        return () => clearInterval(interval);
     }, [currentUser.id, targetUser.id]);
 
     useEffect(() => {
@@ -787,24 +1084,44 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         const diffDays = Math.floor(diffMs / 86400000);
 
         // Online if active within last 2 minutes
-        if (diffMins < 2) return 'Online';
+        if (diffMins < 2) return 'Active now';
         
         // Minutes ago
-        if (diffMins < 60) return `Seen ${diffMins}m ago`;
+        if (diffMins < 60) return `active ${diffMins}m ago`;
         
         // Hours ago
         if (diffHours < 24) {
-            return `Seen ${diffHours}h ago`;
+            return `active ${diffHours}h ago`;
         }
         
         // Yesterday
-        if (diffDays === 1) return 'Seen yesterday';
+        if (diffDays === 1) return 'active yesterday';
         
         // Days ago
-        if (diffDays < 7) return `Seen ${diffDays}d ago`;
+        if (diffDays < 7) return `active ${diffDays}d ago`;
         
         // More than a week
-        return 'Seen a while ago';
+        return 'active a while ago';
+    };
+
+    // Date Header Helpers
+    const isSameDay = (d1, d2) => {
+        return d1.getFullYear() === d2.getFullYear() &&
+               d1.getMonth() === d2.getMonth() &&
+               d1.getDate() === d2.getDate();
+    };
+
+    const formatDateHeader = (dateStr) => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        
+        if (isSameDay(date, now)) return 'Today';
+        
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (isSameDay(date, yesterday)) return 'Yesterday';
+        
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric' });
     };
 
     return (
@@ -819,15 +1136,19 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 </button>
                 <div className="header-user">
                     <img src={(() => {
+                        // Priority 1: Stored avatar
+                        if (partner.avatar_url) return partner.avatar_url;
+
+                        // Priority 2: Consistent generation
                         const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
                         const g = partner.gender?.toLowerCase();
-                        if (g === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        if (g === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                        if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                        return `https://avatar.iran.liara.run/public?username=${safeName}`;
                     })()} className="header-avatar" alt="avatar" />
                     <div className="header-text">
                         <h3>{partner.full_name || partner.username}</h3>
-                        <span className={`user-status ${getLastSeenStatus(partner.last_active) === 'Online' ? 'online' : ''}`}>
+                        <span className={`user-status ${getLastSeenStatus(partner.last_active) === 'Active now' ? 'online' : ''}`}>
                             {getLastSeenStatus(partner.last_active)}
                         </span>
                     </div>
@@ -936,7 +1257,27 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 <div className="mute-menu-modal" onClick={() => setShowWallpaperMenu(false)}>
                     <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
                         <h3>Choose Wallpaper 🖼️</h3>
+                        
+                        {/* Hidden Input for Custom Wallpaper */}
+                        <input 
+                            type="file" 
+                            ref={wallpaperInputRef}
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                            onChange={handleWallpaperUpload}
+                        />
+
                         <div className="wallpaper-grid">
+                            {/* Upload Button */}
+                             <button 
+                                className="wallpaper-option upload-btn"
+                                onClick={() => wallpaperInputRef.current.click()}
+                                disabled={uploadingWallpaper}
+                            >
+                                {uploadingWallpaper ? '⏳' : '📤 Upload'}
+                            </button>
+
+                            {/* Presets */}
                             {WALLPAPERS.map((wp) => (
                                 <button 
                                     key={wp.name} 
@@ -960,23 +1301,70 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         .wallpaper-grid {
                             display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
                             margin: 20px 0;
+                            max-height: 400px; overflow-y: auto; padding-right: 5px;
                         }
                         .wallpaper-option {
                             height: 60px; border-radius: 12px; border: 2px solid transparent;
                             color: white; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
                             cursor: pointer; transition: transform 0.2s;
                             display: flex; align-items: center; justify-content: center;
+                            background-size: cover; background-position: center;
                         }
                         .wallpaper-option:hover { transform: scale(1.02); }
                         .wallpaper-option.active { border-color: #00f0ff; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
-                        .wallpaper-option.default { background: #333; grid-column: auto; }
+                        .wallpaper-option.default { background: #333; grid-column: 1 / -1; }
+                        
+                        .upload-btn {
+                            background: rgba(255,255,255,0.1);
+                            border: 1px dashed rgba(255,255,255,0.3);
+                            grid-column: 1 / -1;
+                        }
+                        .upload-btn:hover { background: rgba(255,255,255,0.15); }
                     `}</style>
                 </div>
             )}
 
-            <div className={`chat-messages ${getThemeClass()}`} style={{ background: chatBackground || '', backgroundImage: chatBackground || '' }}>
+
+            <div className={`chat-messages ${getThemeClass()}`} style={{ 
+                background: chatBackground || '',
+                backgroundSize: chatBackground?.includes('url') ? 'cover' : undefined,
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
+            }}>
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
+                    
+                    // Date Separator Logic
+                    const msgDate = new Date(msg.created_at);
+                    const prevMsg = messages[i - 1];
+                    const prevDate = prevMsg ? new Date(prevMsg.created_at) : null;
+                    let dateHeader = null;
+
+                    if (!prevDate || !isSameDay(msgDate, prevDate)) {
+                        dateHeader = (
+                            <div className="chat-date-header" key={`date-${msg.id || i}`}>
+                                <span>{formatDateHeader(msg.created_at)}</span>
+                            </div>
+                        );
+                    }
+
+                    // Special rendering for Call Logs
+                    if (msg.message_type === 'call_log') {
+                        return (
+                            <React.Fragment key={msg.id || msg.tempId || i}>
+                                {dateHeader}
+                                <div className="call-log-system-msg">
+                                    <div className="call-log-badge">
+                                        <span style={{ marginRight: '6px' }}>
+                                            {msg.content.includes('Missed') ? '↘️' : msg.content.includes('declined') ? '🚫' : '📞'}
+                                        </span>
+                                        <span>{msg.content} • {formatTime(msg.created_at)}</span>
+                                    </div>
+                                </div>
+                            </React.Fragment>
+                        );
+                    }
+
                     const isImage = msg.message_type === 'image' || msg.type === 'image';
                     const imageUrl = msg.image_url || msg.media_url;
 
@@ -995,23 +1383,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     }
 
                     return (
-                        <div key={msg.id || msg.tempId || i} className={`msg-bubble ${isMe ? 'me' : 'them'}`}>
-                            {isImage ? (
-                                <img 
-                                    src={imageUrl} 
-                                    alt="Sent" 
-                                    className="sent-image" 
-                                    onClick={() => setViewingImage(imageUrl)}
-                                    style={{ cursor: 'pointer' }}
-                                />
-                            ) : (
-                                <span className="msg-text">{msg.content}</span>
-                            )}
-                            <div className="msg-footer">
-                                <span className="msg-time">{formatTime(msg.created_at)}</span>
-                                {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
+                        <React.Fragment key={msg.id || msg.tempId || i}>
+                            {dateHeader}
+                            <div className={`msg-bubble ${isMe ? 'me' : 'them'}`}>
+                                {isImage ? (
+                                    <img 
+                                        src={imageUrl} 
+                                        alt="Sent" 
+                                        className="sent-image" 
+                                        onClick={() => setViewingImage(imageUrl)}
+                                        style={{ cursor: 'pointer' }}
+                                    />
+                                ) : (
+                                    <span className="msg-text">{msg.content}</span>
+                                )}
+                                <div className="msg-footer">
+                                    <span className="msg-time">{formatTime(msg.created_at)}</span>
+                                    {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
+                                </div>
                             </div>
-                        </div>
+                        </React.Fragment>
                     );
                 })}
                 <div ref={messagesEndRef} />
@@ -1257,7 +1648,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 }
                 
                 /* Light Theme */
-                .light-theme { background: #f0f2f5 !important; }
+                .light-theme { background: #f0f2f5; }
                 .light-theme .glass-header { background: rgba(255,255,255,0.85); border-bottom-color: rgba(0,0,0,0.1); }
                 .light-theme .header-text h3 { color: #000; }
                 .light-theme .back-btn, .light-theme .icon-btn { color: #333; }
@@ -1316,17 +1707,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .dropdown-menu .icon { display: flex; align-items: center; justify-content: center; opacity: 0.8; }
                 .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
 
-                .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-                .msg-bubble { max-width: 75%; padding: 10px 15px; border-radius: 18px; color: white; position: relative; word-wrap: break-word; }
-                .msg-bubble.me { align-self: flex-end; background: linear-gradient(135deg, #00C6FF, #0072FF); color: white; border-bottom-right-radius: 4px; }
-                .msg-bubble.them { align-self: flex-start; background: #2a2a2a; border-bottom-left-radius: 4px; }
-                
-                .msg-text { display: block; margin-bottom: 4px; }
-                .msg-footer { display: flex; align-items: center; gap: 5px; justify-content: flex-end; margin-top: 4px; }
-                .msg-time { font-size: 0.65rem; opacity: 0.7; }
-                .msg-status { font-size: 0.7rem; opacity: 0.8; }
-                .msg-status.read { color: #00d4ff; }
-                
+
                 .sent-image { max-width: 100%; max-height: 300px; border-radius: 10px; display: block; }
 
                 /* Image Viewer Modal */
@@ -1426,6 +1807,38 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     0% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.4); }
                     70% { box-shadow: 0 0 0 20px rgba(0, 240, 255, 0); }
                     100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
+                }
+
+                .call-log-system-msg {
+                    width: 100%;
+                    display: flex; justify-content: center;
+                    margin: 15px 0;
+                }
+                .call-log-badge {
+                    background: rgba(255, 255, 255, 0.1);
+                    backdrop-filter: blur(10px);
+                    padding: 6px 16px;
+                    border-radius: 100px;
+                    font-size: 0.75rem;
+                    color: rgba(255, 255, 255, 0.7);
+                    display: flex; align-items: center;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }
+
+                .chat-date-header {
+                    display: flex; justify-content: center;
+                    margin: 24px 0 12px 0;
+                    width: 100%;
+                }
+                .chat-date-header span {
+                    background: rgba(40, 40, 45, 0.6);
+                    color: rgba(255, 255, 255, 0.5);
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    backdrop-filter: blur(4px);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
                 }
             `}</style>
         </div>

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
@@ -78,6 +78,7 @@ function RecenterAutomatically({ lat, lng }) {
 }
 
 export default function MapHome() {
+    const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
     const [location, setLocation] = useState(() => {
         const cached = localStorage.getItem('lastLocation');
         return cached ? JSON.parse(cached) : null;
@@ -185,36 +186,49 @@ export default function MapHome() {
             })
             .subscribe();
 
-        // Listen for friendship changes (blocking/unblocking) to update map
-        // Listen for ALL friendship changes (Pokes accepted, blocked, etc.)
+        // Listen for all friendship changes
         const friendshipChannel = supabase
-            .channel('friendships_changes')
+            .channel('friendships_changes_map')
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'friendships'
             }, (payload) => {
-                const { old: oldRec, new: newRec } = payload;
+                const { eventType, old: oldRec, new: newRec } = payload;
+                
+                // CASE 1: DELETE (Unfriend)
+                if (eventType === 'DELETE') {
+                    const deletedId = oldRec.id;
+                    const partnerId = friendshipsRef.current.get(deletedId);
+                    
+                    if (partnerId) {
+                        friendshipsRef.current.delete(deletedId);
+                        // Reset status in UI
+                        setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null } : prev);
+                        setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null } : u));
+                        showToast("Friend removed. You can now poke them again.");
+                    }
+                    return;
+                }
+
+                // Identify partner for INSERT/UPDATE
                 const relevantId = newRec?.requester_id === currentUser.id ? newRec.receiver_id 
                                  : newRec?.receiver_id === currentUser.id ? newRec.requester_id 
-                                 : oldRec?.requester_id === currentUser.id ? oldRec.receiver_id 
-                                 : oldRec?.receiver_id === currentUser.id ? oldRec.requester_id 
                                  : null;
 
-                if (!relevantId) return; // Update not relevant to us
+                if (!relevantId) return;
 
-                // CASE 1: BLOCKED (Reload Map to hide/show)
-                if (newRec?.status === 'blocked' || oldRec?.status === 'blocked') {
+                // CASE 2: BLOCKED
+                if (newRec?.status === 'blocked') {
                      window.location.reload(); 
                      return;
                 }
 
-                // CASE 2: ACCEPTED (Update UI to "Friend")
+                // CASE 3: ACCEPTED
                 if (newRec?.status === 'accepted') {
+                    friendshipsRef.current.set(newRec.id, relevantId); // Cache it
                     showToast(`Friend request accepted! 🎉`);
-                    // Update selected user if open
                     setSelectedUser(prev => prev && prev.id === relevantId ? { ...prev, friendshipStatus: 'accepted' } : prev);
-                    // Update nearby users list locally
                     setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
                 }
             })
@@ -233,7 +247,7 @@ export default function MapHome() {
         const fetchNearbyUsers = async () => {
             try {
                 // Run both queries in parallel for faster loading
-                const [blockedResult, profilesResult] = await Promise.all([
+                const [blockedResult, profilesResult, friendshipResult] = await Promise.all([
                     // Fetch blocked users (both directions)
                     supabase
                         .from('friendships')
@@ -248,23 +262,44 @@ export default function MapHome() {
                         .neq('id', currentUser.id)
                         .eq('is_ghost_mode', false)
                         .not('latitude', 'is', null)
-                        .not('longitude', 'is', null)
+                        .not('longitude', 'is', null),
+
+                   // Fetch my friendships (to sync map)
+                   supabase
+                        .from('friendships')
+                        .select('id, requester_id, receiver_id, status')
+                        .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
                 ]);
 
-                // Create set of blocked user IDs
+                // Create set of blocked user IDs and populate friendships map
                 const blockedUserIds = new Set();
-                if (blockedResult.data) {
-                    blockedResult.data.forEach(block => {
-                        // If I blocked them, hide me from their map
-                        if (block.requester_id === currentUser.id) {
-                            blockedUserIds.add(block.receiver_id);
-                        }
-                        // If they blocked me, hide them from my map
-                        if (block.receiver_id === currentUser.id) {
-                            blockedUserIds.add(block.requester_id);
-                        }
+                const myFriendships = new Map(); // local helper
+
+                if (friendshipResult.data) {
+                    friendshipResult.data.forEach(f => {
+                         const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
+                         if (f.status === 'accepted') {
+                             friendshipsRef.current.set(f.id, partnerId);
+                             myFriendships.set(partnerId, 'accepted');
+                         }
+                         if (f.status === 'blocked') {
+                             if (f.requester_id === currentUser.id) blockedUserIds.add(f.receiver_id);
+                             if (f.receiver_id === currentUser.id) blockedUserIds.add(f.requester_id);
+                         }
+                         if (f.status === 'pending') {
+                             myFriendships.set(partnerId, 'pending');
+                         }
                     });
                 }
+                
+                // Fallback for blockedResult if needed (though now handled above)
+                if (blockedResult.data) {
+                     blockedResult.data.forEach(block => {
+                        if (block.requester_id === currentUser.id) blockedUserIds.add(block.receiver_id);
+                        if (block.receiver_id === currentUser.id) blockedUserIds.add(block.requester_id);
+                     });
+                }
+
 
                 if (profilesResult.error) {
                     console.error('Error fetching users:', profilesResult.error);
@@ -297,7 +332,8 @@ export default function MapHome() {
                             thought: u.status_message,
                             lastActive: u.last_active,
                             isLocationOn: true,
-                            isLocationShared: true
+                            isLocationShared: true,
+                            friendshipStatus: myFriendships.get(u.id) || null // <--- ADDED THIS
                         };
                     });
 
