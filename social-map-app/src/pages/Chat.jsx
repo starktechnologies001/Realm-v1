@@ -137,7 +137,7 @@ export default function Chat() {
 
             return {
                 id: partner.id,
-                name: partner.full_name || partner.username,
+                name: partner.username || partner.full_name,
                 avatar: genderAvatar,
                 lastMsg: 'Tap to chat',
                 time: '',
@@ -273,7 +273,7 @@ export default function Chat() {
             <div className="incoming-call-overlay">
                 <div className="call-card">
                     <img src={getAvatarHeadshot(incomingCall.caller.avatar_url)} className="call-avatar" alt="Caller" />
-                    <h2>{incomingCall.caller.full_name || incomingCall.caller.username}</h2>
+                    <h2>{incomingCall.caller.username || incomingCall.caller.full_name}</h2>
                     <p>Incoming {incomingCall.type} call...</p>
 
                     {!showQuickReplyMenu ? (
@@ -1285,7 +1285,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         return `https://avatar.iran.liara.run/public?username=${safeName}`;
                     })()} className="header-avatar" alt="avatar" />
                     <div className="header-text">
-                        <h3>{partner.full_name || partner.username}</h3>
+                        <h3>{partner.username || partner.full_name}</h3>
                         <span className={`user-status ${getLastSeenStatus(partner.last_active) === 'Active now' ? 'online' : ''}`}>
                             {getLastSeenStatus(partner.last_active)}
                         </span>

@@ -269,7 +269,7 @@ export default function Profile() {
                 </div>
                 
                 <div className="profile-info">
-                    <h1>{user.full_name || user.username}</h1>
+                    <div className="profile-username">@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</div>
                     <div className="tags-row">
                         {user.status && <span className="tag status">{user.status}</span>}
                         {is3DAvatar && (
@@ -296,8 +296,8 @@ export default function Profile() {
                         {user.bio || "Tap to add a bio..."}
                     </div>
                 </div>
-                {/* Edit Name Button */}
-                <button className="edit-btn" onClick={() => setActiveModal('edit-name')}>Edit Name</button>
+                {/* Edit Username Button */}
+                <button className="edit-btn" onClick={() => setActiveModal('edit-name')}>Edit Username</button>
             </div>
 
 
@@ -419,31 +419,33 @@ export default function Profile() {
                                     <div className="icon-wrapper desc-lock">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                                     </div>
-                                    <h3>Edit Name</h3>
+                                    <h3>Edit Username</h3>
                                 </div>
                                 <form onSubmit={(e) => {
                                     e.preventDefault();
                                     const formData = new FormData(e.target);
-                                    const newName = formData.get('fullName');
-                                    if (newName && newName.trim()) {
-                                        updateProfile({ full_name: newName.trim() });
+                                    const newUsername = formData.get('username');
+                                    if (newUsername && newUsername.trim()) {
+                                        updateProfile({ username: newUsername.trim().toLowerCase().replace(/\s/g, '') });
                                         setActiveModal(null);
                                     }
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>Full Name</label>
+                                        <label>Username (without @)</label>
                                         <input 
                                             type="text" 
-                                            name="fullName"
-                                            placeholder="Enter your full name"
-                                            defaultValue={user.full_name}
+                                            name="username"
+                                            placeholder="username"
+                                            defaultValue={user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}
                                             autoFocus
                                             required
+                                            pattern="[a-z0-9_]+"
+                                            title="Only lowercase letters, numbers, and underscores allowed"
                                         />
                                     </div>
                                     <div className="modal-footer">
                                         <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
-                                        <button type="submit" className="btn-pri">Save Name</button>
+                                        <button type="submit" className="btn-pri">Save Username</button>
                                     </div>
                                 </form>
                             </>
@@ -749,6 +751,17 @@ export default function Profile() {
                     margin: 0; font-size: 1.8rem; font-weight: 700; margin-bottom: 8px;
                     color: var(--text-primary);
                 }
+                
+                .profile-username {
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                    margin-bottom: 12px;
+                    letter-spacing: 0.5px;
+                }
 
                 .tags-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
                 .tag {
@@ -845,7 +858,7 @@ export default function Profile() {
                     top: 0;
                     bottom: 0;
                     width: 0;
-                    background: linear-gradient(90deg, rgba(0, 212, 255, 0.1), transparent);
+                    background: rgba(255,255,255,0.02);
                     transition: width 0.3s ease;
                 }
                 
@@ -895,16 +908,21 @@ export default function Profile() {
                 .menu-label { 
                     font-size: 1rem; 
                     color: #fff; 
-                    font-weight: 600; 
+                    font-weight: 500; 
                     margin-bottom: 4px;
                     letter-spacing: -0.01em;
                 }
                 
+                
                 .menu-value { 
-                    font-size: 0.875rem; 
-                    font-weight: 500; 
-                    color: rgba(255,255,255,0.5);
-                    margin-top: 2px;
+                    font-size: 0.95rem; 
+                    font-weight: 600; 
+                    color: rgba(255,255,255,0.95);
+                    margin-top: 6px;
+                    padding: 8px 12px;
+                    background: rgba(0, 198, 255, 0.08);
+                    border-left: 3px solid rgba(0, 198, 255, 0.5);
+                    border-radius: 6px;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
@@ -926,64 +944,22 @@ export default function Profile() {
                     transform: rotate(90deg); 
                 }
                 
-                /* Icon Color Schemes - More Subtle and Professional */
-                .icon-personal { 
-                    color: #00d4ff; 
-                    background: rgba(0, 212, 255, 0.08);
-                    border-color: rgba(0, 212, 255, 0.2);
-                    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.15);
+                /* Icon Color Schemes - Simple & Professional */
+                .icon-personal,
+                .icon-interests,
+                .icon-birthday,
+                .icon-notif,
+                .icon-lock,
+                .icon-block,
+                .icon-safety,
+                .icon-delete {
+                    color: rgba(255,255,255,0.7);
+                    background: rgba(255,255,255,0.04);
+                    border-color: rgba(255,255,255,0.08);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 }
                 
-                .icon-interests { 
-                    color: #ff0055; 
-                    background: rgba(255, 0, 85, 0.08);
-                    border-color: rgba(255, 0, 85, 0.2);
-                    box-shadow: 0 4px 16px rgba(255, 0, 85, 0.15);
-                }
-                
-                .icon-birthday { 
-                    color: #ff9500; 
-                    background: rgba(255, 149, 0, 0.08);
-                    border-color: rgba(255, 149, 0, 0.2);
-                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15);
-                }
-                
-                .icon-notif { 
-                    color: #ffd60a; 
-                    background: rgba(255, 214, 10, 0.08);
-                    border-color: rgba(255, 214, 10, 0.2);
-                    box-shadow: 0 4px 16px rgba(255, 214, 10, 0.15);
-                }
-                
-                .icon-lock { 
-                    color: #bf5af2; 
-                    background: rgba(191, 90, 242, 0.08);
-                    border-color: rgba(191, 90, 242, 0.2);
-                    box-shadow: 0 4px 16px rgba(191, 90, 242, 0.15);
-                }
-                
-                .icon-block { 
-                    color: #ff453a; 
-                    background: rgba(255, 69, 58, 0.08);
-                    border-color: rgba(255, 69, 58, 0.2);
-                    box-shadow: 0 4px 16px rgba(255, 69, 58, 0.15);
-                }
-                
-                .icon-safety { 
-                    color: #30d158; 
-                    background: rgba(48, 209, 88, 0.08);
-                    border-color: rgba(48, 209, 88, 0.2);
-                    box-shadow: 0 4px 16px rgba(48, 209, 88, 0.15);
-                }
-                
-                .icon-delete { 
-                    color: #ff453a; 
-                    box-shadow: 0 0 15px rgba(255, 69, 58, 0.2), inset 0 0 10px rgba(255, 69, 58, 0.1);
-                    border-color: rgba(255, 69, 58, 0.3);
-                    text-shadow: 0 0 8px rgba(255, 69, 58, 0.6);
-                }
-                
-                .menu-icon-wrapper svg { stroke-width: 2px; filter: drop-shadow(0 0 2px currentColor); }
+                .menu-icon-wrapper svg { stroke-width: 2px; }
 
                 /* Solid Submenu */
                 .inner-submenu {
@@ -1067,10 +1043,10 @@ export default function Profile() {
                 }
                 
                 .desc-lock {
-                    color: #bf5af2;
-                    background: rgba(191, 90, 242, 0.08);
-                    border-color: rgba(191, 90, 242, 0.2);
-                    box-shadow: 0 4px 16px rgba(191, 90, 242, 0.15);
+                    color: #00C6FF;
+                    background: rgba(0, 198, 255, 0.08);
+                    border-color: rgba(0, 198, 255, 0.2);
+                    box-shadow: 0 4px 16px rgba(0, 198, 255, 0.15);
                 }
                 
                 .modal-content h3 {
@@ -1119,9 +1095,9 @@ export default function Profile() {
                 }
                 
                 .input-group input:focus {
-                    border-color: #bf5af2;
-                    background: rgba(191, 90, 242, 0.05);
-                    box-shadow: 0 0 0 3px rgba(191, 90, 242, 0.1);
+                    border-color: #00C6FF;
+                    background: rgba(0, 198, 255, 0.05);
+                    box-shadow: 0 0 0 3px rgba(0, 198, 255, 0.1);
                 }
 
                 .modal-footer {
@@ -1154,7 +1130,7 @@ export default function Profile() {
                 }
                 
                 .btn-pri {
-                    background: linear-gradient(135deg, #bf5af2 0%, #9333ea 100%);
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
                     color: white;
                     border: none;
                     padding: 14px 24px;
@@ -1162,12 +1138,12 @@ export default function Profile() {
                     cursor: pointer;
                     font-weight: 600;
                     font-size: 0.95rem;
-                    box-shadow: 0 8px 20px rgba(191, 90, 242, 0.3);
+                    box-shadow: 0 8px 20px rgba(0, 198, 255, 0.3);
                     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
                 
                 .btn-pri:hover {
-                    box-shadow: 0 12px 28px rgba(191, 90, 242, 0.4);
+                    box-shadow: 0 12px 28px rgba(0, 198, 255, 0.4);
                     transform: translateY(-2px);
                 }
                 

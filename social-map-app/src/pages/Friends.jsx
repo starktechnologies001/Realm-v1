@@ -192,7 +192,7 @@ export default function Friends() {
         e.stopPropagation();
         const userObj = {
             id: friend.id,
-            name: friend.full_name || friend.username,
+            name: friend.username || friend.full_name,
             avatar: friend.avatar_url || (friend.gender === 'Male' ? `https://avatar.iran.liara.run/public/boy?username=${encodeURIComponent(friend.username)}` : friend.gender === 'Female' ? `https://avatar.iran.liara.run/public/girl?username=${encodeURIComponent(friend.username)}` : `https://avatar.iran.liara.run/public?username=${encodeURIComponent(friend.username)}`),
             status: friend.status,
             gender: friend.gender,
@@ -269,7 +269,7 @@ export default function Friends() {
                                             })()} alt="avatar" className="avatar" />
                                         </div>
                                         <div className="info">
-                                            <h3>{req.full_name || req.username}</h3>
+                                            <h3>{req.username || req.full_name}</h3>
                                             <span className="subtitle">wants to connect</span>
                                         </div>
                                         <div className="actions">
@@ -321,7 +321,7 @@ export default function Friends() {
                                             <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
                                         <div className="info">
-                                            <h3>{friend.full_name || friend.username}</h3>
+                                            <h3>{friend.username || friend.full_name}</h3>
                                             <span className="status-text">{friend.status || 'Offline'}</span>
                                         </div>
                                         
@@ -364,7 +364,7 @@ export default function Friends() {
             {showUnfriendModal && (
                 <div className="modal-overlay">
                     <div className="modal-content">
-                        <h3>Unfriend {friendToUnfriend?.full_name || friendToUnfriend?.username}?</h3>
+                        <h3>Unfriend {friendToUnfriend?.username || friendToUnfriend?.full_name}?</h3>
                         <p>Are you sure you want to remove this friend? You will need to poke them again to reconnect.</p>
                         <div className="modal-actions">
                             <button className="btn-cancel" onClick={cancelUnfriend}>No, Keep</button>
