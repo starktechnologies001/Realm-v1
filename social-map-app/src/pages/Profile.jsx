@@ -296,11 +296,8 @@ export default function Profile() {
                         {user.bio || "Tap to add a bio..."}
                     </div>
                 </div>
-                {/* Simple Edit for Name for now */}
-                <button className="edit-btn" onClick={() => {
-                    const newName = prompt("Enter full name:", user.full_name);
-                    if (newName) updateProfile({ full_name: newName });
-                }}>Edit Name</button>
+                {/* Edit Name Button */}
+                <button className="edit-btn" onClick={() => setActiveModal('edit-name')}>Edit Name</button>
             </div>
 
 
@@ -416,6 +413,41 @@ export default function Profile() {
             {activeModal && (
                 <div className="modal-backdrop">
                     <div className="modal-content">
+                        {activeModal === 'edit-name' && (
+                            <>
+                                <div className="modal-header">
+                                    <div className="icon-wrapper desc-lock">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                    </div>
+                                    <h3>Edit Name</h3>
+                                </div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const formData = new FormData(e.target);
+                                    const newName = formData.get('fullName');
+                                    if (newName && newName.trim()) {
+                                        updateProfile({ full_name: newName.trim() });
+                                        setActiveModal(null);
+                                    }
+                                }} className="modal-form">
+                                    <div className="input-group">
+                                        <label>Full Name</label>
+                                        <input 
+                                            type="text" 
+                                            name="fullName"
+                                            placeholder="Enter your full name"
+                                            defaultValue={user.full_name}
+                                            autoFocus
+                                            required
+                                        />
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save Name</button>
+                                    </div>
+                                </form>
+                            </>
+                        )}
                         {activeModal === 'password' && (
                             <>
                                 <div className="modal-header">
@@ -475,7 +507,18 @@ export default function Profile() {
 
                         {activeModal === 'edit-bio' && (
                             <>
-                                <div className="modal-header"><h3>Edit Bio</h3></div>
+                                <div className="modal-header">
+                                    <div className="icon-wrapper icon-bio">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                                            <polyline points="10 9 9 9 8 9"></polyline>
+                                        </svg>
+                                    </div>
+                                    <h3>Edit Bio</h3>
+                                </div>
                                 <form onSubmit={(e) => {
                                     e.preventDefault();
                                     updateProfile({ bio: e.target.elements.bio.value });
@@ -487,14 +530,18 @@ export default function Profile() {
                                             name="bio" 
                                             defaultValue={user.bio} 
                                             placeholder="Tell us about yourself..." 
-                                            rows="3"
+                                            rows="4"
+                                            maxLength="200"
                                             autoFocus 
-                                            style={{ resize: 'none' }}
+                                            className="bio-textarea"
                                         />
+                                        <div className="char-counter">
+                                            {user.bio?.length || 0}/200 characters
+                                        </div>
                                     </div>
                                     <div className="modal-footer">
                                         <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
-                                        <button type="submit" className="btn-pri">Save</button>
+                                        <button type="submit" className="btn-pri">Save Bio</button>
                                     </div>
                                 </form>
                             </>
@@ -737,116 +784,198 @@ export default function Profile() {
                 .edit-btn:active { transform: scale(0.96); }
 
                 .scroll-content { 
-                    padding: 0 15px; z-index: 1; position: relative; 
-                    display: flex; flex-direction: column; gap: 12px; 
+                    padding: 0 15px; 
+                    z-index: 1; 
+                    position: relative; 
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 8px; 
                 }
 
-                /* Flat Professional List Style */
+                /* Modern Section Labels */
                 .section-label {
-                    margin: 30px 0 10px 10px;
-                    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1.2px;
-                    color: #666; font-weight: 700;
+                    margin: 24px 0 12px 4px;
+                    font-size: 0.75rem; 
+                    text-transform: uppercase; 
+                    letter-spacing: 1.5px;
+                    color: rgba(255,255,255,0.4); 
+                    font-weight: 700;
+                    position: relative;
+                    padding-left: 12px;
+                }
+                
+                .section-label::before {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 3px;
+                    height: 14px;
+                    background: linear-gradient(180deg, #00d4ff, #0072ff);
+                    border-radius: 2px;
                 }
 
                 .menu-group {
-                    background: rgba(30, 30, 32, 0.6); /* Semi-transparent */
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    border-radius: 16px;
+                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.95) 0%, rgba(25, 25, 30, 0.95) 100%);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-radius: 20px;
                     overflow: hidden;
-                    margin-bottom: 20px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                    margin-bottom: 16px;
+                    border: 1px solid rgba(255,255,255,0.06);
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
                 }
 
                 .menu-item {
-                    display: flex; align-items: center; padding: 16px;
-                    cursor: pointer; transition: background 0.2s;
-                    border-bottom: 0.5px solid rgba(255, 255, 255, 0.08); 
+                    display: flex; 
+                    align-items: center; 
+                    padding: 18px 20px;
+                    cursor: pointer; 
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.04); 
                     background: transparent;
+                    position: relative;
                 }
+                
+                .menu-item::before {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    bottom: 0;
+                    width: 0;
+                    background: linear-gradient(90deg, rgba(0, 212, 255, 0.1), transparent);
+                    transition: width 0.3s ease;
+                }
+                
+                .menu-item:hover::before {
+                    width: 100%;
+                }
+                
                 .menu-item:last-child { border-bottom: none; }
-                .menu-item:hover { background: rgba(255,255,255,0.05); }
-
-                .menu-icon-wrapper {
-                    width: 32px; height: 32px; border-radius: 8px; /* Squircle-ish */
-                    display: flex; align-items: center; justify-content: center;
-                    margin-right: 14px; color: white; font-size: 1rem;
-                }
-
-                .menu-content { flex: 1; display: flex; flex-direction: column; justify-content: center; }
                 
-                .menu-label { font-size: 1rem; color: #fff; font-weight: 500; margin-bottom: 2px; }
-                
-                .menu-value { 
-                    font-size: 0.9rem; 
-                    font-weight: 600; 
-                    color: rgba(255,255,255,0.7); /* Professional muted white instead of gradient for now, or keep per user pref? Let's use accent color or clean white */
-                    /* Reverting gradient to solid for cleaner professional look unless requested */
-                    color: #aaa;
-                    margin-top: 2px;
-                }
-                
-                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
-                .menu-chevron.expanded { transform: rotate(90deg); }
-                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
-                .menu-chevron.expanded { transform: rotate(90deg); }
-                
-                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
-                .menu-chevron.expanded { transform: rotate(90deg); }
-                
-                /* Glowing Icons Logic */
-                .menu-icon-wrapper {
-                    /* Base glass style */
+                .menu-item:hover { 
                     background: rgba(255,255,255,0.03);
-                    border: 1px solid rgba(255,255,255,0.05);
-                    box-shadow: 0 0 15px rgba(0,0,0,0.5); /* Deep shadow behind */
+                    transform: translateX(4px);
+                }
+                
+                .menu-item:active {
+                    transform: translateX(2px) scale(0.99);
+                }
+
+                .menu-icon-wrapper {
+                    width: 40px; 
+                    height: 40px; 
+                    border-radius: 12px;
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center;
+                    margin-right: 16px; 
+                    font-size: 1.1rem;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.06);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                     transition: all 0.3s ease;
                 }
+                
+                .menu-item:hover .menu-icon-wrapper {
+                    transform: scale(1.1) rotate(-5deg);
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+                }
 
-                /* Individual Neon Glows */
+                .menu-content { 
+                    flex: 1; 
+                    display: flex; 
+                    flex-direction: column; 
+                    justify-content: center;
+                    min-width: 0;
+                }
+                
+                .menu-label { 
+                    font-size: 1rem; 
+                    color: #fff; 
+                    font-weight: 600; 
+                    margin-bottom: 4px;
+                    letter-spacing: -0.01em;
+                }
+                
+                .menu-value { 
+                    font-size: 0.875rem; 
+                    font-weight: 500; 
+                    color: rgba(255,255,255,0.5);
+                    margin-top: 2px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                
+                .menu-chevron { 
+                    color: rgba(255,255,255,0.3); 
+                    font-size: 1.2rem; 
+                    transition: all 0.3s ease; 
+                    margin-left: 12px;
+                }
+                
+                .menu-item:hover .menu-chevron {
+                    color: rgba(255,255,255,0.6);
+                    transform: translateX(4px);
+                }
+                
+                .menu-chevron.expanded { 
+                    transform: rotate(90deg); 
+                }
+                
+                /* Icon Color Schemes - More Subtle and Professional */
                 .icon-personal { 
                     color: #00d4ff; 
-                    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2), inset 0 0 10px rgba(0, 212, 255, 0.1);
-                    border-color: rgba(0, 212, 255, 0.3);
-                    text-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+                    background: rgba(0, 212, 255, 0.08);
+                    border-color: rgba(0, 212, 255, 0.2);
+                    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.15);
                 }
+                
                 .icon-interests { 
                     color: #ff0055; 
-                    box-shadow: 0 0 15px rgba(255, 0, 85, 0.2), inset 0 0 10px rgba(255, 0, 85, 0.1);
-                    border-color: rgba(255, 0, 85, 0.3);
-                    text-shadow: 0 0 8px rgba(255, 0, 85, 0.6);
+                    background: rgba(255, 0, 85, 0.08);
+                    border-color: rgba(255, 0, 85, 0.2);
+                    box-shadow: 0 4px 16px rgba(255, 0, 85, 0.15);
                 }
+                
                 .icon-birthday { 
                     color: #ff9500; 
-                    box-shadow: 0 0 15px rgba(255, 149, 0, 0.2), inset 0 0 10px rgba(255, 149, 0, 0.1);
-                    border-color: rgba(255, 149, 0, 0.3);
-                    text-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
+                    background: rgba(255, 149, 0, 0.08);
+                    border-color: rgba(255, 149, 0, 0.2);
+                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15);
                 }
+                
                 .icon-notif { 
                     color: #ffd60a; 
-                    box-shadow: 0 0 15px rgba(255, 214, 10, 0.2), inset 0 0 10px rgba(255, 214, 10, 0.1);
-                    border-color: rgba(255, 214, 10, 0.3);
-                    text-shadow: 0 0 8px rgba(255, 214, 10, 0.6);
+                    background: rgba(255, 214, 10, 0.08);
+                    border-color: rgba(255, 214, 10, 0.2);
+                    box-shadow: 0 4px 16px rgba(255, 214, 10, 0.15);
                 }
+                
                 .icon-lock { 
                     color: #bf5af2; 
-                    box-shadow: 0 0 15px rgba(191, 90, 242, 0.2), inset 0 0 10px rgba(191, 90, 242, 0.1);
-                    border-color: rgba(191, 90, 242, 0.3);
-                    text-shadow: 0 0 8px rgba(191, 90, 242, 0.6);
+                    background: rgba(191, 90, 242, 0.08);
+                    border-color: rgba(191, 90, 242, 0.2);
+                    box-shadow: 0 4px 16px rgba(191, 90, 242, 0.15);
                 }
+                
                 .icon-block { 
-                    color: #5e5ce6; 
-                    box-shadow: 0 0 15px rgba(94, 92, 230, 0.2), inset 0 0 10px rgba(94, 92, 230, 0.1);
-                    border-color: rgba(94, 92, 230, 0.3);
-                    text-shadow: 0 0 8px rgba(94, 92, 230, 0.6);
+                    color: #ff453a; 
+                    background: rgba(255, 69, 58, 0.08);
+                    border-color: rgba(255, 69, 58, 0.2);
+                    box-shadow: 0 4px 16px rgba(255, 69, 58, 0.15);
                 }
+                
                 .icon-safety { 
                     color: #30d158; 
-                    box-shadow: 0 0 15px rgba(48, 209, 88, 0.2), inset 0 0 10px rgba(48, 209, 88, 0.1);
-                    border-color: rgba(48, 209, 88, 0.3);
-                    text-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
+                    background: rgba(48, 209, 88, 0.08);
+                    border-color: rgba(48, 209, 88, 0.2);
+                    box-shadow: 0 4px 16px rgba(48, 209, 88, 0.15);
                 }
+                
                 .icon-delete { 
                     color: #ff453a; 
                     box-shadow: 0 0 15px rgba(255, 69, 58, 0.2), inset 0 0 10px rgba(255, 69, 58, 0.1);
@@ -888,49 +1017,249 @@ export default function Profile() {
                 
                 .version-info { text-align: center; color: #333; font-size: 0.75rem; padding: 20px 0; }
 
-                /* Modal Styles (Solid) */
+                /* Modal Styles - Modern Professional Design */
                 .modal-backdrop {
-                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.8);
-                    z-index: 10000; display: flex; align-items: center; justify-content: center;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0,0,0,0.85);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    z-index: 10000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
                 }
+                
                 .modal-content {
-                    background: #1e1e1e; 
-                    border: 1px solid #333;
-                    border-radius: 24px; padding: 32px; width: 90%; max-width: 380px;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-                    display: flex; flex-direction: column; gap: 20px;
+                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 28px;
+                    padding: 32px 28px;
+                    width: 90%;
+                    max-width: 420px;
+                    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 24px;
                 }
                 
-                .modal-header { display: flex; align-items: center; gap: 15px; margin-bottom: 5px; }
+                .modal-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    margin-bottom: 4px;
+                }
+                
                 .icon-wrapper {
-                    width: 44px; height: 44px; border-radius: 12px;
-                    background: #252525; display: flex; align-items: center; justify-content: center;
-                    color: white; border: 1px solid #333;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 14px;
+                    background: rgba(255,255,255,0.04);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 }
-                .desc-lock { color: var(--accent-cyan); }
                 
-                .modal-content h3 { margin: 0; color: white; font-size: 1.3rem; font-weight: 600; }
-                .modal-form { display: flex; flex-direction: column; gap: 16px; }
+                .desc-lock {
+                    color: #bf5af2;
+                    background: rgba(191, 90, 242, 0.08);
+                    border-color: rgba(191, 90, 242, 0.2);
+                    box-shadow: 0 4px 16px rgba(191, 90, 242, 0.15);
+                }
                 
-                .input-group { display: flex; flex-direction: column; gap: 8px; text-align: left; }
-                .input-group label { font-size: 0.85rem; color: #aaa; font-weight: 500; margin-left: 4px; }
+                .modal-content h3 {
+                    margin: 0;
+                    color: white;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    letter-spacing: -0.02em;
+                }
+                
+                .modal-form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 20px;
+                }
+                
+                .input-group {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    text-align: left;
+                }
+                
+                .input-group label {
+                    font-size: 0.875rem;
+                    color: rgba(255,255,255,0.6);
+                    font-weight: 600;
+                    margin-left: 4px;
+                    letter-spacing: -0.01em;
+                }
+                
                 .input-group input {
-                    width: 100%; padding: 14px 16px;
-                    background: #111; border: 1px solid #333;
-                    border-radius: 12px; color: white; font-size: 0.95rem; outline: none;
-                    transition: all 0.2s;
+                    width: 100%;
+                    padding: 14px 16px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 0.95rem;
+                    outline: none;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
-                .input-group input:focus { 
-                    border-color: var(--accent-cyan);
+                
+                .input-group input::placeholder {
+                    color: rgba(255,255,255,0.3);
+                }
+                
+                .input-group input:focus {
+                    border-color: #bf5af2;
+                    background: rgba(191, 90, 242, 0.05);
+                    box-shadow: 0 0 0 3px rgba(191, 90, 242, 0.1);
                 }
 
-                .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; }
-                .btn-sec { 
-                    background: transparent; color: #888; border: none; padding: 12px 18px; 
-                    cursor: pointer; font-size: 0.95rem; font-weight: 500;
+                .modal-footer {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 12px;
+                    margin-top: 8px;
                 }
-                .btn-sec:hover { color: white; }
+                
+                .btn-sec {
+                    background: rgba(255,255,255,0.06);
+                    color: rgba(255,255,255,0.8);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    padding: 14px 24px;
+                    cursor: pointer;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    border-radius: 14px;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .btn-sec:hover {
+                    background: rgba(255,255,255,0.1);
+                    color: white;
+                    transform: translateY(-2px);
+                }
+                
+                .btn-sec:active {
+                    transform: scale(0.96);
+                }
+                
+                .btn-pri {
+                    background: linear-gradient(135deg, #bf5af2 0%, #9333ea 100%);
+                    color: white;
+                    border: none;
+                    padding: 14px 24px;
+                    border-radius: 14px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 0.95rem;
+                    box-shadow: 0 8px 20px rgba(191, 90, 242, 0.3);
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .btn-pri:hover {
+                    box-shadow: 0 12px 28px rgba(191, 90, 242, 0.4);
+                    transform: translateY(-2px);
+                }
+                
+                .btn-pri:active {
+                    transform: scale(0.96);
+                }
+                
+                /* Cyan Button Variant for Edit Name */
+                .btn-pri-cyan {
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+                    color: white;
+                    border: none;
+                    padding: 14px 24px;
+                    border-radius: 14px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 0.95rem;
+                    box-shadow: 0 8px 20px rgba(0, 198, 255, 0.3);
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .btn-pri-cyan:hover {
+                    box-shadow: 0 12px 28px rgba(0, 198, 255, 0.4);
+                    transform: translateY(-2px);
+                }
+                
+                .btn-pri-cyan:active {
+                    transform: scale(0.96);
+                }
+                
+                /* Edit Icon Styling */
+                .icon-edit {
+                    color: #00C6FF;
+                    background: rgba(0, 198, 255, 0.08);
+                    border-color: rgba(0, 198, 255, 0.2);
+                    box-shadow: 0 4px 16px rgba(0, 198, 255, 0.15);
+                }
+                
+                /* Name Fields Grid */
+                .name-fields-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 16px;
+                }
+                
+                @media (max-width: 480px) {
+                    .name-fields-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+                
+                /* Bio Textarea Styling */
+                .bio-textarea {
+                    resize: vertical;
+                    min-height: 100px;
+                    font-family: inherit;
+                    line-height: 1.6;
+                    width: 100%;
+                    padding: 14px 16px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 0.95rem;
+                    outline: none;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .bio-textarea::placeholder {
+                    color: rgba(255,255,255,0.3);
+                }
+                
+                .bio-textarea:focus {
+                    border-color: #ff9500;
+                    background: rgba(255, 149, 0, 0.05);
+                    box-shadow: 0 0 0 3px rgba(255, 149, 0, 0.1);
+                }
+                
+                .char-counter {
+                    font-size: 0.75rem;
+                    color: rgba(255,255,255,0.4);
+                    text-align: right;
+                    margin-top: 8px;
+                }
+                
+                /* Bio Icon Styling */
+                .icon-bio {
+                    color: #ff9500;
+                    background: rgba(255, 149, 0, 0.08);
+                    border-color: rgba(255, 149, 0, 0.2);
+                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15);
+                }
                 
                 /* Blocked list */
                 .blocked-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }

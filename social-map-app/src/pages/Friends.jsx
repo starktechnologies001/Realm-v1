@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import UserProfileCard from '../components/UserProfileCard';
+import { getAvatar2D } from '../utils/avatarUtils';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
@@ -254,12 +255,17 @@ export default function Friends() {
                                     <div key={req.id} className="friend-card request">
                                         <div className="avatar-container">
                                             <img src={(() => {
-                                                if (req.avatar_url) return req.avatar_url;
-                                                const safeName = encodeURIComponent(req.username || req.full_name || 'User');
-                                                const g = req.gender?.toLowerCase();
-                                                if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                                if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                let avatarUrl;
+                                                if (req.avatar_url) {
+                                                    avatarUrl = req.avatar_url;
+                                                } else {
+                                                    const safeName = encodeURIComponent(req.username || req.full_name || 'User');
+                                                    const g = req.gender?.toLowerCase();
+                                                    if (g === 'male') avatarUrl = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                                    else if (g === 'female') avatarUrl = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                                    else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                }
+                                                return getAvatar2D(avatarUrl);
                                             })()} alt="avatar" className="avatar" />
                                         </div>
                                         <div className="info">
@@ -300,12 +306,17 @@ export default function Friends() {
                                     <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
                                         <div className="avatar-container">
                                             <img src={(() => {
-                                                if (friend.avatar_url) return friend.avatar_url;
-                                                const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
-                                                const g = friend.gender?.toLowerCase();
-                                                if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                                if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                let avatarUrl;
+                                                if (friend.avatar_url) {
+                                                    avatarUrl = friend.avatar_url;
+                                                } else {
+                                                    const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
+                                                    const g = friend.gender?.toLowerCase();
+                                                    if (g === 'male') avatarUrl = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                                                    else if (g === 'female') avatarUrl = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                                                    else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                }
+                                                return getAvatar2D(avatarUrl);
                                             })()} alt="avatar" className="avatar" />
                                             <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
@@ -366,25 +377,65 @@ export default function Friends() {
             <style>{`
                 .modal-overlay {
                     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+                    background: rgba(0,0,0,0.85);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
                     display: flex; justify-content: center; align-items: center;
                     z-index: 2000;
                 }
                 .modal-content {
-                    background: #1a1a1a; padding: 25px; border-radius: 20px;
-                    width: 90%; max-width: 350px; text-align: center;
-                    border: 1px solid rgba(255,255,255,0.1);
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
+                    padding: 32px 28px;
+                    border-radius: 24px;
+                    width: 90%; max-width: 400px; text-align: center;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
                 }
-                .modal-content h3 { margin: 0 0 10px 0; color: white; }
-                .modal-content p { color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 25px; }
-                .modal-actions { display: flex; gap: 10px; justify-content: center; }
+                .modal-content h3 {
+                    margin: 0 0 16px 0;
+                    color: white;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    letter-spacing: -0.02em;
+                }
+                .modal-content p {
+                    color: rgba(255,255,255,0.7);
+                    font-size: 0.95rem;
+                    margin-bottom: 28px;
+                    line-height: 1.6;
+                }
+                .modal-actions { display: flex; gap: 12px; justify-content: center; }
                 .btn-cancel, .btn-confirm {
-                    padding: 12px 20px; border-radius: 12px; border: none;
-                    font-weight: 600; cursor: pointer; flex: 1;
+                    padding: 14px 20px;
+                    border-radius: 14px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 0.95rem;
+                    cursor: pointer;
+                    flex: 1;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
-                .btn-cancel { background: rgba(255,255,255,0.1); color: white; }
-                .btn-confirm.danger { background: #ef4444; color: white; }
+                .btn-cancel {
+                    background: rgba(255,255,255,0.08);
+                    color: white;
+                    border: 1px solid rgba(255,255,255,0.1);
+                }
+                .btn-cancel:hover {
+                    background: rgba(255,255,255,0.12);
+                    transform: translateY(-2px);
+                }
+                .btn-confirm.danger {
+                    background: linear-gradient(135deg, #ff453a 0%, #d32f2f 100%);
+                    color: white;
+                    box-shadow: 0 8px 20px rgba(255, 69, 58, 0.3);
+                }
+                .btn-confirm.danger:hover {
+                    box-shadow: 0 12px 28px rgba(255, 69, 58, 0.4);
+                    transform: translateY(-2px);
+                }
+                .btn-cancel:active, .btn-confirm:active {
+                    transform: scale(0.96);
+                }
             `}</style>
 
             <style>{`

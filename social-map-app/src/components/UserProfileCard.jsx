@@ -1,8 +1,20 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAvatar2D } from '../utils/avatarUtils';
+
 
 export default function UserProfileCard({ user, onClose, onAction }) {
     if (!user) return null;
+
+    // Debug: Log user data to see what's available
+    console.log('🔵 [UserProfileCard] User data:', user);
+    console.log('🔵 [UserProfileCard] Avatar:', user.avatar);
+    console.log('🔵 [UserProfileCard] Avatar URL:', user.avatar_url);
+
+    // Get the avatar URL and convert GLB to PNG if needed
+    const avatarUrl = user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`;
+    const displayAvatar = getAvatar2D(avatarUrl);
+    console.log('🔵 [UserProfileCard] Display Avatar:', displayAvatar);
 
     // Calculate time since active
     const getLastActive = (dateStr) => {
@@ -38,7 +50,7 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     <div className="card-header">
                         <div className="avatar-large-container" onClick={() => onAction('view-profile', user)}>
                             <img 
-                                src={user.avatar?.replace('size=96', 'size=200')} 
+                                src={displayAvatar} 
                                 alt={user.name} 
                                 className="avatar-large"
                             />

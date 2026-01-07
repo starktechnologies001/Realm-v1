@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
+import { getAvatar2D } from '../utils/avatarUtils';
 
 export default function FullProfileModal({ user, currentUser, onClose, onAction }) {
     const [stats, setStats] = useState({
@@ -82,7 +83,11 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     {/* Header with Avatar */}
                     <div className="fp-header">
                         <div className="fp-avatar-container">
-                            <img src={user.avatar?.replace('size=96', 'size=200')} alt={user.name} className="fp-avatar" />
+                            <img 
+                                src={getAvatar2D(user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`)} 
+                                alt={user.name} 
+                                className="fp-avatar" 
+                            />
                             <div className={`fp-status ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         <h2>{user.name}</h2>
@@ -139,9 +144,10 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     .full-profile-backdrop {
                         position: fixed;
                         top: 0; left: 0; right: 0; bottom: 0;
-                        background: rgba(0,0,0,0.7);
-                        backdrop-filter: blur(8px);
-                        z-index: 3000; /* Above everything */
+                        background: rgba(0,0,0,0.85);
+                        backdrop-filter: blur(12px);
+                        -webkit-backdrop-filter: blur(12px);
+                        z-index: 3000;
                         display: flex;
                         justify-content: center;
                         align-items: center;
@@ -149,105 +155,245 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     }
 
                     .full-profile-modal {
-                        background: #1a1a1a;
+                        background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
                         width: 100%;
-                        max-width: 400px;
-                        border-radius: 24px;
-                        border: 1px solid rgba(255,255,255,0.1);
-                        padding: 30px;
+                        max-width: 420px;
+                        border-radius: 28px;
+                        border: 1px solid rgba(255,255,255,0.08);
+                        padding: 32px 28px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                         position: relative;
-                        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+                        box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
                         max-height: 90vh;
                         overflow-y: auto;
                     }
 
                     .close-btn {
                         position: absolute;
-                        top: 15px; right: 15px;
-                        background: none; border: none;
-                        color: #666; font-size: 1.5rem;
+                        top: 16px; right: 16px;
+                        background: rgba(255,255,255,0.05);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 50%;
+                        color: rgba(255,255,255,0.6);
+                        font-size: 1.4rem;
                         cursor: pointer;
-                        padding: 5px;
+                        padding: 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        transition: all 0.2s;
                     }
-                    .close-btn:hover { color: white; }
+                    .close-btn:hover { 
+                        background: rgba(255,255,255,0.1);
+                        color: white;
+                        transform: scale(1.1);
+                    }
 
                     .fp-header {
-                        display: flex; flex-direction: column; align-items: center;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
                         width: 100%;
+                        margin-bottom: 8px;
                     }
 
-                    .fp-avatar-container { position: relative; margin-bottom: 15px; }
+                    .fp-avatar-container {
+                        position: relative;
+                        margin-bottom: 16px;
+                    }
+                    
                     .fp-avatar {
-                        width: 110px; height: 110px;
+                        width: 120px;
+                        height: 120px;
                         border-radius: 50%;
-                        border: 4px solid #111;
+                        border: 4px solid rgba(255,255,255,0.08);
                         object-fit: cover;
+                        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
                     }
+                    
                     .fp-status {
-                        position: absolute; bottom: 5px; right: 5px;
-                        width: 20px; height: 20px;
-                        border-radius: 50%; border: 3px solid #1a1a1a;
+                        position: absolute;
+                        bottom: 8px;
+                        right: 8px;
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 50%;
+                        border: 4px solid rgba(20, 20, 25, 1);
                     }
-                    .fp-status.online { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
-                    .fp-status.offline { background: #666; }
+                    .fp-status.online {
+                        background: #00ff88;
+                        box-shadow: 0 0 16px rgba(0, 255, 136, 0.6);
+                    }
+                    .fp-status.offline {
+                        background: #666;
+                    }
 
-                    .fp-header h2 { margin: 0; color: white; font-size: 1.4rem; }
-                    .fp-username { color: #888; font-size: 0.9rem; margin-top: 4px; }
+                    .fp-header h2 {
+                        margin: 0;
+                        color: white;
+                        font-size: 1.6rem;
+                        font-weight: 700;
+                        letter-spacing: -0.02em;
+                    }
+                    
+                    .fp-username {
+                        color: rgba(255,255,255,0.5);
+                        font-size: 0.95rem;
+                        margin-top: 6px;
+                        font-weight: 500;
+                    }
+                    
                     .fp-status-tag {
-                        background: rgba(255,255,255,0.1);
-                        padding: 4px 12px;
+                        background: rgba(255,255,255,0.08);
+                        padding: 6px 16px;
                         border-radius: 20px;
-                        font-size: 0.8rem;
-                        color: #ccc;
-                        margin-top: 10px;
+                        font-size: 0.85rem;
+                        color: rgba(255,255,255,0.8);
+                        margin-top: 12px;
+                        font-weight: 600;
+                        border: 1px solid rgba(255,255,255,0.06);
                     }
 
                     .fp-stats-row {
-                        display: flex; justify-content: space-around;
+                        display: flex;
+                        justify-content: space-around;
                         width: 100%;
-                        margin: 25px 0;
-                        padding: 15px 0;
-                        border-top: 1px solid rgba(255,255,255,0.05);
-                        border-bottom: 1px solid rgba(255,255,255,0.05);
+                        margin: 24px 0;
+                        padding: 20px 0;
+                        border-top: 1px solid rgba(255,255,255,0.06);
+                        border-bottom: 1px solid rgba(255,255,255,0.06);
+                        background: rgba(255,255,255,0.02);
+                        border-radius: 16px;
                     }
-                    .fp-stat { display: flex; flex-direction: column; align-items: center; }
-                    .fp-stat-val { color: white; font-weight: 700; font-size: 1.1rem; }
-                    .fp-stat-label { color: #666; font-size: 0.75rem; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+                    
+                    .fp-stat {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        gap: 6px;
+                    }
+                    
+                    .fp-stat-val {
+                        color: white;
+                        font-weight: 700;
+                        font-size: 1.15rem;
+                        letter-spacing: -0.01em;
+                    }
+                    
+                    .fp-stat-label {
+                        color: rgba(255,255,255,0.4);
+                        font-size: 0.7rem;
+                        margin-top: 2px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.8px;
+                        font-weight: 700;
+                    }
 
-                    .fp-bio-section { text-align: center; width: 100%; margin-bottom: 25px; }
-                    .fp-bio-section h3 { color: #888; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
-                    .fp-bio-section p { color: #ddd; font-size: 0.95rem; line-height: 1.5; margin: 0; font-style: italic; }
+                    .fp-bio-section {
+                        text-align: center;
+                        width: 100%;
+                        margin-bottom: 28px;
+                        padding: 20px;
+                        background: rgba(255,255,255,0.02);
+                        border-radius: 16px;
+                        border: 1px solid rgba(255,255,255,0.04);
+                    }
+                    
+                    .fp-bio-section h3 {
+                        color: rgba(255,255,255,0.4);
+                        font-size: 0.75rem;
+                        text-transform: uppercase;
+                        margin-bottom: 12px;
+                        letter-spacing: 1.2px;
+                        font-weight: 700;
+                    }
+                    
+                    .fp-bio-section p {
+                        color: rgba(255,255,255,0.8);
+                        font-size: 0.95rem;
+                        line-height: 1.6;
+                        margin: 0;
+                        font-style: italic;
+                    }
 
                     .fp-actions {
-                        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 12px;
                         width: 100%;
-                        margin-bottom: 20px;
+                        margin-bottom: 24px;
                     }
+                    
                     .fp-btn {
-                        padding: 12px; border-radius: 12px; border: none;
-                        font-weight: 600; cursor: pointer;
-                        display: flex; align-items: center; justify-content: center; gap: 8px;
-                        transition: transform 0.2s;
+                        padding: 14px 16px;
+                        border-radius: 14px;
+                        border: none;
+                        font-weight: 600;
+                        font-size: 0.95rem;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                     }
-                    .fp-btn:active { transform: scale(0.96); }
-                    .fp-btn.primary { 
-                        background: var(--brand-gradient, linear-gradient(135deg, #00C6FF, #0072FF));
+                    
+                    .fp-btn:active {
+                        transform: scale(0.96);
+                    }
+                    
+                    .fp-btn.primary {
+                        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
                         color: white;
                         grid-column: span 2;
+                        box-shadow: 0 8px 20px rgba(0, 114, 255, 0.3);
                     }
-                    .fp-btn.secondary { background: rgba(255,255,255,0.08); color: white; }
+                    
+                    .fp-btn.primary:hover {
+                        box-shadow: 0 12px 28px rgba(0, 114, 255, 0.4);
+                        transform: translateY(-2px);
+                    }
+                    
+                    .fp-btn.secondary {
+                        background: rgba(255,255,255,0.06);
+                        color: white;
+                        border: 1px solid rgba(255,255,255,0.08);
+                    }
+                    
+                    .fp-btn.secondary:hover {
+                        background: rgba(255,255,255,0.1);
+                        transform: translateY(-2px);
+                    }
 
-                    .fp-footer-actions { display: flex; gap: 20px; }
-                    .fp-text-btn {
-                        background: none; border: none;
-                        font-size: 0.85rem; cursor: pointer;
-                        opacity: 0.6; transition: opacity 0.2s;
+                    .fp-footer-actions {
+                        display: flex;
+                        gap: 24px;
+                        padding-top: 16px;
+                        border-top: 1px solid rgba(255,255,255,0.06);
                     }
-                    .fp-text-btn.danger { color: #ff453a; }
-                    .fp-text-btn:hover { opacity: 1; }
+                    
+                    .fp-text-btn {
+                        background: none;
+                        border: none;
+                        font-size: 0.875rem;
+                        cursor: pointer;
+                        opacity: 0.5;
+                        transition: all 0.2s;
+                        font-weight: 600;
+                    }
+                    
+                    .fp-text-btn.danger {
+                        color: #ff453a;
+                    }
+                    
+                    .fp-text-btn:hover {
+                        opacity: 1;
+                        transform: scale(1.05);
+                    }
 
                 `}</style>
             </motion.div>
