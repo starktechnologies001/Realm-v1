@@ -3,6 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
+import { getAvatarHeadshot } from '../utils/avatarUtils';
+import AttachmentPicker from '../components/AttachmentPicker';
+import AttachmentPreview from '../components/AttachmentPreview';
+import MessageAttachment from '../components/MessageAttachment';
+import { uploadToStorage, validateFile } from '../utils/fileUpload';
+import EmojiPicker from 'emoji-picker-react';
 
 const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
 
@@ -26,8 +32,6 @@ export default function Chat() {
             }
             setCurrentUser(user);
             
-
-
             // If navigated with a target user (from Map or Friends), open that chat immediately
             if (location.state?.targetUser) {
                 setActiveChatUser(location.state.targetUser);
@@ -123,7 +127,7 @@ export default function Chat() {
 
             // Avatar Logic: Prefer stored avatar, else generate consistent one
             // similar to MapHome logic
-            let genderAvatar = partner.avatar_url;
+            let genderAvatar = getAvatarHeadshot(partner.avatar_url);
             if (!genderAvatar) {
                  const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
                  if (partner.gender === 'Male') genderAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
@@ -209,11 +213,11 @@ export default function Chat() {
                         // Optimistic check: if we can't verify, we might fetch to be sure.
                         const { data } = await supabase
                             .from('friendships')
-                             .select('id')
-                             .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
-                             .or(`requester_id.eq.${activeChatUser.id},receiver_id.eq.${activeChatUser.id}`)
-                             .eq('status', 'accepted')
-                             .maybeSingle();
+                            .select('id')
+                            .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                            .or(`requester_id.eq.${activeChatUser.id},receiver_id.eq.${activeChatUser.id}`)
+                            .eq('status', 'accepted')
+                            .maybeSingle();
 
                         if (!data) {
                             setActiveChatUser(null);
@@ -268,7 +272,7 @@ export default function Chat() {
         return (
             <div className="incoming-call-overlay">
                 <div className="call-card">
-                    <img src={incomingCall.caller.avatar_url} className="call-avatar" alt="Caller" />
+                    <img src={getAvatarHeadshot(incomingCall.caller.avatar_url)} className="call-avatar" alt="Caller" />
                     <h2>{incomingCall.caller.full_name || incomingCall.caller.username}</h2>
                     <p>Incoming {incomingCall.type} call...</p>
 
@@ -682,6 +686,19 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const [showMuteMenu, setShowMuteMenu] = useState(false);
     const [muteSettings, setMuteSettings] = useState(null);
 
+    // Attachment System State
+    const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+    const [showAttachmentPreview, setShowAttachmentPreview] = useState(false);
+    const [selectedFiles, setSelectedFiles] = useState([]);
+    const [uploadProgress, setUploadProgress] = useState(null);
+    const cameraInputRef = useRef(null);
+    const galleryInputRef = useRef(null);
+    const documentInputRef = useRef(null);
+
+    // Emoji Picker State
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+
     // Fetch mute settings
     useEffect(() => {
         const fetchMuteSettings = async () => {
@@ -813,7 +830,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         const fetchMessages = async () => {
             const { data, error } = await supabase
                 .from('messages')
-                .select('*')
+                .select(`
+                    *,
+                    attachments:message_attachments(*)
+                `)
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .order('created_at', { ascending: true });
 
@@ -989,6 +1009,124 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
+    // Attachment System Handlers
+    const handleSelectCamera = () => {
+        setShowAttachmentPicker(false);
+        cameraInputRef.current?.click();
+    };
+
+    const handleSelectGallery = () => {
+        setShowAttachmentPicker(false);
+        galleryInputRef.current?.click();
+    };
+
+    const handleSelectDocument = () => {
+        setShowAttachmentPicker(false);
+        documentInputRef.current?.click();
+    };
+
+    const handleFileSelect = (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        // Validate all files
+        const validFiles = [];
+        for (const file of files) {
+            const validation = validateFile(file);
+            if (!validation.valid) {
+                showToast(validation.error);
+                continue;
+            }
+            validFiles.push(file);
+        }
+
+        if (validFiles.length > 0) {
+            setSelectedFiles(validFiles);
+            setShowAttachmentPreview(true);
+        }
+
+        // Reset input
+        e.target.value = '';
+    };
+
+    const handleRemoveFile = (index) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSendAttachments = async () => {
+        if (selectedFiles.length === 0) return;
+
+        setUploadProgress(0);
+
+        try {
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                
+                // Upload file
+                const result = await uploadToStorage(file, currentUser.id, (progress) => {
+                    const totalProgress = ((i / selectedFiles.length) + (progress / 100 / selectedFiles.length)) * 100;
+                    setUploadProgress(totalProgress);
+                });
+
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                // Insert message with attachment
+                const { data: messageData, error: messageError } = await supabase
+                    .from('messages')
+                    .insert({
+                        sender_id: currentUser.id,
+                        receiver_id: targetUser.id,
+                        content: `📎 ${result.fileName}`,
+                        message_type: 'attachment',
+                        has_attachment: true
+                    })
+                    .select()
+                    .single();
+
+                if (messageError) throw messageError;
+
+                // Insert attachment record
+                const { error: attachmentError } = await supabase
+                    .from('message_attachments')
+                    .insert({
+                        message_id: messageData.id,
+                        file_url: result.fileUrl,
+                        file_name: result.fileName,
+                        file_type: result.fileType,
+                        file_size: result.fileSize,
+                        mime_type: result.mimeType
+                    });
+
+                if (attachmentError) throw attachmentError;
+            }
+
+            showToast(`Sent ${selectedFiles.length} file(s) ✅`);
+            setSelectedFiles([]);
+            setShowAttachmentPreview(false);
+            setUploadProgress(null);
+        } catch (error) {
+            console.error('Attachment send error:', error);
+            showToast('Failed to send attachments ❌');
+            setUploadProgress(null);
+        }
+    };
+
+    const handleCancelAttachments = () => {
+        setSelectedFiles([]);
+        setShowAttachmentPreview(false);
+        setUploadProgress(null);
+    };
+
+    // Emoji Picker Handler
+    const handleEmojiSelect = (emojiObject) => {
+        setInput(prev => prev + emojiObject.emoji);
+        // Don't close picker automatically for better UX when adding multiple emojis
+        // setShowEmojiPicker(false); 
+    };
+
+
     const startVoiceCall = () => {
         startCall(targetUser, 'audio');
     };
@@ -1137,7 +1275,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 <div className="header-user">
                     <img src={(() => {
                         // Priority 1: Stored avatar
-                        if (partner.avatar_url) return partner.avatar_url;
+                        if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
 
                         // Priority 2: Consistent generation
                         const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
@@ -1397,6 +1535,16 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 ) : (
                                     <span className="msg-text">{msg.content}</span>
                                 )}
+                                
+                                {/* Render attachments if present */}
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                    <div className="message-attachments">
+                                        {msg.attachments.map((attachment, idx) => (
+                                            <MessageAttachment key={idx} attachment={attachment} />
+                                        ))}
+                                    </div>
+                                )}
+                                
                                 <div className="msg-footer">
                                     <span className="msg-time">{formatTime(msg.created_at)}</span>
                                     {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
@@ -1417,9 +1565,60 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         accept="image/*"
                         onChange={handleImageUpload}
                     />
+                    {/* Hidden file inputs for attachment system */}
+                    <input
+                        type="file"
+                        ref={cameraInputRef}
+                        style={{ display: 'none' }}
+                        accept="image/*,video/*"
+                        capture="environment"
+                        onChange={handleFileSelect}
+                    />
+                    <input
+                        type="file"
+                        ref={galleryInputRef}
+                        style={{ display: 'none' }}
+                        accept="image/*,video/*"
+                        multiple
+                        onChange={handleFileSelect}
+                    />
+                    <input
+                        type="file"
+                        ref={documentInputRef}
+                        style={{ display: 'none' }}
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
+                        multiple
+                        onChange={handleFileSelect}
+                    />
+                    
+                    {/* Attachment "+" Button */}
+                    <button 
+                        onClick={() => setShowAttachmentPicker(true)} 
+                        className="input-icon-btn attachment-btn"
+                        title="Attach files"
+                    >
+                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="16"></line>
+                            <line x1="8" y1="12" x2="16" y2="12"></line>
+                        </svg>
+                    </button>
+                    
+                    {/* Existing Image Button */}
                     <button onClick={() => fileInputRef.current.click()} disabled={uploading} className="input-icon-btn">
                         {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
                     </button>
+
+                    {/* Emoji Picker Button (Moved to Left) */}
+                    <button 
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                        className="input-icon-btn emoji-btn"
+                        title="Add emoji"
+                        style={{ marginRight: '8px' }}
+                    >
+                        😊
+                    </button>
+
                     <input
                         className="msg-input"
                         value={input}
@@ -1428,11 +1627,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         placeholder="Type a message..."
                         disabled={uploading}
                     />
+                    
                     <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading)}>
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
                     </button>
                 </div>
             </div>
+
+            {/* Emoji Picker Popup using Library */}
+            {showEmojiPicker && (
+                <div className="emoji-picker-popup">
+                    <EmojiPicker 
+                        onEmojiClick={handleEmojiSelect}
+                        theme="dark"
+                        searchDisabled={false}
+                        width="100%"
+                        height={350}
+                        previewConfig={{ showPreview: false }}
+                    />
+                </div>
+            )}
 
             {/* Image Viewer Modal */}
             {viewingImage && (
@@ -1616,6 +1830,45 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 }
                 .send-btn:hover { transform: scale(1.05); }
                 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+                /* Emoji Picker */
+                .emoji-btn {
+                    font-size: 1.5rem;
+                    padding: 0;
+                    width: 36px;
+                    height: 36px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-right: 4px; /* Added spacing */
+                }
+
+                .emoji-picker-popup {
+                    position: absolute;
+                    bottom: 80px;
+                    left: 20px; /* Moved to left */
+                    background: rgba(20, 20, 20, 0.98);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px;
+                    padding: 0; /* Remove padding for library component */
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+                    z-index: 1000;
+                    width: 350px; /* Fixed width for picker */
+                    overflow: hidden; /* rounded corners */
+                    animation: slideUpFade 0.2s ease-out;
+                }
+
+                @keyframes slideUpFade {
+                    from {
+                        opacity: 0;
+                        transform: translateY(10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
 
                 /* Dropdown & Modals */
                 .dropdown-menu {
@@ -1841,6 +2094,23 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     border: 1px solid rgba(255, 255, 255, 0.05);
                 }
             `}</style>
+
+            {/* Attachment System Components */}
+            <AttachmentPicker
+                isOpen={showAttachmentPicker}
+                onClose={() => setShowAttachmentPicker(false)}
+                onSelectCamera={handleSelectCamera}
+                onSelectGallery={handleSelectGallery}
+                onSelectDocument={handleSelectDocument}
+            />
+
+            <AttachmentPreview
+                files={selectedFiles}
+                onRemove={handleRemoveFile}
+                onSend={handleSendAttachments}
+                onCancel={handleCancelAttachments}
+                uploadProgress={uploadProgress}
+            />
         </div>
     );
 }

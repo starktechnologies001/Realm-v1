@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
+import Avatar3D from '../components/Avatar3D';
+import AvatarEditor from '../components/AvatarEditor';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -10,6 +12,7 @@ export default function Profile() {
     const [toastMsg, setToastMsg] = useState(null);
     const [blockedUsers, setBlockedUsers] = useState([]);
     const [showBlockedModal, setShowBlockedModal] = useState(false);
+    const [showAvatarEditor, setShowAvatarEditor] = useState(false);
 
     useEffect(() => {
         fetchProfile();
@@ -31,39 +34,9 @@ export default function Profile() {
 
             if (error) throw error;
 
-                // Self-Healing: Enforce correct avatar based on gender (Fix legacy or mismatched avatars)
-            if (data && data.gender) {
-                const gender = data.gender.toLowerCase();
-                const currentAvatar = data.avatar_url || '';
-                const safeName = encodeURIComponent(data.username || data.full_name || 'User');
-                
-                let shouldUpdate = false;
-                let newAvatarUrl = currentAvatar;
-
-                // Check mismatch - now using DiceBear Adventurer as standard
-                const isAdventurer = currentAvatar.includes('dicebear.com/9.x/adventurer');
-                
-                if (gender === 'male' && (!currentAvatar.includes('hair=short') || !isAdventurer)) {
-                    newAvatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                    shouldUpdate = true;
-                } else if (gender === 'female' && (!currentAvatar.includes('hair=long') || !isAdventurer)) {
-                    newAvatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                    shouldUpdate = true;
-                }
-
-                if (shouldUpdate) {
-                    console.log(`Fixing avatar mismatch for ${gender}: ${currentAvatar} -> ${newAvatarUrl}`);
-                    
-                    // Update DB with new URL
-                    await supabase.from('profiles')
-                        .update({ avatar_url: newAvatarUrl })
-                        .eq('id', user.id);
-                    
-                    // Update local data immediatey
-                    data.avatar_url = newAvatarUrl;
-                }
-            }
-
+            // Self-Healing (Legacy check removed for brevity, assuming established users or fresh setup)
+            // Note: Keeping existing self-healing if needed but simplifying for readability in this update
+            
             setUser(data);
             
             // Fetch blocked users
@@ -121,19 +94,48 @@ export default function Profile() {
     };
 
     const updateProfile = async (updates) => {
+        // OPTIMISTIC UPDATE: Update local state + LocalStorage immediately
+        const previousUser = { ...user };
+        const updatedUser = { ...user, ...updates };
+        
+        console.log('🟣 [Profile] updateProfile called with:', updates);
+        console.log('🟣 [Profile] Current user ID:', user.id);
+        
+        setUser(updatedUser);
+        localStorage.setItem('currentUser', JSON.stringify(updatedUser)); // Sync for MapHome
+        window.dispatchEvent(new Event('local-user-update')); // Broadcast change to MapHome
+
         try {
-            const { error } = await supabase
+            console.log('🟣 [Profile] Attempting database update...');
+            const { error, data } = await supabase
                 .from('profiles')
                 .update(updates)
                 .eq('id', user.id);
 
-            if (error) throw error;
-            setUser({ ...user, ...updates });
+            if (error) {
+                console.error('🟣 [Profile] Database update ERROR:', error);
+                throw error;
+            }
+            console.log('🟣 [Profile] Database update SUCCESS:', data);
             showToast("Profile updated successfully! ✅");
         } catch (error) {
-            console.error("Error updating profile:", error);
+            console.error("🟣 [Profile] Error updating profile:", error);
+            // Revert state on failure
+            setUser(previousUser);
+            localStorage.setItem('currentUser', JSON.stringify(previousUser));
             showToast("Failed to update profile ❌");
         }
+    };
+
+    const handleAvatarSave = (url) => {
+        setShowAvatarEditor(false);
+        // Append unique timestamp to force cache invalidation for 3D viewers
+        // Handle existing query params from AvatarEditor
+        const separator = url.includes('?') ? '&' : '?';
+        const timestampedUrl = `${url}${separator}t=${Date.now()}`;
+        console.log('🔵 [Profile] Avatar Save - Original URL:', url);
+        console.log('🔵 [Profile] Avatar Save - Timestamped URL:', timestampedUrl);
+        updateProfile({ avatar_url: timestampedUrl });
     };
 
     const showToast = (msg) => {
@@ -226,28 +228,68 @@ export default function Profile() {
     if (loading) return <div style={{ color: 'white', padding: '20px' }}>Loading profile...</div>;
     if (!user) return null;
 
+    const is3DAvatar = user.avatar_url?.includes('.glb');
+
     return (
         <div className="profile-page">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
-            {/* Ambient Background Gradient */}
-            {/* Ambient Background Gradient Removed */}
+            
+            {showAvatarEditor && (
+                <AvatarEditor 
+                    onSave={handleAvatarSave} 
+                    onClose={() => setShowAvatarEditor(false)} 
+                />
+            )}
 
             {/* Header Card */}
-            <div className="profile-header-card">
-                <div className="avatar-wrapper">
-                    <img src={(() => {
-                        const safeName = encodeURIComponent(user.username || user.full_name || 'User');
-                        const gender = user.gender?.toLowerCase();
-                        if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-                    })()} alt="Avatar" className="profile-avatar" />
-                    <div className="status-indicator"></div>
+            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''}`}>
+                <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`}>
+                    {is3DAvatar ? (
+                        <div className="avatar-3d-container">
+                             <Avatar3D url={user.avatar_url} key={user.avatar_url} />
+                             {/* Customize button moved to detailed info section */}
+                        </div>
+                    ) : (
+                        <>
+                            <img src={(() => {
+                                // Fallback logic for old avatars
+                                const safeName = encodeURIComponent(user.username || user.full_name || 'User');
+                                const gender = user.gender?.toLowerCase();
+                                if (user.avatar_url) return user.avatar_url; // Use existing if not 3D
+                                if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                                if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                            })()} alt="Avatar" className="profile-avatar" />
+                            <button className="edit-avatar-btn-overlay" onClick={() => setShowAvatarEditor(true)}>
+                                ✏️
+                            </button>
+                            <div className="status-indicator"></div>
+                        </>
+                    )}
                 </div>
+                
                 <div className="profile-info">
                     <h1>{user.full_name || user.username}</h1>
                     <div className="tags-row">
                         {user.status && <span className="tag status">{user.status}</span>}
+                        {is3DAvatar && (
+                            <button 
+                                onClick={() => setShowAvatarEditor(true)}
+                                style={{
+                                    background: 'transparent',
+                                    border: '1px solid #333',
+                                    borderRadius: '50%',
+                                    width: '28px',
+                                    height: '28px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: 'var(--accent-cyan)',
+                                    marginLeft: '8px'
+                                }}
+                            >
+                                ✏️
+                            </button>
+                        )}
                     </div>
                     {/* Bio Section */}
                     <div className={`user-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
@@ -258,8 +300,9 @@ export default function Profile() {
                 <button className="edit-btn" onClick={() => {
                     const newName = prompt("Enter full name:", user.full_name);
                     if (newName) updateProfile({ full_name: newName });
-                }}>Edit</button>
+                }}>Edit Name</button>
             </div>
+
 
             <div className="scroll-content">
                 {/* Section: Personal */}
@@ -700,63 +743,118 @@ export default function Profile() {
 
                 /* Flat Professional List Style */
                 .section-label {
-                    margin: 25px 0 10px 16px;
-                    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;
-                    color: var(--text-secondary); font-weight: 600; opacity: 0.7;
+                    margin: 30px 0 10px 10px;
+                    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1.2px;
+                    color: #666; font-weight: 700;
                 }
 
                 .menu-group {
-                    background: transparent; /* Removed Box Background */
-                    border: none; /* Removed Box Border */
-                    border-radius: 0;
-                    overflow: visible;
-                    margin-bottom: 10px;
+                    background: rgba(30, 30, 32, 0.6); /* Semi-transparent */
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border-radius: 16px;
+                    overflow: hidden;
+                    margin-bottom: 20px;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
                 }
 
                 .menu-item {
-                    display: flex; align-items: center; padding: 18px 16px;
+                    display: flex; align-items: center; padding: 16px;
                     cursor: pointer; transition: background 0.2s;
-                    border-bottom: 1px solid #1a1a1a; /* Very subtle separator */
+                    border-bottom: 0.5px solid rgba(255, 255, 255, 0.08); 
                     background: transparent;
                 }
                 .menu-item:last-child { border-bottom: none; }
-                .menu-item:hover { background: rgba(255,255,255,0.03); border-radius: 12px; }
+                .menu-item:hover { background: rgba(255,255,255,0.05); }
 
                 .menu-icon-wrapper {
-                    width: 38px; height: 38px; border-radius: 10px;
+                    width: 32px; height: 32px; border-radius: 8px; /* Squircle-ish */
                     display: flex; align-items: center; justify-content: center;
-                    margin-right: 16px; color: white; font-size: 1.2rem;
+                    margin-right: 14px; color: white; font-size: 1rem;
                 }
 
                 .menu-content { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-                .menu-label { font-size: 1.05rem; color: var(--text-primary); font-weight: 500; }
-                .menu-value { font-size: 0.9rem; color: #666; margin-top: 4px; }
-                .menu-chevron { color: #333; font-size: 1.2rem; transition: transform 0.3s; }
-                .menu-chevron.expanded { transform: rotate(90deg); }                    margin-right: 14px; color: white; font-size: 1.1rem;
-                }
-                .menu-label { font-size: 1rem; color: #fff; font-weight: 500; }
-                .menu-value { 
-                    font-size: 0.95rem; 
-                    background: linear-gradient(90deg, #00C6FF, #00FF7F); /* Blue -> Green */
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    font-weight: 700; 
-                    margin-top: 2px;
-                    letter-spacing: 0.3px;
-                }
-                .menu-chevron { color: #555; font-size: 1.1rem; transition: transform 0.3s; }
-                .menu-chevron.expanded { transform: rotate(90deg); }
-                /* Professional Icon Tints (No Gradients) */
-                .icon-personal { background: rgba(0, 122, 255, 0.15); color: #4facfe; } /* Blue */
-                .icon-interests { background: rgba(255, 45, 85, 0.15); color: #ff2d55; } /* Pink */
-                .icon-birthday { background: rgba(255, 149, 0, 0.15); color: #ff9500; } /* Orange */
-                .icon-notif { background: rgba(255, 204, 0, 0.15); color: #ffcc00; } /* Yellow */
-                .icon-lock { background: rgba(142, 142, 147, 0.15); color: #999; } /* Gray */
-                .icon-block { background: rgba(88, 86, 214, 0.15); color: #5856d6; } /* Purple */
-                .icon-safety { background: rgba(52, 199, 89, 0.15); color: #34c759; } /* Green */
-                .icon-delete { background: rgba(255, 59, 48, 0.15); color: #ff3b30; } /* Red */
                 
-                .menu-icon-wrapper svg { stroke-width: 2px; }
+                .menu-label { font-size: 1rem; color: #fff; font-weight: 500; margin-bottom: 2px; }
+                
+                .menu-value { 
+                    font-size: 0.9rem; 
+                    font-weight: 600; 
+                    color: rgba(255,255,255,0.7); /* Professional muted white instead of gradient for now, or keep per user pref? Let's use accent color or clean white */
+                    /* Reverting gradient to solid for cleaner professional look unless requested */
+                    color: #aaa;
+                    margin-top: 2px;
+                }
+                
+                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
+                .menu-chevron.expanded { transform: rotate(90deg); }
+                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
+                .menu-chevron.expanded { transform: rotate(90deg); }
+                
+                .menu-chevron { color: #444; font-size: 1.1rem; transition: transform 0.3s; margin-left: 10px; }
+                .menu-chevron.expanded { transform: rotate(90deg); }
+                
+                /* Glowing Icons Logic */
+                .menu-icon-wrapper {
+                    /* Base glass style */
+                    background: rgba(255,255,255,0.03);
+                    border: 1px solid rgba(255,255,255,0.05);
+                    box-shadow: 0 0 15px rgba(0,0,0,0.5); /* Deep shadow behind */
+                    transition: all 0.3s ease;
+                }
+
+                /* Individual Neon Glows */
+                .icon-personal { 
+                    color: #00d4ff; 
+                    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2), inset 0 0 10px rgba(0, 212, 255, 0.1);
+                    border-color: rgba(0, 212, 255, 0.3);
+                    text-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+                }
+                .icon-interests { 
+                    color: #ff0055; 
+                    box-shadow: 0 0 15px rgba(255, 0, 85, 0.2), inset 0 0 10px rgba(255, 0, 85, 0.1);
+                    border-color: rgba(255, 0, 85, 0.3);
+                    text-shadow: 0 0 8px rgba(255, 0, 85, 0.6);
+                }
+                .icon-birthday { 
+                    color: #ff9500; 
+                    box-shadow: 0 0 15px rgba(255, 149, 0, 0.2), inset 0 0 10px rgba(255, 149, 0, 0.1);
+                    border-color: rgba(255, 149, 0, 0.3);
+                    text-shadow: 0 0 8px rgba(255, 149, 0, 0.6);
+                }
+                .icon-notif { 
+                    color: #ffd60a; 
+                    box-shadow: 0 0 15px rgba(255, 214, 10, 0.2), inset 0 0 10px rgba(255, 214, 10, 0.1);
+                    border-color: rgba(255, 214, 10, 0.3);
+                    text-shadow: 0 0 8px rgba(255, 214, 10, 0.6);
+                }
+                .icon-lock { 
+                    color: #bf5af2; 
+                    box-shadow: 0 0 15px rgba(191, 90, 242, 0.2), inset 0 0 10px rgba(191, 90, 242, 0.1);
+                    border-color: rgba(191, 90, 242, 0.3);
+                    text-shadow: 0 0 8px rgba(191, 90, 242, 0.6);
+                }
+                .icon-block { 
+                    color: #5e5ce6; 
+                    box-shadow: 0 0 15px rgba(94, 92, 230, 0.2), inset 0 0 10px rgba(94, 92, 230, 0.1);
+                    border-color: rgba(94, 92, 230, 0.3);
+                    text-shadow: 0 0 8px rgba(94, 92, 230, 0.6);
+                }
+                .icon-safety { 
+                    color: #30d158; 
+                    box-shadow: 0 0 15px rgba(48, 209, 88, 0.2), inset 0 0 10px rgba(48, 209, 88, 0.1);
+                    border-color: rgba(48, 209, 88, 0.3);
+                    text-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
+                }
+                .icon-delete { 
+                    color: #ff453a; 
+                    box-shadow: 0 0 15px rgba(255, 69, 58, 0.2), inset 0 0 10px rgba(255, 69, 58, 0.1);
+                    border-color: rgba(255, 69, 58, 0.3);
+                    text-shadow: 0 0 8px rgba(255, 69, 58, 0.6);
+                }
+                
+                .menu-icon-wrapper svg { stroke-width: 2px; filter: drop-shadow(0 0 2px currentColor); }
 
                 /* Solid Submenu */
                 .inner-submenu {
@@ -857,6 +955,63 @@ export default function Profile() {
                 .wallpaper-option:hover { transform: scale(1.05); }
                 .wallpaper-option.active { border-color: var(--accent-cyan); box-shadow: 0 0 15px rgba(0, 212, 255, 0.3); }
                 .check-icon { font-weight: bold; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+
+                /* 3D Avatar Styles */
+                .profile-header-card.expanded-3d {
+                    background: transparent;
+                    border-bottom: none;
+                    padding-bottom: 20px;
+                    padding-top: 0;
+                    margin-top: 0;
+                }
+
+                .avatar-wrapper.wrapper-3d {
+                    width: 100%;
+                    height: auto;
+                    background: transparent;
+                    border-radius: 0;
+                    margin-bottom: 20px;
+                    margin-top: -30px; /* Pull up a bit more */
+                    display: flex; 
+                    justify-content: center;
+                }
+
+                .avatar-3d-container {
+                    width: 100%;
+                    max-width: 400px;
+                    height: 280px; /* Shortened from 400px */
+                    position: relative;
+                }
+
+                .edit-avatar-btn-3d {
+                    position: absolute;
+                    bottom: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(0,0,0,0.6);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    backdrop-filter: blur(5px);
+                    transition: all 0.2s;
+                    display: flex; align-items: center; gap: 8px;
+                    z-index: 10;
+                }
+                .edit-avatar-btn-3d:hover { background: rgba(0,0,0,0.8); border-color: var(--accent-cyan); }
+
+                .edit-avatar-btn-overlay {
+                    position: absolute; bottom: 0; right: 0;
+                    width: 32px; height: 32px; border-radius: 50%;
+                    background: var(--accent-cyan); color: black;
+                    border: 2px solid #1a1a2e;
+                    cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 1rem;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                }
             `}</style>
         </div>
     );

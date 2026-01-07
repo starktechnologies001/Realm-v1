@@ -1,12 +1,13 @@
 import { MapContainer, TileLayer, Marker, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
+import { getAvatar2D } from '../utils/avatarUtils';
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -123,7 +124,6 @@ export default function MapHome() {
 
             if (profile) {
                 // Check if mandatory fields are missing
-                // Now DiceBear is valid (and standard), so just check gender/status/username
                 if (!profile.gender || !profile.status || !profile.username) {
                     setSetupData({
                         gender: profile.gender || '',
@@ -132,8 +132,9 @@ export default function MapHome() {
                     setShowProfileSetup(true);
                     setLoading(false); 
                 }
-                // Force Update Avatar if NOT Iran Liara (e.g. if it is DiceBear)
-                else if (!profile.avatar_url || !profile.avatar_url.includes('avatar.iran.liara.run')) {
+                // Force Update Avatar if NOT Iran Liara AND NOT Ready Player Me AND NOT DiceBear
+                // We allow RPM URLs now
+                else if (!profile.avatar_url || (!profile.avatar_url.includes('avatar.iran.liara.run') && !profile.avatar_url.includes('models.readyplayer.me') && !profile.avatar_url.includes('dicebear'))) {
                     const safeName = encodeURIComponent(profile.username || profile.full_name || 'User');
                     let newAvatar;
                     if (profile.gender === 'Male') newAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
@@ -310,12 +311,12 @@ export default function MapHome() {
                 const validUsers = profilesResult.data
                     .filter(u => !blockedUserIds.has(u.id))
                     .map(u => {
-                        // Gender-based Avatar for Map Privacy (Snapchat-style)
+                        // Use actual avatar if available, otherwise gender-based fallback
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                        let mapAvatar;
-                        if (u.gender === 'Male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (u.gender === 'Female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        let fallbackAvatar;
+                        if (u.gender === 'Male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (u.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
 
                         // Micro-jitter for initial load
                         const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
@@ -326,7 +327,7 @@ export default function MapHome() {
                             name: u.username || u.full_name || 'User',
                             lat: renderLat,
                             lng: renderLng,
-                            avatar: mapAvatar,
+                            avatar: u.avatar_url || fallbackAvatar, // Use real avatar if exists
                             originalAvatar: u.avatar_url,
                             status: u.status,
                             thought: u.status_message,
@@ -406,13 +407,13 @@ export default function MapHome() {
 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    // Gender-Specific Avatar (Iran Liara) to avoid "looking like a girl"
+                    // Use actual avatar if available, otherwise gender-based fallback
                     const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    let mapAvatar;
+                    let fallbackAvatar;
                     const gender = newUser.gender?.toLowerCase() || 'other';
-                    if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                    else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                    else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    if (gender === 'male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                    else if (gender === 'female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                    else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
                     
                     const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
                     const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
@@ -422,7 +423,7 @@ export default function MapHome() {
                         name: newUser.username || newUser.full_name || 'User',
                         lat: renderLat,
                         lng: renderLng,
-                        avatar: mapAvatar,
+                        avatar: newUser.avatar_url || fallbackAvatar, // Use real avatar if exists
                         originalAvatar: newUser.avatar_url,
                         status: newUser.status,
                         thought: newUser.status_message,
@@ -438,6 +439,41 @@ export default function MapHome() {
                     });
                 }
             })
+            // Listen for profile updates (avatar changes, status updates, etc.)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+                const updatedUser = payload.new;
+                console.log('🔴 [MapHome] Profile UPDATE received:', updatedUser.id, updatedUser.username);
+                console.log('🔴 [MapHome] Updated avatar_url:', updatedUser.avatar_url);
+                
+                if (updatedUser.id === currentUser.id) {
+                    console.log('🔴 [MapHome] Skipping self update');
+                    return; // Skip self (handled separately)
+                }
+
+                // Update the user in nearbyUsers if they exist
+                setNearbyUsers(prev => {
+                    const userIndex = prev.findIndex(u => u.id === updatedUser.id);
+                    console.log('🔴 [MapHome] User index in nearbyUsers:', userIndex);
+                    
+                    if (userIndex === -1) {
+                        console.log('🔴 [MapHome] User not in nearby list, skipping');
+                        return prev; // User not in nearby list
+                    }
+
+                    const updated = [...prev];
+                    // Update avatar and other fields
+                    updated[userIndex] = {
+                        ...updated[userIndex],
+                        avatar: updatedUser.avatar_url || updated[userIndex].avatar,
+                        originalAvatar: updatedUser.avatar_url,
+                        status: updatedUser.status,
+                        thought: updatedUser.status_message,
+                        lastActive: updatedUser.last_active
+                    };
+                    console.log('🔴 [MapHome] Updated user avatar to:', updated[userIndex].avatar);
+                    return updated;
+                });
+            })
             .subscribe();
 
         const interval = setInterval(fetchNearbyUsers, 5000); // Poll every 5s (keep for cleanup/timeouts)
@@ -448,6 +484,30 @@ export default function MapHome() {
             supabase.removeChannel(channel);
         };
     }, [location, currentUser]);
+
+    // Preload avatar images to eliminate lag
+    useEffect(() => {
+        const preloadImage = (url) => {
+            if (!url) return;
+            const img = new Image();
+            img.src = url;
+        };
+
+        // Preload current user avatar
+        if (currentUser?.avatar_url) {
+            const avatar2D = getAvatar2D(currentUser.avatar_url);
+            preloadImage(avatar2D);
+        }
+
+        // Preload nearby users avatars
+        nearbyUsers.forEach(user => {
+            if (user.avatar) {
+                const avatar2D = user.avatar.includes('.glb') ? getAvatar2D(user.avatar) : user.avatar;
+                preloadImage(avatar2D);
+            }
+        });
+    }, [currentUser, nearbyUsers]);
+
 
     // Auth & Location Tracking
     useEffect(() => {
@@ -469,16 +529,55 @@ export default function MapHome() {
                 .single();
 
             if (freshProfile) {
-                const mergedUser = { ...parsedUser, ...freshProfile };
+                // Version Check for Avatar: Optimistic local update might be newer than DB
+                let finalAvatarUrl = freshProfile.avatar_url;
+                if (parsedUser.avatar_url && freshProfile.avatar_url) {
+                    const getTimestamp = (url) => {
+                        const match = url ? url.match(/t=(\d+)/) : null;
+                        return match ? parseInt(match[1]) : 0;
+                    };
+                    const localTs = getTimestamp(parsedUser.avatar_url);
+                    const remoteTs = getTimestamp(freshProfile.avatar_url);
+                    if (localTs > remoteTs) {
+                        finalAvatarUrl = parsedUser.avatar_url; // Keep optimistic local version
+                    }
+                }
+
+                const mergedUser = { ...parsedUser, ...freshProfile, avatar_url: finalAvatarUrl };
                 // Ensure we map snake_case DB fields to camelCase if needed, 
                 // but looks like we use mixed. Let's standardize on DB structure + local adds
-                // Actually, validUsers map uses snake_case keys from DB mostly, but code uses 'gender' which is in DB.
 
                 setCurrentUser(mergedUser);
                 localStorage.setItem('currentUser', JSON.stringify(mergedUser));
             }
         };
         refreshProfile();
+
+        // Listen for local updates from Profile page (optimistic updates)
+        const handleLocalUpdate = () => {
+            const stored = localStorage.getItem('currentUser');
+            if (stored) {
+                setCurrentUser(JSON.parse(stored));
+            }
+        };
+        window.addEventListener('local-user-update', handleLocalUpdate);
+
+        // Subscribe to my own profile changes (avatar, status updates)
+        const profileSub = supabase
+            .channel(`public:profiles:${parsedUser.id}`)
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'profiles', 
+                filter: `id=eq.${parsedUser.id}` 
+            }, (payload) => {
+                setCurrentUser(prev => {
+                    const updated = { ...prev, ...payload.new };
+                    localStorage.setItem('currentUser', JSON.stringify(updated));
+                    return updated;
+                });
+            })
+            .subscribe();
 
         if (!navigator.geolocation) {
             setLoading(false);
@@ -543,7 +642,11 @@ export default function MapHome() {
             { enableHighAccuracy: true }
         );
 
-        return () => navigator.geolocation.clearWatch(watchId);
+        return () => {
+            navigator.geolocation.clearWatch(watchId);
+            supabase.removeChannel(profileSub);
+            window.removeEventListener('local-user-update', handleLocalUpdate);
+        };
     }, [navigate]);
 
     const showToast = (msg) => {
@@ -841,11 +944,13 @@ export default function MapHome() {
 
     const createAvatarIcon = (url, isSelf = false, thought = null) => {
         let className = 'avatar-marker';
-        // Ensure no background clutter
-        let style = `background-image: url('${url}')`;
+        // Ensure url is safely wrapped and background is configured
+        // Use double quotes for style attribute, single for url
+        let style = `background-image: url('${url}'); background-size: cover; background-position: center;`;
+        
         if (isSelf) {
             className += ' self';
-            if (isGhostMode) style += '; opacity: 0.5; filter: grayscale(100%)';
+            if (isGhostMode) style += ' opacity: 0.5; filter: grayscale(100%);';
         }
 
         // Only show thought if it exists (simplified check)
@@ -861,9 +966,9 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [80, 120], // Larger full body
-            iconAnchor: [40, 115], // Feet at location
-            popupAnchor: [0, -110]
+            iconSize: [40, 60], // Compact size for map
+            iconAnchor: [20, 58], // Adjusted proportionally (feet at location)
+            popupAnchor: [0, -55]
         });
     };
 
@@ -990,28 +1095,40 @@ export default function MapHome() {
                     }}
                 />
 
-                {currentUser && (
-                    <Marker
-                        position={[location.lat, location.lng]}
-                        icon={createAvatarIcon(
-                            (() => {
-                                const safeName = encodeURIComponent(currentUser.username || currentUser.full_name || 'User');
-                                if (currentUser.gender === 'Male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                                if (currentUser.gender === 'Female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-                            })(),
-                            true,
-                            currentUser.thought
-                        )}
-                        eventHandlers={{ click: () => setSelectedUser(null) }}
-                    />
-                )}
+                {/* Memoize current user avatar URL to avoid recalculation */}
+                {useMemo(() => {
+                    if (!currentUser) return null;
+                    
+                    let avatarUrl;
+                    console.log('🟢 [MapHome] Current User Avatar URL:', currentUser.avatar_url);
+                    if (currentUser.avatar_url) {
+                        avatarUrl = getAvatar2D(currentUser.avatar_url);
+                        console.log('🟢 [MapHome] Converted 2D URL:', avatarUrl);
+                    } else {
+                        const safeName = encodeURIComponent(currentUser.username || currentUser.full_name || 'User');
+                        if (currentUser.gender === 'Male') {
+                            avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        } else if (currentUser.gender === 'Female') {
+                            avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        } else {
+                            avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        }
+                    }
+
+                    return (
+                        <Marker
+                            position={[location.lat, location.lng]}
+                            icon={createAvatarIcon(avatarUrl, true, currentUser.thought)}
+                            eventHandlers={{ click: () => setSelectedUser(null) }}
+                        />
+                    );
+                }, [currentUser, location.lat, location.lng])}
 
                 {nearbyUsers.map(u => (
                     <Marker
                         key={u.id}
                         position={[u.lat, u.lng]}
-                        icon={createAvatarIcon(u.avatar, false, u.thought)}
+                        icon={createAvatarIcon(getAvatar2D(u.avatar), false, u.thought)}
                         eventHandlers={{
                             click: async () => {
                                 // Fetch friendship status synchronously to update UI instantly
@@ -1468,6 +1585,18 @@ export default function MapHome() {
                     color: #666; cursor: pointer; font-size: 0.9rem; font-weight: 600;
                 }
                 .cancel-report-btn:hover { background: rgba(0,0,0,0.1); }
+                
+                .avatar-marker {
+                    width: 100%; height: 100%;
+                    background-color: transparent;
+                    background-size: contain;
+                    background-repeat: no-repeat;
+                    background-position: center bottom;
+                    transition: all 0.3s ease;
+                }
+                .avatar-marker.self {
+                    filter: drop-shadow(0 0 5px rgba(66, 133, 244, 0.5));
+                }
 
             `}</style>
         </div>
