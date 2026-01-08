@@ -9,10 +9,62 @@ import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
 import { uploadToStorage, validateFile } from '../utils/fileUpload';
 import EmojiPicker from 'emoji-picker-react';
+import { usePresence } from '../hooks/usePresence';
+import { initializePresence, cleanupPresence } from '../services/presenceService';
+import { useIncomingCall } from '../hooks/useIncomingCall';
+import IncomingCallPopup from '../components/IncomingCallPopup';
+import { initiateCall } from '../services/callSignalingService';
 
 const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
 
 import { useCall } from '../context/CallContext';
+
+// Chat Theme Configuration
+const CHAT_THEMES = {
+    // 🏆 RECOMMENDED DEFAULT SET
+    clean_slate: { name: 'Clean Slate', emoji: '✨', fontColor: '#212121', backgroundColor: '#ffffff', backgroundPattern: 'none', bubbleSent: '#f5f5f5', bubbleReceived: '#ffffff', accentColor: '#212121', iconColor: '#212121', textColor: '#212121', type: 'light' },
+    love_bloom: { name: 'Love Bloom', emoji: '💕', fontColor: '#e91e63', backgroundColor: '#fff0f5', backgroundPattern: 'hearts', bubbleSent: '#f8bbd0', bubbleReceived: '#ffebee', accentColor: '#e91e63', iconColor: '#e91e63', textColor: '#880e4f', type: 'light' },
+    leaf_drift: { name: 'Leaf Drift', emoji: '🍃', fontColor: '#2e7d32', backgroundColor: '#e8f5e9', backgroundPattern: 'leaves', bubbleSent: '#a5d6a7', bubbleReceived: '#c8e6c9', accentColor: '#2e7d32', iconColor: '#2e7d32', textColor: '#1b5e20', type: 'light' },
+    midnight_noir: { name: 'Midnight Noir', emoji: '🌙', fontColor: '#e0e0e0', backgroundColor: '#121212', backgroundPattern: 'geometric', bubbleSent: '#212121', bubbleReceived: '#000000', accentColor: '#ffffff', iconColor: '#ffffff', textColor: '#e0e0e0', type: 'dark' },
+    pastel_dream: { name: 'Pastel Dream', emoji: '🦄', fontColor: '#9c27b0', backgroundColor: '#f3e5f5', backgroundPattern: 'none', bubbleSent: '#e1bee7', bubbleReceived: '#f8bbd0', accentColor: '#ab47bc', iconColor: '#ab47bc', textColor: '#4a148c', type: 'light' },
+    neon_pop: { name: 'Neon Pop', emoji: '⚡', fontColor: '#00e676', backgroundColor: '#000000', backgroundPattern: 'geometric', bubbleSent: '#263238', bubbleReceived: '#212121', accentColor: '#00e676', iconColor: '#00e676', textColor: '#00e676', type: 'dark' },
+
+    // ❤️ Love / Emotion Themes
+    crimson_heart: { name: 'Crimson Heart', emoji: '🌹', fontColor: '#d50000', backgroundColor: '#ffebee', backgroundPattern: 'hearts', bubbleSent: '#ffcdd2', bubbleReceived: '#ff8a80', accentColor: '#d50000', iconColor: '#d50000', textColor: '#b71c1c', type: 'light' },
+    rose_whisper: { name: 'Rose Whisper', emoji: '🌷', fontColor: '#ad1457', backgroundColor: '#fce4ec', backgroundPattern: 'hearts', bubbleSent: '#f48fb1', bubbleReceived: '#f8bbd0', accentColor: '#ad1457', iconColor: '#ad1457', textColor: '#880e4f', type: 'light' },
+    cupid_glow: { name: 'Cupid Glow', emoji: '💘', fontColor: '#c2185b', backgroundColor: '#f8bbd0', backgroundPattern: 'hearts', bubbleSent: '#f06292', bubbleReceived: '#f48fb1', accentColor: '#c2185b', iconColor: '#c2185b', textColor: '#880e4f', type: 'light' },
+    scarlet_vibe: { name: 'Scarlet Vibe', emoji: '💋', fontColor: '#b71c1c', backgroundColor: '#ffcdd2', backgroundPattern: 'hearts', bubbleSent: '#ef5350', bubbleReceived: '#e57373', accentColor: '#b71c1c', iconColor: '#b71c1c', textColor: '#b71c1c', type: 'light' },
+
+    // 🌿 Nature Themes
+    green_haven: { name: 'Green Haven', emoji: '🏡', fontColor: '#1b5e20', backgroundColor: '#c8e6c9', backgroundPattern: 'leaves', bubbleSent: '#66bb6a', bubbleReceived: '#81c784', accentColor: '#1b5e20', iconColor: '#1b5e20', textColor: '#1b5e20', type: 'light' },
+    forest_calm: { name: 'Forest Calm', emoji: '🌲', fontColor: '#33691e', backgroundColor: '#dcedc8', backgroundPattern: 'leaves', bubbleSent: '#aed581', bubbleReceived: '#c5e1a5', accentColor: '#33691e', iconColor: '#33691e', textColor: '#33691e', type: 'light' },
+    mint_breeze: { name: 'Mint Breeze', emoji: '🍃', fontColor: '#00695c', backgroundColor: '#e0f2f1', backgroundPattern: 'leaves', bubbleSent: '#80cbc4', bubbleReceived: '#b2dfdb', accentColor: '#00695c', iconColor: '#00695c', textColor: '#004d40', type: 'light' },
+    earth_touch: { name: 'Earth Touch', emoji: '🌍', fontColor: '#3e2723', backgroundColor: '#d7ccc8', backgroundPattern: 'leaves', bubbleSent: '#a1887f', bubbleReceived: '#bcaaa4', accentColor: '#3e2723', iconColor: '#3e2723', textColor: '#3e2723', type: 'light' },
+
+    // 🌙 Dark / Night Themes
+    dark_pulse: { name: 'Dark Pulse', emoji: '🌌', fontColor: '#7c4dff', backgroundColor: '#121212', backgroundPattern: 'geometric', bubbleSent: '#311b92', bubbleReceived: '#1a1a1a', accentColor: '#7c4dff', iconColor: '#7c4dff', textColor: '#ede7f6', type: 'dark' },
+    moon_shadow: { name: 'Moon Shadow', emoji: '🌑', fontColor: '#b0bec5', backgroundColor: '#263238', backgroundPattern: 'geometric', bubbleSent: '#37474f', bubbleReceived: '#455a64', accentColor: '#cfd8dc', iconColor: '#cfd8dc', textColor: '#eceff1', type: 'dark' },
+    obsidian: { name: 'Obsidian', emoji: '🖤', fontColor: '#9e9e9e', backgroundColor: '#000000', backgroundPattern: 'none', bubbleSent: '#212121', bubbleReceived: '#424242', accentColor: '#ffffff', iconColor: '#ffffff', textColor: '#f5f5f5', type: 'dark' },
+    night_wave: { name: 'Night Wave', emoji: '🌊', fontColor: '#4fc3f7', backgroundColor: '#0d47a1', backgroundPattern: 'geometric', bubbleSent: '#1565c0', bubbleReceived: '#1976d2', accentColor: '#4fc3f7', iconColor: '#4fc3f7', textColor: '#e1f5fe', type: 'dark' },
+
+    // ☀️ Light / Clean Themes
+    pure_white: { name: 'Pure White', emoji: '🏳️', fontColor: '#212121', backgroundColor: '#ffffff', backgroundPattern: 'none', bubbleSent: '#f5f5f5', bubbleReceived: '#ffffff', accentColor: '#9e9e9e', iconColor: '#9e9e9e', textColor: '#212121', type: 'light' },
+    soft_cloud: { name: 'Soft Cloud', emoji: '☁️', fontColor: '#546e7a', backgroundColor: '#eceff1', backgroundPattern: 'none', bubbleSent: '#cfd8dc', bubbleReceived: '#b0bec5', accentColor: '#607d8b', iconColor: '#607d8b', textColor: '#37474f', type: 'light' },
+    ivory_mist: { name: 'Ivory Mist', emoji: '🌫️', fontColor: '#5d4037', backgroundColor: '#efebe9', backgroundPattern: 'none', bubbleSent: '#d7ccc8', bubbleReceived: '#bcaaa4', accentColor: '#5d4037', iconColor: '#5d4037', textColor: '#3e2723', type: 'light' },
+    minimal_day: { name: 'Minimal Day', emoji: '☀️', fontColor: '#37474f', backgroundColor: '#ffffff', backgroundPattern: 'none', bubbleSent: '#f5f5f5', bubbleReceived: '#ffffff', accentColor: '#ff9800', iconColor: '#ff9800', textColor: '#263238', type: 'light' },
+
+    // ✨ Fun / Stylish Themes
+    velvet_glow: { name: 'Velvet Glow', emoji: '🔮', fontColor: '#e040fb', backgroundColor: '#4a148c', backgroundPattern: 'geometric', bubbleSent: '#7b1fa2', bubbleReceived: '#6a1b9a', accentColor: '#e040fb', iconColor: '#e040fb', textColor: '#f3e5f5', type: 'dark' },
+    aura_spark: { name: 'Aura Spark', emoji: '✨', fontColor: '#ffd740', backgroundColor: '#311b92', backgroundPattern: 'geometric', bubbleSent: '#5e35b1', bubbleReceived: '#4527a0', accentColor: '#ffd740', iconColor: '#ffd740', textColor: '#fff8e1', type: 'dark' },
+    bubble_joy: { name: 'Bubble Joy', emoji: '🛁', fontColor: '#00bcd4', backgroundColor: '#e0f7fa', backgroundPattern: 'confetti', bubbleSent: '#b2ebf2', bubbleReceived: '#80deea', accentColor: '#00bcd4', iconColor: '#00bcd4', textColor: '#006064', type: 'light' },
+
+    // 🎉 Festival / Special Themes
+    diwali_glow: { name: 'Diwali Glow', emoji: '🪔', fontColor: '#ff6f00', backgroundColor: '#210a00', backgroundPattern: 'confetti', bubbleSent: '#ff8f00', bubbleReceived: '#ffb300', accentColor: '#ffca28', iconColor: '#ffca28', textColor: '#fff8e1', type: 'dark' },
+    spring_fest: { name: 'Spring Fest', emoji: '🌸', fontColor: '#f06292', backgroundColor: '#fce4ec', backgroundPattern: 'leaves', bubbleSent: '#f8bbd0', bubbleReceived: '#f48fb1', accentColor: '#ec407a', iconColor: '#ec407a', textColor: '#880e4f', type: 'light' },
+    autumn_gold: { name: 'Autumn Gold', emoji: '🍂', fontColor: '#e65100', backgroundColor: '#fff3e0', backgroundPattern: 'leaves', bubbleSent: '#ffcc80', bubbleReceived: '#ffe0b2', accentColor: '#ef6c00', iconColor: '#ef6c00', textColor: '#e65100', type: 'light' },
+    winter_snow: { name: 'Winter Snow', emoji: '❄️', fontColor: '#0288d1', backgroundColor: '#e1f5fe', backgroundPattern: 'geometric', bubbleSent: '#b3e5fc', bubbleReceived: '#81d4fa', accentColor: '#0288d1', iconColor: '#0288d1', textColor: '#01579b', type: 'light' },
+    celebration_mode: { name: 'Celebration', emoji: '🎊', fontColor: '#6200ea', backgroundColor: '#f3e5f5', backgroundPattern: 'confetti', bubbleSent: '#d1c4e9', bubbleReceived: '#b39ddb', accentColor: '#651fff', iconColor: '#651fff', textColor: '#311b92', type: 'light' }
+};
 
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
@@ -32,6 +84,9 @@ export default function Chat() {
             }
             setCurrentUser(user);
             
+            // Initialize presence tracking
+            initializePresence(user.id);
+            
             // If navigated with a target user (from Map or Friends), open that chat immediately
             if (location.state?.targetUser) {
                 setActiveChatUser(location.state.targetUser);
@@ -40,6 +95,13 @@ export default function Chat() {
             fetchChats(user.id);
         };
         initChat();
+        
+        // Cleanup presence on unmount
+        return () => {
+            if (currentUser?.id) {
+                cleanupPresence(currentUser.id);
+            }
+        };
     }, [location.state]);
 
     const fetchChats = async (userId) => {
@@ -399,7 +461,13 @@ function ChatList({ chats, onSelectChat, loading }) {
                             onClick={() => onSelectChat(chat)}
                         >
                             <div className="avatar-wrapper">
-                                <img src={chat.avatar} alt={chat.name} className="chat-avatar" />
+                                <img 
+                                    src={chat.avatar} 
+                                    alt={chat.name} 
+                                    className="chat-avatar" 
+                                    loading="eager"
+                                    decoding="sync"
+                                />
                                 {/* We can verify online status if needed, assuming true for demo or passed in */}
                                 <div className="online-badge"></div>
                             </div>
@@ -653,6 +721,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
     
+    // Track partner's presence status
+    const presence = usePresence(targetUser.id, currentUser.id);
+    
     // Subscribe to partner profile changes
     useEffect(() => {
         setPartner(targetUser); // Reset on change
@@ -715,13 +786,75 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         fetchMuteSettings();
     }, [currentUser.id, targetUser.id]);
 
-    // Theme State
+    // Theme State (Mode: dark/light/auto)
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
+
+    // Chat Theme State (Visual themes)
+    const [chatTheme, setChatTheme] = useState(localStorage.getItem('visual_chat_theme') || 'clean_slate');
+    const [showChatThemeSelector, setShowChatThemeSelector] = useState(false);
 
     // Wallpaper State
     const [chatBackground, setChatBackground] = useState(null);
     const [showWallpaperMenu, setShowWallpaperMenu] = useState(false);
+
+    // Fetch Chat Theme from Database
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        
+        const fetchChatTheme = async () => {
+            const { data } = await supabase.from('profiles').select('chat_theme').eq('id', currentUser.id).single();
+            
+            // Only update if DB has a valid theme
+            if (data?.chat_theme && CHAT_THEMES[data.chat_theme]) {
+                setChatTheme(data.chat_theme);
+                localStorage.setItem('visual_chat_theme', data.chat_theme);
+            } else if (!data?.chat_theme) {
+                // If DB has no theme, save the current localStorage theme to DB
+                const currentTheme = localStorage.getItem('visual_chat_theme') || 'clean_slate';
+                await supabase.from('profiles').update({ chat_theme: currentTheme }).eq('id', currentUser.id);
+            }
+            // Don't reset to default if we already have a valid theme in localStorage
+        };
+        fetchChatTheme();
+    }, [currentUser?.id]);
+
+    // Handle Chat Theme Change
+    // Handle Chat Theme Change
+    const handleChatThemeChange = async (newTheme) => {
+        setChatTheme(newTheme);
+        localStorage.setItem('visual_chat_theme', newTheme);
+        setChatBackground(null); // Clear custom wallpaper to show theme background
+        setShowChatThemeSelector(false);
+        const themeName = CHAT_THEMES[newTheme].name;
+        
+        // 1. Update theme in profile & clear wallpaper
+        await supabase.from('profiles').update({ 
+            chat_theme: newTheme,
+            chat_background: null 
+        }).eq('id', currentUser.id);
+        
+        // 2. Insert system message for the chat
+        if (activeChatUser) {
+            // Fetch username for the message
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('id', currentUser.id)
+                .single();
+                
+            const username = profile?.username || 'User';
+
+            await supabase.from('messages').insert({
+                sender_id: currentUser.id,
+                receiver_id: activeChatUser.id,
+                content: `${username} changed theme to ${themeName} ${CHAT_THEMES[newTheme].emoji}`,
+                message_type: 'system'
+            });
+        }
+
+        showToast(`Theme changed to ${themeName} ${CHAT_THEMES[newTheme].emoji}`);
+    };
 
     // Fetch Wallpaper
     useEffect(() => {
@@ -1262,8 +1395,21 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric' });
     };
 
+    const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
+
     return (
-        <div className="chat-room-container">
+        <div className="chat-room-container" data-theme-type={currentTheme.type}>
+            <style>{`
+                .chat-room-container {
+                    --theme-bg: ${chatBackground || currentTheme.backgroundColor};
+                    --theme-bubble-sent: ${currentTheme.bubbleSent};
+                    --theme-bubble-received: ${currentTheme.bubbleReceived};
+                    --theme-text-color: ${currentTheme.textColor};
+                    --theme-accent: ${currentTheme.accentColor};
+                    --theme-font-color: ${currentTheme.fontColor};
+                    --theme-icon-color: ${currentTheme.iconColor};
+                }
+            `}</style>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
             <div className="ambient-glow-chat"></div>
@@ -1286,9 +1432,12 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     })()} className="header-avatar" alt="avatar" />
                     <div className="header-text">
                         <h3>{partner.username || partner.full_name}</h3>
-                        <span className={`user-status ${getLastSeenStatus(partner.last_active) === 'Active now' ? 'online' : ''}`}>
-                            {getLastSeenStatus(partner.last_active)}
-                        </span>
+                        {presence.displayStatus && (
+                            <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
+                                {presence.isOnline && <span className="online-dot">●</span>}
+                                {presence.displayStatus}
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className="header-actions">
@@ -1325,13 +1474,13 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 </button>
 
                                 <button onClick={() => {
-                                    setShowWallpaperMenu(true);
+                                    setShowChatThemeSelector(true);
                                     setShowMenu(false);
                                 }}>
                                     <span className="icon">
                                         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                                     </span>
-                                    Chat Wallpaper
+                                    Theme
                                 </button>
                                 
                                 <button onClick={() => {
@@ -1341,7 +1490,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                     <span className="icon">
                                         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
                                     </span>
-                                    Theme
+                                    Mode
                                 </button>
 
                                 <div className="divider"></div>
@@ -1373,7 +1522,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             {showThemeMenu && (
                 <div className="mute-menu-modal" onClick={() => setShowThemeMenu(false)}>
                     <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
-                        <h3>Choose Theme 🎨</h3>
+                        <h3>Choose Mode 🎨</h3>
                         <div className="mute-options">
                             <button onClick={() => handleThemeChange('auto')} className={`mute-option ${theme === 'auto' ? 'active' : ''}`}>
                                 🌓 Auto (System)
@@ -1386,6 +1535,45 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                             </button>
                         </div>
                         <button onClick={() => setShowThemeMenu(false)} className="cancel-btn">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Chat Theme Selector Modal */}
+            {showChatThemeSelector && (
+                <div className="theme-selector-modal" onClick={() => setShowChatThemeSelector(false)}>
+                    <div className="theme-selector-content" onClick={(e) => e.stopPropagation()}>
+                        <h3>Choose Chat Theme</h3>
+                        <div className="theme-grid">
+                            {Object.keys(CHAT_THEMES).map((themeKey) => {
+                                const themeData = CHAT_THEMES[themeKey];
+                                return (
+                                    <div
+                                        key={themeKey}
+                                        className={`theme-card ${chatTheme === themeKey ? 'active' : ''}`}
+                                        onClick={() => handleChatThemeChange(themeKey)}
+                                        style={{
+                                            background: themeData.backgroundColor,
+                                            borderColor: chatTheme === themeKey ? themeData.accentColor : 'transparent'
+                                        }}
+                                    >
+                                        <div className="theme-emoji">{themeData.emoji}</div>
+                                        <div className="theme-name" style={{ color: themeData.fontColor }}>
+                                            {themeData.name}
+                                        </div>
+                                        <div className="theme-preview">
+                                            <div className="preview-bubble sent" style={{ background: themeData.bubbleSent }}>
+                                                <span style={{ color: themeData.textColor }}>Hi!</span>
+                                            </div>
+                                            <div className="preview-bubble received" style={{ background: themeData.bubbleReceived }}>
+                                                <span style={{ color: themeData.textColor }}>Hello</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <button onClick={() => setShowChatThemeSelector(false)} className="cancel-btn">Cancel</button>
                     </div>
                 </div>
             )}
@@ -1463,12 +1651,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             )}
 
 
-            <div className={`chat-messages ${getThemeClass()}`} style={{ 
-                background: chatBackground || '',
-                backgroundSize: chatBackground?.includes('url') ? 'cover' : undefined,
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
-            }}>
+            <div 
+                className={`chat-messages ${getThemeClass()}`}
+                data-theme={chatTheme}
+                data-pattern={CHAT_THEMES[chatTheme]?.backgroundPattern || 'none'}
+                style={{ 
+                    background: chatBackground || CHAT_THEMES[chatTheme]?.backgroundColor,
+                    backgroundSize: chatBackground?.includes('url') ? 'cover' : undefined,
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat'
+                }}
+            >
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
                     
@@ -1486,17 +1679,59 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         );
                     }
 
+                    // System Message Rendering
+                    if (msg.message_type === 'system') {
+                        return (
+                            <React.Fragment key={msg.id || i}>
+                                {dateHeader}
+                                <div className="msg-system">
+                                    <span>{msg.content}</span>
+                                </div>
+                            </React.Fragment>
+                        );
+                    }
+
                     // Special rendering for Call Logs
                     if (msg.message_type === 'call_log') {
+                        let callData;
+                        try {
+                            callData = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+                        } catch {
+                            // Fallback for old format
+                            callData = { status: 'unknown', call_type: 'audio' };
+                        }
+
+                        const getCallIcon = () => {
+                            if (callData.status === 'missed') return '📵';
+                            if (callData.status === 'declined') return '🚫';
+                            return callData.call_type === 'video' ? '🎥' : '📞';
+                        };
+
+                        const getCallText = () => {
+                            const prefix = isMe ? 'Outgoing' : 'Incoming';
+                            if (callData.status === 'missed') return 'Missed call';
+                            if (callData.status === 'declined') {
+                                return callData.declined_reason 
+                                    ? `Declined: "${callData.declined_reason}"`
+                                    : 'Declined call';
+                            }
+                            if (callData.status === 'ended') {
+                                const duration = callData.duration || 0;
+                                const mins = Math.floor(duration / 60);
+                                const secs = duration % 60;
+                                return `${prefix} ${callData.call_type} call (${mins}:${secs.toString().padStart(2, '0')})`;
+                            }
+                            return `${prefix} ${callData.call_type} call`;
+                        };
+
                         return (
                             <React.Fragment key={msg.id || msg.tempId || i}>
                                 {dateHeader}
-                                <div className="call-log-system-msg">
-                                    <div className="call-log-badge">
-                                        <span style={{ marginRight: '6px' }}>
-                                            {msg.content.includes('Missed') ? '↘️' : msg.content.includes('declined') ? '🚫' : '📞'}
-                                        </span>
-                                        <span>{msg.content} • {formatTime(msg.created_at)}</span>
+                                <div className={`call-log-entry ${callData.status}`}>
+                                    <span className="call-icon">{getCallIcon()}</span>
+                                    <div className="call-details">
+                                        <span className="call-text">{getCallText()}</span>
+                                        <span className="call-time">{formatTime(msg.created_at)}</span>
                                     </div>
                                 </div>
                             </React.Fragment>
@@ -1533,7 +1768,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                         style={{ cursor: 'pointer' }}
                                     />
                                 ) : (
-                                    <span className="msg-text">{msg.content}</span>
+                                    <div className="msg-content-wrapper">
+                                        <span className="msg-text">{msg.content}</span>
+                                        <span className="msg-time">{formatTime(msg.created_at)}</span>
+                                        {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
+                                    </div>
                                 )}
                                 
                                 {/* Render attachments if present */}
@@ -1544,11 +1783,6 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                         ))}
                                     </div>
                                 )}
-                                
-                                <div className="msg-footer">
-                                    <span className="msg-time">{formatTime(msg.created_at)}</span>
-                                    {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
-                                </div>
                             </div>
                         </React.Fragment>
                     );
@@ -1745,8 +1979,31 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
                 }
                 .header-text h3 { margin: 0; font-size: 1.05rem; color: white; font-weight: 600; }
-                .header-text .user-status { font-size: 0.8rem; color: #888; display: block; margin-top: 2px; }
-                .header-text .user-status.online { color: #00ff99; font-weight: 600; text-shadow: 0 0 10px rgba(0,255,153,0.3); }
+                .header-text .user-status { 
+                    font-size: 0.8rem; 
+                    color: #888; 
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    margin-top: 2px; 
+                }
+                .header-text .user-status.online { 
+                    color: #00ff99; 
+                    font-weight: 600; 
+                    text-shadow: 0 0 10px rgba(0,255,153,0.3); 
+                }
+                .header-text .user-status.offline {
+                    color: #888;
+                    font-weight: 400;
+                }
+                .header-text .user-status .online-dot {
+                    font-size: 0.6rem;
+                    animation: pulse 2s ease-in-out infinite;
+                }
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
                 
                 .header-actions { display: flex; gap: 10px; }
                 .icon-btn { 
@@ -1783,17 +2040,138 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     border-bottom-left-radius: 4px; 
                 }
                 
-                .msg-text { display: block; line-height: 1.4; }
-                .msg-footer { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 4px; opacity: 0.7; }
-                .msg-time { font-size: 0.65rem; }
-                .msg-status { font-size: 0.7rem; }
-                .msg-status.read { color: #fff; font-weight: bold; }
+                /* Theme-specific message bubble colors */
+                .msg-bubble.me {
+                    background: var(--theme-bubble-sent, var(--accent-gradient));
+                    color: var(--theme-text-color, white); 
+                    /* Use accent color for shadow or default */
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                }
+                
+                .msg-bubble.them {
+                    background: var(--theme-bubble-received, rgba(255,255,255,0.08));
+                    color: var(--theme-text-color, #eee);
+                }
+                
+                .msg-content-wrapper {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+                
+                .msg-text { 
+                    display: inline;
+                    line-height: 1.4;
+                    flex: 1;
+                    min-width: 0;
+                }
+                
+                .msg-time { 
+                    font-size: 0.65rem;
+                    opacity: 0.7;
+                    white-space: nowrap;
+                    margin-left: auto;
+                }
+                
+                .msg-status { 
+                    font-size: 0.7rem;
+                    opacity: 0.7;
+                    white-space: nowrap;
+                }
+                
+                .msg-status.read { color: currentColor; font-weight: bold; opacity: 1; }
+                
+                .msg-system {
+                    width: 100%;
+                    text-align: center;
+                    margin: 12px 0;
+                    display: flex;
+                    justify-content: center;
+                }
+                
+                .msg-system span {
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 0.75rem;
+                    color: rgba(255, 255, 255, 0.6);
+                    backdrop-filter: blur(4px);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }
+                .chat-room-container[data-theme-type="light"] .msg-system span {
+                    background: rgba(0, 0, 0, 0.05);
+                    color: rgba(0,0,0,0.5);
+                    border-color: rgba(0,0,0,0.05);
+                }
+                /* Theme Background Patterns */
+                [data-pattern="hearts"]::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-image: 
+                        radial-gradient(circle, var(--theme-accent) 1px, transparent 1px),
+                        radial-gradient(circle, var(--theme-bubble-sent) 1px, transparent 1px);
+                    background-size: 50px 50px, 80px 80px;
+                    background-position: 0 0, 25px 25px;
+                    opacity: 0.05;
+                    pointer-events: none;
+                }
+                
+                [data-pattern="leaves"]::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-image: 
+                        radial-gradient(circle, var(--theme-accent) 1.5px, transparent 1.5px);
+                    background-size: 60px 60px;
+                    background-position: 0 0, 30px 30px;
+                    opacity: 0.06;
+                    pointer-events: none;
+                }
+                
+                [data-pattern="confetti"]::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-image: 
+                        radial-gradient(circle, var(--theme-accent) 1px, transparent 1px),
+                        radial-gradient(circle, var(--theme-bubble-sent) 1px, transparent 1px),
+                        radial-gradient(circle, var(--theme-bubble-received) 1px, transparent 1px);
+                    background-size: 40px 40px, 60px 60px, 50px 50px;
+                    background-position: 0 0, 20px 20px, 10px 30px;
+                    opacity: 0.08;
+                    pointer-events: none;
+                }
+                
+                [data-pattern="geometric"]::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-image: 
+                        linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%),
+                        linear-gradient(-45deg, rgba(255,255,255,0.03) 25%, transparent 25%);
+                    background-size: 30px 30px;
+                    background-position: 0 0, 15px 15px;
+                    pointer-events: none;
+                }
+                
+                .chat-messages {
+                    position: relative;
+                }
                 
                 /* Input Area */
                 .chat-input-container {
                     padding: 16px 20px;
                     background: rgba(10, 10, 10, 0.6);
                     backdrop-filter: blur(10px);
+                    transition: background 0.3s ease;
+                }
+                
+                /* Light theme override for input area */
+                .chat-room-container[data-theme-type="light"] .chat-input-container {
+                     background: rgba(255, 255, 255, 0.85);
+                     border-top: 1px solid rgba(0,0,0,0.05);
                 }
                 
                 .glass-input-bar {
@@ -1803,10 +2181,21 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     border-radius: 24px; padding: 6px 6px 6px 16px;
                     transition: all 0.2s;
                 }
+                
+                .chat-room-container[data-theme-type="light"] .glass-input-bar {
+                     background: rgba(0,0,0,0.05);
+                     border-color: rgba(0,0,0,0.1);
+                }
+                
                 .glass-input-bar:focus-within {
                     background: rgba(255,255,255,0.12);
                     border-color: rgba(255,255,255,0.2);
                     box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                }
+                
+                .chat-room-container[data-theme-type="light"] .glass-input-bar:focus-within {
+                    background: rgba(0,0,0,0.08);
+                    border-color: rgba(0,0,0,0.15);
                 }
                 
                 .msg-input {
@@ -1815,17 +2204,27 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 }
                 .msg-input::placeholder { color: rgba(255,255,255,0.3); }
                 
+                .chat-room-container[data-theme-type="light"] .msg-input {
+                     color: #333;
+                }
+                .chat-room-container[data-theme-type="light"] .msg-input::placeholder {
+                     color: rgba(0,0,0,0.4);
+                }
+                
                 .input-icon-btn {
                     color: #aaa; background: none; border: none;
                     cursor: pointer; padding: 4px; transition: color 0.2s;
                 }
-                .input-icon-btn:hover { color: white; }
+                .input-icon-btn:hover { color: var(--theme-accent, white); }
+                
+                .chat-room-container[data-theme-type="light"] .input-icon-btn { color: #666; }
+                .chat-room-container[data-theme-type="light"] .input-icon-btn:hover { color: var(--theme-accent, #333); }
                 
                 .send-btn { 
                     width: 44px; height: 44px; border-radius: 50%; border: none;
-                    background: var(--accent-gradient); color: white;
+                    background: var(--theme-accent, var(--accent-gradient)); color: white;
                     display: flex; align-items: center; justify-content: center;
-                    cursor: pointer; box-shadow: 0 4px 12px rgba(0, 114, 255, 0.4);
+                    cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     transition: transform 0.2s;
                 }
                 .send-btn:hover { transform: scale(1.05); }
@@ -2019,6 +2418,98 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     transition: all 0.2s;
                 }
                 .cancel-btn:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.3); }
+                
+                /* Chat Theme Selector Modal */
+                .theme-selector-modal {
+                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.85); z-index: 14000;
+                    display: flex; align-items: center; justify-content: center;
+                    animation: fadeIn 0.2s;
+                    backdrop-filter: blur(8px);
+                }
+                
+                .theme-selector-content {
+                    background: rgba(20,20,25,0.95); 
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-radius: 24px; padding: 28px;
+                    width: 90%; max-width: 500px; color: white;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+                    max-height: 85vh;
+                    overflow-y: auto;
+                }
+                
+                .theme-selector-content h3 { 
+                    margin: 0 0 20px 0; 
+                    font-size: 1.5rem; 
+                    font-weight: 700;
+                    text-align: center;
+                }
+                
+                .theme-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                    gap: 16px;
+                    margin-bottom: 20px;
+                }
+                
+                .theme-card {
+                    padding: 16px;
+                    border-radius: 16px;
+                    cursor: pointer;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    border: 3px solid transparent;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                }
+                
+                .theme-card:hover {
+                    transform: translateY(-4px) scale(1.02);
+                    box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+                }
+                
+                .theme-card.active {
+                    border-width: 3px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                }
+                
+                .theme-emoji {
+                    font-size: 2.5rem;
+                    line-height: 1;
+                }
+                
+                .theme-name {
+                    font-size: 1rem;
+                    font-weight: 700;
+                    text-align: center;
+                }
+                
+                .theme-preview {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    width: 100%;
+                }
+                
+                .preview-bubble {
+                    padding: 8px 12px;
+                    border-radius: 12px;
+                    font-size: 0.75rem;
+                    text-align: center;
+                }
+                
+                .preview-bubble.sent {
+                    align-self: flex-end;
+                    border-bottom-right-radius: 4px;
+                }
+                
+                .preview-bubble.received {
+                    align-self: flex-start;
+                    border-bottom-left-radius: 4px;
+                }
 
                 @keyframes fadeIn {
                     from { opacity: 0; }
@@ -2062,20 +2553,54 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
                 }
 
-                .call-log-system-msg {
+                .call-log-entry {
                     width: 100%;
-                    display: flex; justify-content: center;
-                    margin: 15px 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 12px 0;
+                    padding: 12px 16px;
+                    background: rgba(255, 255, 255, 0.03);
+                    border-radius: 12px;
+                    border-left: 3px solid rgba(255, 255, 255, 0.1);
                 }
-                .call-log-badge {
-                    background: rgba(255, 255, 255, 0.1);
-                    backdrop-filter: blur(10px);
-                    padding: 6px 16px;
-                    border-radius: 100px;
+
+                .call-log-entry.missed {
+                    border-left-color: #f44336;
+                    background: rgba(244, 67, 54, 0.05);
+                }
+
+                .call-log-entry.declined {
+                    border-left-color: #ff9800;
+                    background: rgba(255, 152, 0, 0.05);
+                }
+
+                .call-log-entry.ended {
+                    border-left-color: #4caf50;
+                    background: rgba(76, 175, 80, 0.05);
+                }
+
+                .call-icon {
+                    font-size: 1.2rem;
+                    margin-right: 12px;
+                }
+
+                .call-details {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .call-text {
+                    font-size: 0.9rem;
+                    color: rgba(255, 255, 255, 0.9);
+                    font-weight: 500;
+                }
+
+                .call-time {
                     font-size: 0.75rem;
-                    color: rgba(255, 255, 255, 0.7);
-                    display: flex; align-items: center;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.5);
                 }
 
                 .chat-date-header {

@@ -254,7 +254,8 @@ export default function Friends() {
                                 {requests.map(req => (
                                     <div key={req.id} className="friend-card request">
                                         <div className="avatar-container">
-                                            <img src={(() => {
+                                            <img 
+                                                src={(() => {
                                                 let avatarUrl;
                                                 if (req.avatar_url) {
                                                     avatarUrl = req.avatar_url;
@@ -266,7 +267,12 @@ export default function Friends() {
                                                     else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
                                                 }
                                                 return getAvatar2D(avatarUrl);
-                                            })()} alt="avatar" className="avatar" />
+                                            })()} 
+                                                alt="avatar" 
+                                                className="avatar"
+                                                loading="eager"
+                                                decoding="sync"
+                                            />
                                         </div>
                                         <div className="info">
                                             <h3>{req.username || req.full_name}</h3>
@@ -305,7 +311,8 @@ export default function Friends() {
                                 {friends.map(friend => (
                                     <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
                                         <div className="avatar-container">
-                                            <img src={(() => {
+                                            <img 
+                                                src={(() => {
                                                 let avatarUrl;
                                                 if (friend.avatar_url) {
                                                     avatarUrl = friend.avatar_url;
@@ -317,7 +324,12 @@ export default function Friends() {
                                                     else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
                                                 }
                                                 return getAvatar2D(avatarUrl);
-                                            })()} alt="avatar" className="avatar" />
+                                            })()} 
+                                                alt="avatar" 
+                                                className="avatar"
+                                                loading="eager"
+                                                decoding="sync"
+                                            />
                                             <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
                                         <div className="info">

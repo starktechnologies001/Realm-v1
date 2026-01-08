@@ -347,28 +347,31 @@ export default function MapHome() {
         // Real-time Subscription for Instant Updates (both UPDATE and INSERT)
         const channel = supabase
             .channel('public:profiles')
-            // Listen for location updates
+            // Unified UPDATE listener for Location + Profile changes
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
                 const updatedUser = payload.new;
-                if (!updatedUser.latitude || !updatedUser.longitude) return;
                 if (updatedUser.id === currentUser.id) return; // Skip self
 
-                // Show all users globally (no distance check)
-                const isVisible = !updatedUser.is_ghost_mode && updatedUser.latitude && updatedUser.longitude;
+                // Check visibility criteria
+                const hasLocation = updatedUser.latitude && updatedUser.longitude;
+                const isVisible = !updatedUser.is_ghost_mode && hasLocation;
 
                 setNearbyUsers(prev => {
-                    const exists = prev.find(u => u.id === updatedUser.id);
+                    const existingIndex = prev.findIndex(u => u.id === updatedUser.id);
+                    const exists = existingIndex !== -1;
 
                     if (isVisible) {
-                        // Gender-based Avatar for Map Privacy
+                        // Prepare consistent avatar logic
                         let mapAvatar = updatedUser.avatar_url;
-                        const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
-                        const gender = updatedUser.gender?.toLowerCase();
-                        if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        if (!mapAvatar) {
+                            const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
+                            const gender = updatedUser.gender?.toLowerCase();
+                            if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                            else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                            else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        }
 
-                        // Micro-jitter to prevent exact overlap if testing on same device
+                        // Jitter coordinates slightly
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
                         const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
 
@@ -383,19 +386,25 @@ export default function MapHome() {
                             thought: updatedUser.status_message,
                             lastActive: updatedUser.last_active,
                             isLocationOn: true,
-                            isLocationShared: true
+                            isLocationShared: true,
+                            friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null // Preserve local friendship state
                         };
 
                         if (exists) {
-                            // Update existing
-                            return prev.map(u => u.id === updatedUser.id ? newUserObj : u);
+                            // Update existing user
+                            const newUsers = [...prev];
+                            newUsers[existingIndex] = { ...newUsers[existingIndex], ...newUserObj };
+                            return newUsers;
                         } else {
                             // Add new user
                             return [...prev, newUserObj];
                         }
                     } else {
-                        // Remove if exists (ghost mode enabled)
-                        return exists ? prev.filter(u => u.id !== updatedUser.id) : prev;
+                        // User should not be visible (ghost mode or no location)
+                        if (exists) {
+                            return prev.filter(u => u.id !== updatedUser.id); // Remove
+                        }
+                        return prev; // Do nothing
                     }
                 });
             })
@@ -407,13 +416,14 @@ export default function MapHome() {
 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    // Use actual avatar if available, otherwise gender-based fallback
                     const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    let fallbackAvatar;
-                    const gender = newUser.gender?.toLowerCase() || 'other';
-                    if (gender === 'male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                    else if (gender === 'female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                    else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    let fallbackAvatar = newUser.avatar_url; // Use real avatar if exists
+                    if (!fallbackAvatar) {
+                        const gender = newUser.gender?.toLowerCase() || 'other';
+                        if (gender === 'male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                        else if (gender === 'female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                        else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                    }
                     
                     const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
                     const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
@@ -423,58 +433,24 @@ export default function MapHome() {
                         name: newUser.username || newUser.full_name || 'User',
                         lat: renderLat,
                         lng: renderLng,
-                        avatar: newUser.avatar_url || fallbackAvatar, // Use real avatar if exists
+                        avatar: unescape(newUser.avatar_url) || fallbackAvatar, // Use real avatar if exists (defensive unescape just in case)
                         originalAvatar: newUser.avatar_url,
                         status: newUser.status,
                         thought: newUser.status_message,
                         lastActive: newUser.last_active,
                         isLocationOn: true,
-                        isLocationShared: true
+                        isLocationShared: true,
+                        friendshipStatus: null
                     };
 
                     setNearbyUsers(prev => {
-                        // Check if user already exists (shouldn't, but safety check)
                         const exists = prev.find(u => u.id === newUser.id);
                         return exists ? prev : [...prev, newUserObj];
                     });
                 }
             })
-            // Listen for profile updates (avatar changes, status updates, etc.)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
-                const updatedUser = payload.new;
-                console.log('🔴 [MapHome] Profile UPDATE received:', updatedUser.id, updatedUser.username);
-                console.log('🔴 [MapHome] Updated avatar_url:', updatedUser.avatar_url);
-                
-                if (updatedUser.id === currentUser.id) {
-                    console.log('🔴 [MapHome] Skipping self update');
-                    return; // Skip self (handled separately)
-                }
-
-                // Update the user in nearbyUsers if they exist
-                setNearbyUsers(prev => {
-                    const userIndex = prev.findIndex(u => u.id === updatedUser.id);
-                    console.log('🔴 [MapHome] User index in nearbyUsers:', userIndex);
-                    
-                    if (userIndex === -1) {
-                        console.log('🔴 [MapHome] User not in nearby list, skipping');
-                        return prev; // User not in nearby list
-                    }
-
-                    const updated = [...prev];
-                    // Update avatar and other fields
-                    updated[userIndex] = {
-                        ...updated[userIndex],
-                        avatar: updatedUser.avatar_url || updated[userIndex].avatar,
-                        originalAvatar: updatedUser.avatar_url,
-                        status: updatedUser.status,
-                        thought: updatedUser.status_message,
-                        lastActive: updatedUser.last_active
-                    };
-                    console.log('🔴 [MapHome] Updated user avatar to:', updated[userIndex].avatar);
-                    return updated;
-                });
-            })
             .subscribe();
+
 
         const interval = setInterval(fetchNearbyUsers, 5000); // Poll every 5s (keep for cleanup/timeouts)
         fetchNearbyUsers(); // Initial fetch
@@ -1126,11 +1102,12 @@ export default function MapHome() {
 
                 {nearbyUsers.map(u => (
                     <Marker
-                        key={u.id}
+                        key={`${u.id}-${u.avatar}`}
                         position={[u.lat, u.lng]}
                         icon={createAvatarIcon(getAvatar2D(u.avatar), false, u.thought)}
                         eventHandlers={{
                             click: async () => {
+
                                 // Fetch friendship status synchronously to update UI instantly
                                 let status = null;
                                 // Optimistically show card while loading if needed, but fetch runs fast.

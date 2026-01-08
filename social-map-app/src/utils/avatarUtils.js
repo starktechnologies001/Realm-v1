@@ -1,6 +1,15 @@
-export const getAvatar2D = (url) => {
+// Generate a fallback avatar URL using DiceBear
+export const getFallbackAvatar = (identifier = 'default') => {
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(identifier)}`;
+};
+
+export const getAvatar2D = (url, fallbackSeed) => {
     console.log('🟡 [avatarUtils] getAvatar2D input:', url);
-    if (!url) return '';
+    
+    // Return fallback if no URL provided
+    if (!url) {
+        return fallbackSeed ? getFallbackAvatar(fallbackSeed) : '';
+    }
     
     // Split query params if any
     const [baseUrl, queryString] = url.split('?');
@@ -28,8 +37,11 @@ export const getAvatar2D = (url) => {
     return url;
 };
 
-export const getAvatarHeadshot = (url) => {
-    if (!url) return '';
+export const getAvatarHeadshot = (url, fallbackSeed) => {
+    // Return fallback if no URL provided
+    if (!url) {
+        return fallbackSeed ? getFallbackAvatar(fallbackSeed) : '';
+    }
     
     const [baseUrl, queryString] = url.split('?');
     
@@ -48,4 +60,12 @@ export const getAvatarHeadshot = (url) => {
         return baseUrl.replace('.glb', `.png?${baseParams}${suffix}`);
     }
     return url;
+};
+
+// Helper to handle image loading errors
+export const handleAvatarError = (event, fallbackSeed) => {
+    if (event.target.src && !event.target.src.includes('dicebear.com')) {
+        console.warn('🔴 [avatarUtils] Avatar failed to load, using fallback:', event.target.src);
+        event.target.src = getFallbackAvatar(fallbackSeed || 'default');
+    }
 };
