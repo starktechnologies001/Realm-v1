@@ -75,35 +75,7 @@ export default function Chat() {
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
 
-    useEffect(() => {
-        const initChat = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                navigate('/login');
-                return;
-            }
-            setCurrentUser(user);
-            
-            // Initialize presence tracking
-            initializePresence(user.id);
-            
-            // If navigated with a target user (from Map or Friends), open that chat immediately
-            if (location.state?.targetUser) {
-                setActiveChatUser(location.state.targetUser);
-            }
-
-            fetchChats(user.id);
-        };
-        initChat();
-        
-        // Cleanup presence on unmount
-        return () => {
-            if (currentUser?.id) {
-                cleanupPresence(currentUser.id);
-            }
-        };
-    }, [location.state]);
-
+    // Refactored fetchChats to be a pure function that returns the chat data
     const fetchChats = async (userId) => {
         // 1. Fetch all accepted friendships (for "Friend" status, if needed later)
         const { data: friendships, error: friendError } = await supabase
@@ -118,8 +90,7 @@ export default function Chat() {
 
         if (friendError) {
             console.error("Error fetching chats:", friendError);
-            setLoading(false);
-            return;
+            return [];
         }
 
         // 2. Fetch all unique users I have exchanged messages with (to include non-friends)
@@ -151,9 +122,7 @@ export default function Chat() {
         partnerIds.delete(userId);
 
         if (partnerIds.size === 0) {
-            setChats([]);
-            setLoading(false);
-            return;
+            return [];
         }
 
         // 3. Fetch Profiles for ALL these partners
@@ -163,12 +132,38 @@ export default function Chat() {
             .in('id', Array.from(partnerIds));
 
         if (!profiles) {
-            setLoading(false);
-            return;
+            return [];
         }
 
-        // Format into a clean list of "Chat Partners"
-        const formattedChats = await Promise.all(profiles.map(async partner => {
+        // 4. Fetch last message and unread count for each partner
+        const chatsWithDetails = await Promise.all(profiles.map(async partner => {
+            // Fetch last message
+            const { data: lastMessage } = await supabase
+                .from('messages')
+                .select('content, created_at, sender_id, message_type')
+                .or(`(sender_id.eq.${userId},receiver_id.eq.${partner.id}),(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            let lastMsgContent = 'Tap to chat';
+            let lastMsgTime = '';
+            let rawTime = 0;
+
+            if (lastMessage) {
+                if (lastMessage.message_type === 'image') {
+                    lastMsgContent = lastMessage.sender_id === userId ? 'You: 📷 Photo' : '📷 Photo';
+                } else if (lastMessage.message_type === 'attachment') {
+                    lastMsgContent = lastMessage.sender_id === userId ? 'You: 📎 Attachment' : '📎 Attachment';
+                } else {
+                    lastMsgContent = lastMessage.sender_id === userId ? `You: ${lastMessage.content}` : lastMessage.content;
+                }
+                
+                const date = new Date(lastMessage.created_at);
+                lastMsgTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                rawTime = date.getTime();
+            }
+
             // Fetch unread count
             const { count } = await supabase
                 .from('messages')
@@ -201,55 +196,168 @@ export default function Chat() {
                 id: partner.id,
                 name: partner.username || partner.full_name,
                 avatar: genderAvatar,
-                lastMsg: 'Tap to chat',
-                time: '',
+                lastMsg: lastMsgContent,
+                time: lastMsgTime,
+                rawTime: rawTime,
                 unread: count || 0,
                 isMuted: isMuted,
                 fullProfile: partner
             };
         }));
-        setChats(formattedChats);
+        return chatsWithDetails.sort((a, b) => {
+            // Sort by time (newest first)
+            const timeA = new Date(a.rawTime || 0);
+            const timeB = new Date(b.rawTime || 0);
+            return timeB - timeA;
+        });
+    };
 
-        // Subscribe for real-time unread updates in list
-        const channelName = `chat_list_${userId}_${Date.now()}`;
+    // Sub-function to actually run the fetch
+    const loadChats = async (userId) => {
+        setLoading(true);
+        const results = await fetchChats(userId);
+        setChats(results);
+        setLoading(false);
+    };
+
+    const [connectionStatus, setConnectionStatus] = useState('connecting');
+
+    // Helper to fetch profile for new chats
+    const fetchProfileAndAddChat = async (userId, lastMsg, time, rawTime) => {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+            
+        if (profile) {
+            setChats(prev => {
+                // Double check it wasn't added in the meantime
+                if (prev.find(c => String(c.id) === String(userId))) return prev;
+                
+                const newChat = {
+                    id: profile.id,
+                    name: profile.username || profile.full_name || 'User',
+                    avatar: getAvatarHeadshot(profile.avatar_url), // Use existing util
+                    lastMsg: lastMsg,
+                    time: time,
+                    rawTime: rawTime,
+                    unread: 1,
+                    isMuted: false, // Default
+                    fullProfile: profile
+                };
+                return [newChat, ...prev];
+            });
+        }
+    };
+
+    // Real-time Chat List Updates
+    useEffect(() => {
+        if (!currentUser) return;
+
+        const channelName = `chat_list_updates_${currentUser.id}`;
+        console.log('🔌 [ChatList] Subscribing to channel:', channelName);
+
         const channel = supabase.channel(channelName)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
                 // Client-side filter: Only care about messages sent TO me
-                if (String(payload.new.receiver_id) !== String(userId)) return;
+                if (String(payload.new.receiver_id) !== String(currentUser.id)) return;
 
-                setChats(prev => prev.map(chat => {
-                    if (String(chat.id) === String(payload.new.sender_id)) {
-                        return { ...chat, unread: chat.unread + 1 };
+                console.log('🔔 [ChatList] NEW MESSAGE:', payload.new);
+
+                const senderId = payload.new.sender_id;
+                const newContent = payload.new.message_type === 'image' ? '📷 Photo' : 
+                                 payload.new.message_type === 'attachment' ? '📎 Attachment' : 
+                                 payload.new.content;
+                
+                // Format time string
+                const date = new Date(payload.new.created_at);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                setChats(prev => {
+                    const existingChatIndex = prev.findIndex(chat => String(chat.id) === String(senderId));
+                    
+                    if (existingChatIndex !== -1) {
+                        // Update existing chat
+                        const updatedChats = [...prev];
+                        const chat = updatedChats[existingChatIndex];
+                        
+                        updatedChats[existingChatIndex] = {
+                            ...chat,
+                            lastMsg: newContent,
+                            time: timeString,
+                            rawTime: payload.new.created_at,
+                            unread: chat.unread + 1
+                        };
+                        
+                        // Move to top
+                        const movedChat = updatedChats.splice(existingChatIndex, 1)[0];
+                        updatedChats.unshift(movedChat);
+                        return updatedChats;
+                    } else {
+                        // New conversation - fetch profile
+                        fetchProfileAndAddChat(senderId, newContent, timeString, payload.new.created_at);
+                        return prev;
                     }
-                    return chat;
-                }));
+                });
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
-                // Client-side filter: Only care about messages sent TO me
-                if (String(payload.new.receiver_id) !== String(userId)) return;
-
-                // If message marked as read (is_read became true)
-                if (payload.new.is_read && !payload.old.is_read) {
-                    setChats(prev => prev.map(chat => {
-                        if (chat.id === payload.new.sender_id) {
-                            return { ...chat, unread: Math.max(0, chat.unread - 1) };
-                        }
-                        return chat;
-                    }));
-                }
+                 // Check if it's a read status update for a message sent TO me
+                 if (String(payload.new.receiver_id) === String(currentUser.id)) {
+                     if (payload.new.is_read && !payload.old.is_read) {
+                         setChats(prev => prev.map(chat => {
+                             if (String(chat.id) === String(payload.new.sender_id)) {
+                                 return { ...chat, unread: Math.max(0, chat.unread - 1) };
+                             }
+                             return chat;
+                         }));
+                     }
+                 }
             })
             .subscribe((status) => {
-               if (status === 'SUBSCRIBED') {
-                   console.log(`Subscribed to chat list updates on ${channelName}`);
-               } else {
-                   console.log(`Subscription status for chat list: ${status}`);
-               }
+                console.log(`🔌 [ChatList] Subscription status: ${status}`);
+                if (status === 'SUBSCRIBED') setConnectionStatus('connected');
+                else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('disconnected');
+                else setConnectionStatus('connecting');
             });
 
-        setLoading(false);
-        return () => supabase.removeChannel(channel);
+        return () => {
+            console.log('🔌 [ChatList] Cleaning up subscription');
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser]);
 
+
+
+    const initChat = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            navigate('/login');
+            return;
+        }
+        setCurrentUser(user);
+        
+        // Initialize presence tracking
+        initializePresence(user.id);
+        
+        // If navigated with a target user (from Map or Friends), open that chat immediately
+        if (location.state?.targetUser) {
+            setActiveChatUser(location.state.targetUser);
+        }
+
+        loadChats(user.id);
     };
+
+    useEffect(() => {
+        initChat();
+        
+        // Cleanup presence on unmount
+        return () => {
+            if (currentUser?.id) {
+                cleanupPresence(currentUser.id);
+            }
+        };
+    }, [location.state]);
 
     // Real-time Friendship Updates for Chat List removal/addition
     useEffect(() => {
@@ -402,11 +510,35 @@ export default function Chat() {
         );
     }
 
-    return <ChatList chats={chats} onSelectChat={(chat) => setActiveChatUser(chat.fullProfile)} loading={loading} />;
+    // Mark messages as read when opening a chat
+    const markMessagesAsRead = async (senderId, receiverId) => {
+        await supabase
+            .from('messages')
+            .update({ is_read: true })
+            .eq('sender_id', senderId)
+            .eq('receiver_id', receiverId)
+            .eq('is_read', false);
+        
+        // Update local chat list to reflect read status
+        setChats(prev => prev.map(chat => 
+            chat.id === senderId ? { ...chat, unread: 0 } : chat
+        ));
+    };
+
+    const handleSelectChat = async (chat) => {
+        setActiveChatUser(chat.fullProfile);
+        // Mark all messages from this user as read
+        if (currentUser?.id && chat.id) {
+            await markMessagesAsRead(chat.id, currentUser.id);
+        }
+    };
+
+    return <ChatList chats={chats} onSelectChat={handleSelectChat} loading={loading} currentUser={currentUser} connectionStatus={connectionStatus} />;
 }
 
-function ChatList({ chats, onSelectChat, loading }) {
+function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus }) {
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeTab, setActiveTab] = useState('messages');
     
     // Filter chats
     const filteredChats = chats?.filter(c => 
@@ -418,7 +550,23 @@ function ChatList({ chats, onSelectChat, loading }) {
             {/* Header */}
             <header className="glass-header">
                 <div className="header-top">
-                    <h1 className="page-title">Messages</h1>
+                    <h1>Chats</h1>
+                    <div className="header-actions">
+                         {/* Connection Status Indicator */}
+                         {connectionStatus && (
+                            <div 
+                                title={`Realtime Status: ${connectionStatus}`}
+                                style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    backgroundColor: connectionStatus === 'connected' ? '#4caf50' : connectionStatus === 'disconnected' ? '#f44336' : '#ff9800',
+                                    marginRight: 10,
+                                    border: '1.5px solid rgba(0,0,0,0.1)',
+                                    display: 'inline-block'
+                                }}
+                            />
+                        )}
                     <button className="settings-btn" onClick={() => {}}>
                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
@@ -426,23 +574,44 @@ function ChatList({ chats, onSelectChat, loading }) {
                         </svg>
                     </button>
                 </div>
-
-                <div className="search-bar">
-                    <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                    <input 
-                        type="text" 
-                        placeholder="Search chats..." 
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            </div>
+                
+                {/* Tabs */}
+                <div className="chat-tabs">
+                    <button 
+                        className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('messages')}
+                    >
+                        Chats
+                    </button>
+                    <button 
+                         className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
+                         onClick={() => setActiveTab('status')}
+                    >
+                        Status
+                    </button>
                 </div>
+
+                {activeTab === 'messages' && (
+                    <div className="search-bar">
+                        <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input 
+                            type="text" 
+                            placeholder="Search chats..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                )}
             </header>
 
             <div className="chat-list-scroll">
-                {loading ? (
+                {activeTab === 'status' ? (
+                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectChat} />
+                ) : loading ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
                         <p>Syncing conversations...</p>
@@ -494,13 +663,13 @@ function ChatList({ chats, onSelectChat, loading }) {
 
             <style>{`
                 :root {
-                    --bg-dark: #000000;
-                    --bg-card: #1c1c1e;
-                    --bg-card-hover: #2c2c2e;
-                    --text-primary: #ffffff;
-                    --text-secondary: #8e8e93;
-                    --accent-blue: #0a84ff;
-                    --separator: rgba(84, 84, 88, 0.65);
+                    --bg-dark: #faf8f5;
+                    --bg-card: #ffffff;
+                    --bg-card-hover: #f5f3f0;
+                    --text-primary: #1d1d1f;
+                    --text-secondary: #6e6e73;
+                    --accent-blue: #0084ff;
+                    --separator: rgba(0, 0, 0, 0.1);
                 }
 
                 .chat-page-container {
@@ -515,7 +684,7 @@ function ChatList({ chats, onSelectChat, loading }) {
                     position: sticky;
                     top: 0;
                     z-index: 100;
-                    background: rgba(28, 28, 30, 0.85); /* iOS-like dark tab bar style */
+                    background: rgba(250, 248, 245, 0.85);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
                     padding: 16px 20px 10px 20px;
@@ -537,7 +706,7 @@ function ChatList({ chats, onSelectChat, loading }) {
                 }
 
                 .settings-btn {
-                    background: rgba(255, 255, 255, 0.1);
+                    background: rgba(0, 0, 0, 0.05);
                     border: none;
                     width: 36px;
                     height: 36px;
@@ -550,11 +719,11 @@ function ChatList({ chats, onSelectChat, loading }) {
                     transition: background 0.2s;
                 }
                 .settings-btn:active {
-                    background: rgba(255, 255, 255, 0.2);
+                    background: rgba(0, 0, 0, 0.1);
                 }
 
                 .search-bar {
-                    background: rgba(118, 118, 128, 0.24);
+                    background: rgba(0, 0, 0, 0.06);
                     border-radius: 10px;
                     padding: 8px 12px;
                     display: flex;
@@ -610,7 +779,7 @@ function ChatList({ chats, onSelectChat, loading }) {
                     height: 52px;
                     border-radius: 50%;
                     object-fit: cover;
-                    background-color: #333;
+                    background-color: #e5e5ea;
                 }
 
                 .online-badge {
@@ -667,7 +836,7 @@ function ChatList({ chats, onSelectChat, loading }) {
                 }
 
                 .chat-item.unread .chat-name {
-                    /* font-weight: 700; maybe? */
+                    font-weight: 700;
                 }
                 .chat-item.unread .chat-preview {
                     color: var(--text-primary);
@@ -711,6 +880,391 @@ function ChatList({ chats, onSelectChat, loading }) {
                 @keyframes spin { 100% { transform: rotate(360deg); } }
                 
                 .empty-icon { font-size: 48px; margin-bottom: 16px; display: block;}
+
+                /* Tab Styles */
+                .chat-tabs {
+                    display: flex; gap: 20px;
+                    margin-bottom: 15px;
+                }
+                .tab-btn {
+                    background: transparent; border: none;
+                    color: var(--text-secondary);
+                    font-size: 16px; font-weight: 600;
+                    padding-bottom: 8px;
+                    cursor: pointer; position: relative;
+                }
+                .tab-btn.active {
+                    color: var(--text-primary);
+                }
+                .tab-btn.active::after {
+                    content: '';
+                    position: absolute; bottom: 0; left: 0; width: 100%;
+                    height: 3px; background: var(--accent-blue);
+                    border-radius: 2px;
+                }
+            `}</style>
+        </div>
+    );
+}
+
+function StatusView({ currentUser, friends, onSelectFriend }) {
+    const [myStatus, setMyStatus] = useState(currentUser?.status_message || '');
+    const [isEditing, setIsEditing] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    // Filter displaying friends with status
+    // Also ensuring no duplicates if possible, though 'chats' is unique by ID
+    const statusFriends = friends?.filter(f => f.fullProfile?.status_message && f.id !== currentUser?.id) || [];
+
+    const handleSave = async () => {
+        if (!currentUser) return;
+        setLoading(true);
+        const { error } = await supabase.from('profiles').update({ status_message: myStatus }).eq('id', currentUser.id);
+        setLoading(false);
+        setIsEditing(false);
+        if (error) {
+            console.error(error);
+            // simple alert for now
+        }
+    };
+
+    return (
+        <div className="status-view">
+            <div className="status-section">
+                <h3 className="section-title">My Status</h3>
+                <div className="status-item me">
+                    <div className="avatar-wrapper">
+                        <img 
+                            src={getAvatarHeadshot(currentUser?.avatar_url)} 
+                            className="status-avatar" 
+                            loading="eager" decoding="sync"
+                        />
+                         <div className="add-badge">+</div>
+                    </div>
+                    <div className="status-content">
+                        {isEditing ? (
+                            <div className="edit-area">
+                                <input 
+                                    className="status-input"
+                                    value={myStatus} 
+                                    onChange={e=>setMyStatus(e.target.value)} 
+                                    placeholder="What's on your mind?"
+                                    autoFocus
+                                />
+                                <div className="edit-actions">
+                                    <button className="save-btn" onClick={handleSave} disabled={loading}>
+                                        {loading ? '...' : 'Save'}
+                                    </button>
+                                    <button className="cancel-btn" onClick={()=>{
+                                        setIsEditing(false);
+                                        setMyStatus(currentUser?.status_message || '');
+                                    }}>✕</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="view-area" onClick={() => setIsEditing(true)}>
+                                <span className="status-name">My Status</span>
+                                <p className="status-text">{myStatus || "Tap to add a status update"}</p>
+                            </div>
+                        )}
+                    </div>
+                    {!isEditing && (
+                        <button className="edit-icon-btn" onClick={()=>setIsEditing(true)}>✎</button>
+                    )}
+                </div>
+            </div>
+
+            <div className="status-section">
+                <h3 className="section-title">Recent Updates</h3>
+                {statusFriends.length === 0 ? (
+                     <div className="no-status">
+                         <p>No recent updates from friends.</p>
+                     </div>
+                ) : (
+                    statusFriends.map(friend => (
+                        <div key={friend.id} className="status-item" onClick={() => onSelectFriend(friend)}>
+                             <div className="avatar-wrapper ring">
+                                <img 
+                                    src={friend.avatar} 
+                                    className="status-avatar" 
+                                    loading="eager" decoding="sync"
+                                />
+                             </div>
+                             <div className="status-content">
+                                 <span className="status-name">{friend.name}</span>
+                                 <p className="status-text">{friend.fullProfile.status_message}</p>
+                             </div>
+                        </div>
+                    ))
+                )}
+            </div>
+            
+            <style>{`
+                .status-view { 
+                    padding: 16px 0 0 0;
+                    min-height: 60vh;
+                }
+                
+                .status-section { 
+                    margin-bottom: 32px; 
+                    padding: 0 16px;
+                }
+                
+                .section-title {
+                    font-size: 13px; 
+                    font-weight: 700; 
+                    color: var(--text-secondary);
+                    margin: 0 0 16px 4px; 
+                    text-transform: uppercase; 
+                    letter-spacing: 1px;
+                    opacity: 0.8;
+                }
+                
+                .status-item {
+                    display: flex; 
+                    align-items: center; 
+                    gap: 14px;
+                    padding: 16px;
+                    background: linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(28, 28, 30, 0.85) 100%);
+                    border-radius: 16px; 
+                    margin-bottom: 12px;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    cursor: pointer;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                .status-item::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 1px;
+                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+                }
+                
+                .status-item:hover {
+                    background: linear-gradient(135deg, rgba(35, 35, 38, 0.95) 0%, rgba(32, 32, 35, 0.9) 100%);
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                    border-color: rgba(255, 255, 255, 0.08);
+                }
+                
+                .status-item:active { 
+                    transform: translateY(0) scale(0.98);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+                }
+                
+                .status-item.me { 
+                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.12) 0%, rgba(10, 132, 255, 0.05) 100%);
+                    border: 1.5px solid rgba(10, 132, 255, 0.25);
+                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.1);
+                }
+                
+                .status-item.me:hover {
+                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.18) 0%, rgba(10, 132, 255, 0.08) 100%);
+                    border-color: rgba(10, 132, 255, 0.35);
+                    box-shadow: 0 6px 20px rgba(10, 132, 255, 0.15);
+                }
+                
+                .avatar-wrapper { 
+                    position: relative; 
+                    width: 56px; 
+                    height: 56px;
+                    flex-shrink: 0;
+                }
+                
+                .status-avatar { 
+                    width: 100%; 
+                    height: 100%; 
+                    border-radius: 50%; 
+                    object-fit: cover; 
+                    background: linear-gradient(135deg, #2a2a2e 0%, #1a1a1e 100%);
+                    border: 2px solid rgba(255, 255, 255, 0.05);
+                }
+                
+                .avatar-wrapper.ring { 
+                    padding: 3px;
+                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
+                    border-radius: 50%;
+                    box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+                }
+                
+                .avatar-wrapper.ring .status-avatar { 
+                    border: 3px solid var(--bg-dark);
+                }
+                
+                .add-badge {
+                    position: absolute; 
+                    bottom: -2px; 
+                    right: -2px;
+                    width: 24px; 
+                    height: 24px; 
+                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
+                    color: white; 
+                    border-radius: 50%; 
+                    border: 3px solid var(--bg-dark);
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    font-size: 16px; 
+                    font-weight: 700;
+                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.4);
+                }
+
+                .status-content { 
+                    flex: 1; 
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 6px; 
+                    overflow: hidden;
+                    min-width: 0;
+                }
+                
+                .status-name { 
+                    font-weight: 600; 
+                    font-size: 17px; 
+                    color: var(--text-primary);
+                    letter-spacing: -0.3px;
+                }
+                
+                .status-text { 
+                    color: var(--text-secondary); 
+                    font-size: 15px; 
+                    margin: 0; 
+                    line-height: 1.4;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                
+                .view-area {
+                    width: 100%;
+                    cursor: pointer;
+                }
+                
+                .edit-area { 
+                    display: flex; 
+                    flex-direction: column;
+                    gap: 12px; 
+                    width: 100%;
+                }
+                
+                .status-input {
+                    background: rgba(255,255,255,0.08);
+                    border: 1.5px solid rgba(255,255,255,0.1);
+                    padding: 12px 14px;
+                    border-radius: 12px;
+                    color: white;
+                    width: 100%;
+                    outline: none;
+                    font-size: 15px;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    transition: all 0.2s;
+                }
+                
+                .status-input:focus {
+                    background: rgba(255,255,255,0.12);
+                    border-color: var(--accent-blue);
+                    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
+                }
+                
+                .status-input::placeholder {
+                    color: var(--text-secondary);
+                    opacity: 0.6;
+                }
+                
+                .edit-actions {
+                    display: flex;
+                    gap: 10px;
+                    justify-content: flex-end;
+                }
+                
+                .save-btn {
+                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 10px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+                }
+                
+                .save-btn:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.4);
+                }
+                
+                .save-btn:active {
+                    transform: translateY(0);
+                }
+                
+                .save-btn:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+                
+                .cancel-btn { 
+                    background: rgba(255, 255, 255, 0.08);
+                    border: none;
+                    color: var(--text-secondary);
+                    font-size: 15px;
+                    cursor: pointer;
+                    padding: 10px 16px;
+                    border-radius: 10px;
+                    transition: all 0.2s;
+                    font-weight: 600;
+                }
+                
+                .cancel-btn:hover {
+                    background: rgba(255, 255, 255, 0.12);
+                    color: var(--text-primary);
+                }
+                
+                .edit-icon-btn {
+                    background: rgba(10, 132, 255, 0.12);
+                    border: none;
+                    color: var(--accent-blue);
+                    font-size: 20px;
+                    cursor: pointer;
+                    padding: 10px;
+                    border-radius: 10px;
+                    transition: all 0.2s;
+                    flex-shrink: 0;
+                }
+                
+                .edit-icon-btn:hover {
+                    background: rgba(10, 132, 255, 0.2);
+                    transform: scale(1.05);
+                }
+                
+                .edit-icon-btn:active {
+                    transform: scale(0.95);
+                }
+                
+                .no-status { 
+                    padding: 60px 20px;
+                    text-align: center;
+                    color: var(--text-secondary);
+                    font-size: 15px;
+                    opacity: 0.7;
+                    background: rgba(255, 255, 255, 0.02);
+                    border-radius: 16px;
+                    border: 1px dashed rgba(255, 255, 255, 0.1);
+                }
+                
+                .no-status p {
+                    margin: 0;
+                    line-height: 1.6;
+                }
             `}</style>
         </div>
     );
@@ -804,17 +1358,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         
         const fetchChatTheme = async () => {
             const { data } = await supabase.from('profiles').select('chat_theme').eq('id', currentUser.id).single();
-            
-            // Only update if DB has a valid theme
-            if (data?.chat_theme && CHAT_THEMES[data.chat_theme]) {
+            const localTheme = localStorage.getItem('visual_chat_theme');
+
+            if (localTheme) {
+                // If local theme exists, prioritize it and sync to DB if different
+                if (data?.chat_theme !== localTheme) {
+                    await supabase.from('profiles').update({ chat_theme: localTheme }).eq('id', currentUser.id);
+                }
+            } else if (data?.chat_theme && CHAT_THEMES[data.chat_theme]) {
+                // If no local theme but DB has one, use DB
                 setChatTheme(data.chat_theme);
                 localStorage.setItem('visual_chat_theme', data.chat_theme);
-            } else if (!data?.chat_theme) {
-                // If DB has no theme, save the current localStorage theme to DB
-                const currentTheme = localStorage.getItem('visual_chat_theme') || 'clean_slate';
-                await supabase.from('profiles').update({ chat_theme: currentTheme }).eq('id', currentUser.id);
+            } else {
+                 // Fallback to default if neither exists
+                 const defaultTheme = 'clean_slate';
+                 setChatTheme(defaultTheme);
+                 localStorage.setItem('visual_chat_theme', defaultTheme);
+                 if (!data?.chat_theme) {
+                    await supabase.from('profiles').update({ chat_theme: defaultTheme }).eq('id', currentUser.id);
+                 }
             }
-            // Don't reset to default if we already have a valid theme in localStorage
         };
         fetchChatTheme();
     }, [currentUser?.id]);
@@ -835,7 +1398,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }).eq('id', currentUser.id);
         
         // 2. Insert system message for the chat
-        if (activeChatUser) {
+        if (targetUser) {
             // Fetch username for the message
             const { data: profile } = await supabase
                 .from('profiles')
@@ -847,9 +1410,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
             await supabase.from('messages').insert({
                 sender_id: currentUser.id,
-                receiver_id: activeChatUser.id,
+                receiver_id: targetUser.id,
                 content: `${username} changed theme to ${themeName} ${CHAT_THEMES[newTheme].emoji}`,
-                message_type: 'system'
+                message_type: 'system',
+                is_read: true
             });
         }
 
@@ -1091,7 +1655,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             receiver_id: targetUser.id,
             content: optimisticMessage.content,
             message_type: type,
-            image_url: imageUrl
+            image_url: imageUrl,
+            is_read: true
         }).select();
 
         if (error) {
@@ -1213,7 +1778,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         receiver_id: targetUser.id,
                         content: `📎 ${result.fileName}`,
                         message_type: 'attachment',
-                        has_attachment: true
+                        has_attachment: true,
+                        is_read: true
                     })
                     .select()
                     .single();
@@ -2560,9 +3126,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     justify-content: center;
                     margin: 12px 0;
                     padding: 12px 16px;
-                    background: rgba(255, 255, 255, 0.03);
+                    background: rgba(0, 0, 0, 0.03);
                     border-radius: 12px;
-                    border-left: 3px solid rgba(255, 255, 255, 0.1);
+                    border-left: 3px solid rgba(0, 0, 0, 0.1);
                 }
 
                 .call-log-entry.missed {
@@ -2594,13 +3160,13 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 .call-text {
                     font-size: 0.9rem;
-                    color: rgba(255, 255, 255, 0.9);
+                    color: #1d1d1f;
                     font-weight: 500;
                 }
 
                 .call-time {
                     font-size: 0.75rem;
-                    color: rgba(255, 255, 255, 0.5);
+                    color: #6e6e73;
                 }
 
                 .chat-date-header {

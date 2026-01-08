@@ -296,7 +296,7 @@ export default function Friends() {
                             textAlign: 'left', 
                             fontSize: '2rem', 
                             fontWeight: 'bold', 
-                            color: 'white',
+                            color: '#1d1d1f',
                             margin: '10px 20px 20px 20px',
                             padding: 0
                         }}>Friends</h2>
@@ -453,14 +453,14 @@ export default function Friends() {
             <style>{`
                 .tab-container {
                     display: flex; gap: 8px;
-                    background: rgba(40,40,40,0.5);
+                    background: rgba(0,0,0,0.05);
                     padding: 4px; border-radius: 100px;
                     border: 1px solid var(--border-subtle);
                 }
                 .tab-btn {
                     padding: 6px 16px; border-radius: 20px;
                     border: none; background: transparent;
-                    color: #888; font-size: 0.85rem; font-weight: 600;
+                    color: #1d1d1f; font-size: 0.85rem; font-weight: 600;
                     cursor: pointer; transition: all 0.2s;
                     display: flex; align-items: center; gap: 6px;
                 }
@@ -468,7 +468,7 @@ export default function Friends() {
                     background: white; color: black;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 }
-                .tab-btn:hover:not(.active) { color: white; }
+                .tab-btn:hover:not(.active) { color: #0084ff; }
                 
                 .tab-badge {
                     background: #ff453a; color: white;
@@ -484,13 +484,14 @@ export default function Friends() {
 
                 .menu-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
                 .friend-badge {
-                    font-size: 0.75rem; 
-                    background: rgba(40, 200, 60, 0.15); 
-                    color: #4ade80; 
-                    padding: 4px 8px; 
-                    border-radius: 12px;
+                    font-size: 0.85rem; 
+                    background: rgba(0, 212, 255, 0.15); 
+                    color: #00d4ff; 
+                    padding: 6px 12px; 
+                    border-radius: 14px;
                     font-weight: 600;
-                    border: 1px solid rgba(40, 200, 60, 0.2);
+                    border: 1px solid rgba(0, 212, 255, 0.3);
+                    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.15);
                 }
                 .btn-menu {
                     width: 40px; height: 40px;
@@ -505,12 +506,12 @@ export default function Friends() {
                 .dropdown-menu {
                     position: absolute;
                     top: 45px; right: 0;
-                    background: #252525;
-                    border: 1px solid #333;
+                    background: #ffffff;
+                    border: 1px solid #e5e5ea;
                     border-radius: 12px;
                     width: 150px;
                     z-index: 100;
-                    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
                     overflow: hidden;
                     animation: fadeIn 0.1s ease;
                 }
@@ -518,11 +519,11 @@ export default function Friends() {
                     width: 100%; text-align: left;
                     padding: 12px 16px;
                     background: transparent; border: none;
-                    color: white; font-size: 0.9rem;
+                    color: #1d1d1f; font-size: 0.9rem;
                     cursor: pointer;
                     transition: background 0.2s;
                 }
-                .dropdown-menu button:hover { background: #333; }
+                .dropdown-menu button:hover { background: #f5f5f7; }
                 .dropdown-menu button.danger { color: #ff4444; }
                 .dropdown-menu button.danger:hover { background: rgba(255, 68, 68, 0.1); }
                 
@@ -532,14 +533,14 @@ export default function Friends() {
                 }
 
                 :root {
-                    /* Solid Professional Theme */
-                    --card-bg: #1e1e1e;
-                    --card-bg-hover: #2a2a2a;
-                    --bg-dark: #0a0a0a;
-                    --border-subtle: #333333;
-                    --text-primary: #ffffff;
-                    --text-secondary: #a0a0a0;
-                    --accent-cyan: #00d4ff;
+                    /* Light Professional Theme */
+                    --card-bg: #ffffff;
+                    --card-bg-hover: #f5f3f0;
+                    --bg-dark: #faf8f5;
+                    --border-subtle: #e5e5ea;
+                    --text-primary: #1d1d1f;
+                    --text-secondary: #6e6e73;
+                    --accent-cyan: #0084ff;
                 }
 
                 .friends-page {
@@ -564,13 +565,13 @@ export default function Friends() {
                 .back-btn {
                     width: 40px; height: 40px;
                     background: transparent; border: none;
-                    color: white; font-size: 1.2rem;
+                    color: #1d1d1f; font-size: 1.2rem;
                     cursor: pointer; display: flex; align-items: center; justify-content: center;
                 }
 
                 .page-title {
                     font-size: 1.1rem; margin: 0; font-weight: 600;
-                    color: var(--text-secondary);
+                    color: #1d1d1f;
                 }
 
                 .scroll-content { padding: 0; padding-bottom: 100px; }
@@ -605,7 +606,7 @@ export default function Friends() {
                     transform: none;
                     box-shadow: none;
                 }
-                .friend-card:active { background: #333; }
+                .friend-card:active { background: rgba(0,0,0,0.05); }
 
                 .avatar-container { position: relative; width: 56px; height: 56px; }
                 .avatar { 
@@ -615,14 +616,14 @@ export default function Friends() {
                 .status-indicator {
                     position: absolute; bottom: -2px; right: -2px;
                     width: 14px; height: 14px;
-                    background: #666; border: 2px solid #1a1a2e;
+                    background: #666; border: 2px solid #ffffff;
                     border-radius: 50%;
                 }
                 .status-indicator.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.5); }
 
                 .info { flex: 1; }
-                .info h3 { margin: 0; font-size: 1.05rem; font-weight: 600; color: white; margin-bottom: 4px; }
-                .status-text { font-size: 0.85rem; color: #888; display: block; }
+                .info h3 { margin: 0; font-size: 1.05rem; font-weight: 600; color: #1d1d1f; margin-bottom: 4px; }
+                .status-text { font-size: 0.85rem; color: #6e6e73; display: block; }
                 .subtitle { font-size: 0.8rem; color: var(--accent-cyan); }
 
                 .actions { display: flex; gap: 8px; }
@@ -638,7 +639,7 @@ export default function Friends() {
 
                 .empty-state {
                     text-align: center; padding: 40px 20px;
-                    color: #666;
+                    color: #6e6e73;
                 }
                 .empty-icon { font-size: 3rem; margin-bottom: 15px; opacity: 0.5; }
                 .btn-explore {

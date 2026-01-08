@@ -58,7 +58,15 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                         </div>
                         
                         <div className="user-info-area">
-                            <h2 onClick={() => onAction('view-profile', user)} style={{ cursor: 'pointer' }}>{user.name} <span>›</span></h2>
+                            <h2 onClick={() => onAction('view-profile', user)} style={{ cursor: 'pointer' }}>
+                                {user.name} 
+                                {user.email_verified && (
+                                    <span className="verified-badge" title="Email Verified">
+                                        ✔ Verified
+                                    </span>
+                                )}
+                                <span>›</span>
+                            </h2>
                             <div className="badges-row">
                                 {user.friendshipStatus === 'accepted' && (
                                     <span className="badge-pill status" style={{ background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', border: '1px solid rgba(52, 199, 89, 0.3)' }}>
@@ -143,8 +151,10 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                 <style>{`
                     .user-profile-overlay {
                         position: fixed;
-                        top: 0; left: 0; right: 0; bottom: 80px; /* Above nav */
-                        background: rgba(0,0,0,0.4);
+                        top: 0; left: 0; right: 0; bottom: 80px;
+                        background: rgba(0,0,0,0.6);
+                        backdrop-filter: blur(8px);
+                        -webkit-backdrop-filter: blur(8px);
                         z-index: 2000;
                         display: flex;
                         justify-content: center;
@@ -152,144 +162,214 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     }
 
                     .glass-panel {
-                        background: rgba(20, 20, 20, 0.85);
-                        backdrop-filter: blur(20px) saturate(180%);
-                        -webkit-backdrop-filter: blur(20px) saturate(180%);
-                        border-top: 1px solid rgba(255, 255, 255, 0.1);
-                        border-left: 1px solid rgba(255, 255, 255, 0.05);
-                        border-right: 1px solid rgba(255, 255, 255, 0.05);
-                        box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+                        background: linear-gradient(180deg, rgba(28, 28, 30, 0.98) 0%, rgba(20, 20, 22, 0.98) 100%);
+                        backdrop-filter: blur(40px) saturate(180%);
+                        -webkit-backdrop-filter: blur(40px) saturate(180%);
+                        border-top: 1px solid rgba(255, 255, 255, 0.15);
+                        border-left: 1px solid rgba(255, 255, 255, 0.08);
+                        border-right: 1px solid rgba(255, 255, 255, 0.08);
+                        box-shadow: 
+                            0 -20px 60px rgba(0,0,0,0.6),
+                            0 -1px 0 rgba(255,255,255,0.1) inset;
                     }
 
                     .user-profile-card {
                         width: 100%;
                         max-width: 500px;
-                        border-radius: 24px 24px 0 0;
-                        padding: 20px;
-                        padding-bottom: 30px;
+                        border-radius: 28px 28px 0 0;
+                        padding: 24px 20px 32px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
-                        gap: 20px;
+                        gap: 24px;
                         position: relative;
                     }
 
                     .card-drag-handle {
-                        width: 40px;
-                        height: 4px;
-                        background: rgba(255,255,255,0.2);
-                        border-radius: 2px;
-                        margin-bottom: 10px;
+                        width: 48px;
+                        height: 5px;
+                        background: rgba(255,255,255,0.25);
+                        border-radius: 3px;
+                        margin-bottom: 12px;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
                     }
 
                     .card-header {
                         display: flex;
                         flex-direction: column;
                         align-items: center;
-                        gap: 12px;
+                        gap: 16px;
                         width: 100%;
                     }
 
                     .avatar-large-container {
                         position: relative;
-                        padding: 4px;
-                        /* Removed gradient usage based on user preference to keep it clean */
-                        background: transparent;
+                        padding: 5px;
+                        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 114, 255, 0.2) 100%);
                         border-radius: 50%;
+                        box-shadow: 0 8px 24px rgba(0, 132, 255, 0.25);
+                        cursor: pointer;
+                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    }
+                    
+                    .avatar-large-container:hover {
+                        transform: scale(1.05);
+                        box-shadow: 0 12px 32px rgba(0, 132, 255, 0.35);
                     }
 
                     .avatar-large {
-                        width: 100px;
-                        height: 100px;
+                        width: 110px;
+                        height: 110px;
                         border-radius: 50%;
                         object-fit: cover;
-                        border: 3px solid rgba(255,255,255,0.1);
-                        background: #1a1a1a;
+                        border: 4px solid rgba(0,0,0,0.3);
+                        background: linear-gradient(135deg, #2a2a2e 0%, #1a1a1e 100%);
+                        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
                     }
 
                     .status-dot {
                         position: absolute;
-                        bottom: 8px;
-                        right: 8px;
-                        width: 16px;
-                        height: 16px;
+                        bottom: 10px;
+                        right: 10px;
+                        width: 20px;
+                        height: 20px;
                         border-radius: 50%;
-                        border: 3px solid #1a1a1a;
+                        border: 4px solid rgba(28, 28, 30, 0.95);
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
                     }
-                    .status-dot.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.6); }
-                    .status-dot.offline { background: #666; }
+                    .status-dot.online { 
+                        background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
+                        box-shadow: 0 0 12px rgba(0,255,136,0.8), 0 2px 8px rgba(0,0,0,0.4);
+                        animation: pulse 2s ease-in-out infinite;
+                    }
+                    .status-dot.offline { 
+                        background: linear-gradient(135deg, #666 0%, #555 100%);
+                    }
+                    
+                    @keyframes pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.7; }
+                    }
 
-                    .user-info-area { text-align: center; }
+                    .user-info-area { 
+                        text-align: center;
+                        width: 100%;
+                    }
+                    
                     .user-info-area h2 {
                         margin: 0;
-                        font-size: 1.5rem;
+                        font-size: 1.75rem;
                         color: white;
                         font-weight: 700;
+                        letter-spacing: -0.5px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 6px;
+                    }
+                    
+                    .user-info-area h2 span {
+                        color: rgba(255,255,255,0.4);
+                        font-size: 1.5rem;
+                    }
+
+                    .verified-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                        color: #0084ff;
+                        background: rgba(0, 132, 255, 0.15);
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        border: 1px solid rgba(0, 132, 255, 0.3);
+                        margin-left: 8px;
+                        letter-spacing: 0.3px;
                     }
 
                     .badges-row {
                         display: flex;
                         justify-content: center;
-                        gap: 8px;
-                        margin-top: 8px;
+                        gap: 10px;
+                        margin-top: 12px;
+                        flex-wrap: wrap;
                     }
 
                     .badge-pill {
-                        font-size: 0.75rem;
-                        padding: 4px 10px;
-                        border-radius: 12px;
+                        font-size: 0.8rem;
+                        padding: 6px 14px;
+                        border-radius: 14px;
                         font-weight: 600;
+                        transition: all 0.2s;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
                     }
+                    
                     .badge-pill.status {
-                        background: rgba(0, 198, 255, 0.1);
+                        background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(0, 132, 255, 0.15) 100%);
                         color: #00d4ff;
-                        border: 1px solid rgba(0, 198, 255, 0.2);
+                        border: 1px solid rgba(0, 212, 255, 0.3);
                     }
+                    
                     .badge-pill.active-time {
-                        background: rgba(255, 255, 255, 0.05);
+                        background: rgba(255, 255, 255, 0.08);
                         color: #aaa;
+                        border: 1px solid rgba(255, 255, 255, 0.1);
                     }
                     
                     .view-profile-sm {
-                        background: transparent;
-                        border: 1px solid rgba(255,255,255,0.2);
-                        color: #ccc;
-                        padding: 4px 12px;
-                        border-radius: 20px;
-                        font-size: 0.75rem;
+                        background: rgba(255,255,255,0.05);
+                        border: 1.5px solid rgba(255,255,255,0.15);
+                        color: #ddd;
+                        padding: 8px 18px;
+                        border-radius: 24px;
+                        font-size: 0.85rem;
+                        font-weight: 600;
                         cursor: pointer;
-                        margin-top: 10px;
+                        margin-top: 14px;
                         transition: all 0.2s;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                     }
+                    
                     .view-profile-sm:hover {
-                        border-color: white; color: white; background: rgba(255,255,255,0.05);
+                        border-color: rgba(0, 212, 255, 0.5);
+                        color: #00d4ff;
+                        background: rgba(0, 212, 255, 0.1);
+                        transform: translateY(-1px);
+                        box-shadow: 0 4px 12px rgba(0, 212, 255, 0.2);
                     }
 
                     .thought-bubble-large {
-                        background: white;
-                        color: #111;
-                        padding: 10px 16px;
-                        border-radius: 16px;
+                        background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+                        color: #1a1a1a;
+                        padding: 14px 20px;
+                        border-radius: 18px;
                         font-weight: 600;
-                        font-size: 0.95rem;
+                        font-size: 1rem;
                         position: relative;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                        box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+                        max-width: 90%;
+                        line-height: 1.5;
                     }
+                    
                     .thought-bubble-large::after {
                         content: '';
                         position: absolute;
-                        top: -6px; left: 50%; transform: translateX(-50%);
-                        border-width: 0 6px 6px;
+                        top: -8px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        border-width: 0 8px 8px;
                         border-style: solid;
-                        border-color: transparent transparent white;
+                        border-color: transparent transparent #ffffff;
+                        filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.1));
                     }
 
                     .action-grid {
                         display: grid;
                         grid-template-columns: 1fr 1fr 1fr 1fr;
-                        gap: 10px;
+                        gap: 12px;
                         width: 100%;
-                        margin-top: 5px;
+                        margin-top: 8px;
                     }
 
                     .action-btn {
@@ -297,26 +377,74 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                         flex-direction: column;
                         align-items: center;
                         justify-content: center;
-                        padding: 12px;
-                        border-radius: 16px;
+                        padding: 16px 12px;
+                        border-radius: 18px;
                         border: none;
-                        background: rgba(255,255,255,0.05);
+                        background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.05) 100%);
                         color: white;
                         cursor: pointer;
-                        gap: 6px;
-                        transition: transform 0.2s, background 0.2s;
+                        gap: 8px;
+                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                        position: relative;
+                        overflow: hidden;
                     }
-                    .action-btn:active { transform: scale(0.95); }
-                    .action-btn .icon { font-size: 1.5rem; }
-                    .action-btn .label { font-size: 0.75rem; font-weight: 500; opacity: 0.8; }
+                    
+                    .action-btn::before {
+                        content: '';
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        height: 1px;
+                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+                    }
+                    
+                    .action-btn:hover {
+                        transform: translateY(-2px);
+                        background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.08) 100%);
+                        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+                        border-color: rgba(255,255,255,0.15);
+                    }
+                    
+                    .action-btn:active {
+                        transform: translateY(0) scale(0.95);
+                    }
+                    
+                    .action-btn .icon {
+                        font-size: 1.75rem;
+                        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+                    }
+                    
+                    .action-btn .label {
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        opacity: 0.9;
+                        letter-spacing: 0.2px;
+                    }
 
                     .primary-action {
-                        background: linear-gradient(135deg, #00C6FF, #0072FF);
-                        box-shadow: 0 4px 12px rgba(0,114,255,0.3);
+                        background: linear-gradient(135deg, #00d4ff 0%, #0084ff 100%);
+                        box-shadow: 0 4px 16px rgba(0, 132, 255, 0.4);
+                        border-color: rgba(0, 212, 255, 0.3);
                     }
+                    
+                    .primary-action:hover {
+                        background: linear-gradient(135deg, #00e0ff 0%, #0090ff 100%);
+                        box-shadow: 0 6px 24px rgba(0, 132, 255, 0.5);
+                        transform: translateY(-3px);
+                    }
+                    
                     .danger {
-                         color: #ff6b6b;
-                         background: rgba(255, 69, 58, 0.1);
+                        color: #ff6b6b;
+                        background: linear-gradient(135deg, rgba(255, 69, 58, 0.15) 0%, rgba(255, 69, 58, 0.1) 100%);
+                        border-color: rgba(255, 69, 58, 0.25);
+                    }
+                    
+                    .danger:hover {
+                        background: linear-gradient(135deg, rgba(255, 69, 58, 0.25) 0%, rgba(255, 69, 58, 0.15) 100%);
+                        border-color: rgba(255, 69, 58, 0.4);
                     }
                 `}</style>
             </motion.div>

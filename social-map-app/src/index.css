@@ -1,18 +1,18 @@
 :root {
-  /* Color Palette */
-  --bg-color: #121212;
-  --bg-secondary: #1e1e1e;
-  --text-primary: #ffffff;
-  --text-secondary: #aaaaaa;
+  /* Cream White Theme Color Palette */
+  --bg-color: #faf8f5;
+  --bg-secondary: #f5f3f0;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
 
-  --brand-primary: #00f0ff;
-  /* Cyberpunk cyan */
-  --brand-secondary: #bd00ff;
-  /* Purple */
+  --brand-primary: #0084ff;
+  /* iOS Blue */
+  --brand-secondary: #00d4ff;
+  /* Cyan */
   --brand-gradient: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
 
-  --glass-bg: rgba(20, 20, 20, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(250, 248, 245, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.1);
 
   /* Spacing */
   --spacing-sm: 8px;

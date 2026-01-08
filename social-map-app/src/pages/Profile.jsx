@@ -693,14 +693,14 @@ export default function Profile() {
 
             <style>{`
                 :root {
-                    /* Solid Professional Theme */
-                    --card-bg: #1e1e1e;
-                    --card-bg-hover: #2a2a2a;
-                    --bg-dark: #0a0a0a;
-                    --border-subtle: #333333;
-                    --text-primary: #ffffff;
-                    --text-secondary: #a0a0a0;
-                    --accent-cyan: #00d4ff;
+                    /* Light Professional Theme */
+                    --card-bg: #ffffff;
+                    --card-bg-hover: #f5f3f0;
+                    --bg-dark: #faf8f5;
+                    --border-subtle: #e5e5ea;
+                    --text-primary: #1d1d1f;
+                    --text-secondary: #6e6e73;
+                    --accent-cyan: #0084ff;
                 }
 
                 .profile-page {
@@ -734,15 +734,15 @@ export default function Profile() {
 
                 .profile-avatar {
                     width: 100px; height: 100px; border-radius: 50%; object-fit: cover;
-                    border: 4px solid #1a1a2e; /* Dark border outline */
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+                    border: 4px solid #ffffff;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
                 }
 
                 .status-indicator {
                     position: absolute; bottom: 8px; right: 8px;
                     width: 18px; height: 18px; 
                     background: #00ff88;
-                    border: 3px solid #1a1a2e; 
+                    border: 3px solid #ffffff;
                     border-radius: 50%;
                 }
 
@@ -782,7 +782,7 @@ export default function Profile() {
                     margin-top: 6px;
                     text-align: center;
                 }
-                .user-bio:hover { background: rgba(255,255,255,0.05); color: white; }
+                .user-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
                 .user-bio.empty { font-style: italic; opacity: 0.6; }
 
                 .edit-btn {
@@ -808,11 +808,11 @@ export default function Profile() {
                 /* Modern Section Labels */
                 .section-label {
                     margin: 24px 0 12px 4px;
-                    font-size: 0.75rem; 
+                    font-size: 0.8rem; 
                     text-transform: uppercase; 
-                    letter-spacing: 1.5px;
-                    color: rgba(255,255,255,0.4); 
-                    font-weight: 700;
+                    letter-spacing: 1.2px;
+                    color: rgba(0, 0, 0, 0.6);
+                    font-weight: 800;
                     position: relative;
                     padding-left: 12px;
                 }
@@ -830,14 +830,14 @@ export default function Profile() {
                 }
 
                 .menu-group {
-                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.95) 0%, rgba(25, 25, 30, 0.95) 100%);
-                    backdrop-filter: blur(20px);
-                    -webkit-backdrop-filter: blur(20px);
-                    border-radius: 20px;
+                    background: transparent;
+                    backdrop-filter: none;
+                    -webkit-backdrop-filter: none;
+                    border-radius: 0;
                     overflow: hidden;
                     margin-bottom: 16px;
-                    border: 1px solid rgba(255,255,255,0.06);
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+                    border: none;
+                    box-shadow: none;
                 }
 
                 .menu-item {
@@ -846,7 +846,7 @@ export default function Profile() {
                     padding: 18px 20px;
                     cursor: pointer; 
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.04); 
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
                     background: transparent;
                     position: relative;
                 }
@@ -858,7 +858,7 @@ export default function Profile() {
                     top: 0;
                     bottom: 0;
                     width: 0;
-                    background: rgba(255,255,255,0.02);
+                    background: rgba(0,0,0,0.02);
                     transition: width 0.3s ease;
                 }
                 
@@ -869,7 +869,7 @@ export default function Profile() {
                 .menu-item:last-child { border-bottom: none; }
                 
                 .menu-item:hover { 
-                    background: rgba(255,255,255,0.03);
+                    background: rgba(0,0,0,0.03);
                     transform: translateX(4px);
                 }
                 
@@ -878,23 +878,23 @@ export default function Profile() {
                 }
 
                 .menu-icon-wrapper {
-                    width: 40px; 
-                    height: 40px; 
+                    width: 42px; 
+                    height: 42px; 
                     border-radius: 12px;
                     display: flex; 
                     align-items: center; 
                     justify-content: center;
                     margin-right: 16px; 
                     font-size: 1.1rem;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.06);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    background: rgba(0,0,0,0.06);
+                    border: 1px solid rgba(0,0,0,0.08);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
                     transition: all 0.3s ease;
                 }
                 
                 .menu-item:hover .menu-icon-wrapper {
                     transform: scale(1.1) rotate(-5deg);
-                    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
                 }
 
                 .menu-content { 
@@ -906,9 +906,9 @@ export default function Profile() {
                 }
                 
                 .menu-label { 
-                    font-size: 1rem; 
-                    color: #fff; 
-                    font-weight: 500; 
+                    font-size: 1.05rem; 
+                    color: #000;
+                    font-weight: 600; 
                     margin-bottom: 4px;
                     letter-spacing: -0.01em;
                 }
@@ -917,11 +917,11 @@ export default function Profile() {
                 .menu-value { 
                     font-size: 0.95rem; 
                     font-weight: 600; 
-                    color: rgba(255,255,255,0.95);
+                    color: #000;
                     margin-top: 6px;
                     padding: 8px 12px;
-                    background: rgba(0, 198, 255, 0.08);
-                    border-left: 3px solid rgba(0, 198, 255, 0.5);
+                    background: rgba(0, 132, 255, 0.12);
+                    border-left: 4px solid rgba(0, 132, 255, 0.6);
                     border-radius: 6px;
                     white-space: nowrap;
                     overflow: hidden;
@@ -929,14 +929,14 @@ export default function Profile() {
                 }
                 
                 .menu-chevron { 
-                    color: rgba(255,255,255,0.3); 
+                    color: rgba(0, 0, 0, 0.3);
                     font-size: 1.2rem; 
                     transition: all 0.3s ease; 
                     margin-left: 12px;
                 }
                 
                 .menu-item:hover .menu-chevron {
-                    color: rgba(255,255,255,0.6);
+                    color: rgba(0, 0, 0, 0.6);
                     transform: translateX(4px);
                 }
                 
@@ -953,10 +953,10 @@ export default function Profile() {
                 .icon-block,
                 .icon-safety,
                 .icon-delete {
-                    color: rgba(255,255,255,0.7);
-                    background: rgba(255,255,255,0.04);
-                    border-color: rgba(255,255,255,0.08);
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    color: #1d1d1f;
+                    background: rgba(0,0,0,0.04);
+                    border-color: rgba(0,0,0,0.08);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
                 }
                 
                 .menu-icon-wrapper svg { stroke-width: 2px; }
