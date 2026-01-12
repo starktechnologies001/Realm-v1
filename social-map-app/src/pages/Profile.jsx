@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
 import Avatar3D from '../components/Avatar3D';
 import AvatarEditor from '../components/AvatarEditor';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -13,6 +14,8 @@ export default function Profile() {
     const [blockedUsers, setBlockedUsers] = useState([]);
     const [showBlockedModal, setShowBlockedModal] = useState(false);
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
+    const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const { theme, updateTheme } = useTheme();
 
     useEffect(() => {
         fetchProfile();
@@ -271,7 +274,7 @@ export default function Profile() {
                 <div className="profile-info">
                     <div className="profile-username">@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</div>
                     <div className="tags-row">
-                        {user.status && <span className="tag status">{user.status}</span>}
+                        {user.status && !user.hide_status && <span className="tag status">{user.status}</span>}
                         {is3DAvatar && (
                             <button 
                                 onClick={() => setShowAvatarEditor(true)}
@@ -312,13 +315,52 @@ export default function Profile() {
                         iconClass="icon-personal"
                         onClick={() => setActiveModal('edit-institute')}
                     />
-                    <MenuItem 
+                    <MenuItem
                         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>}
                         label="Interests" 
                         value={user.interests?.join(', ') || 'Add interests'} 
                         iconClass="icon-interests"
                         onClick={() => setActiveModal('edit-interests')}
                     />
+                    <div className="menu-item toggle-item">
+                        <span className="menu-icon-wrapper icon-interests">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </span>
+                        <div className="menu-content">
+                            <span className="menu-label">Hide Status</span>
+                        </div>
+                        <label className="toggle-switch">
+                            <input 
+                                type="checkbox" 
+                                checked={user.hide_status || false}
+                                onChange={async (e) => {
+                                    console.log('🔵 Toggle hide_status:', e.target.checked);
+                                    await updateProfile({ hide_status: e.target.checked });
+                                    console.log('✅ Updated hide_status to:', e.target.checked);
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div className="menu-item toggle-item">
+                        <span className="menu-icon-wrapper icon-interests">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </span>
+                        <div className="menu-content">
+                            <span className="menu-label">Show Last Seen</span>
+                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>If turned off, you won't see others' status either</span>
+                        </div>
+                        <label className="toggle-switch">
+                            <input 
+                                type="checkbox" 
+                                checked={user.show_last_seen !== false}
+                                onChange={async (e) => {
+                                    await updateProfile({ show_last_seen: e.target.checked });
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
                     <MenuItem
                         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>}
                         label="Birthday"
@@ -353,6 +395,33 @@ export default function Profile() {
                                         onClick={() => handleMuteChange(dur)}
                                     >
                                         {dur}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <MenuItem
+                        icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>}
+                        label="Theme"
+                        value={theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System (Auto)'}
+                        hasArrow={!showThemeMenu}
+                        isExpanded={showThemeMenu}
+                        iconClass="icon-notif"
+                        onClick={() => setShowThemeMenu(!showThemeMenu)}
+                    />
+
+                    {showThemeMenu && (
+                        <div className="inner-submenu">
+                            <div className="submenu-hint">Choose your theme:</div>
+                            <div className="chip-grid">
+                                {['light', 'dark', 'system'].map(themeOption => (
+                                    <button
+                                        key={themeOption}
+                                        className={`chip-option ${theme === themeOption ? 'active' : ''}`}
+                                        onClick={() => updateTheme(themeOption)}
+                                    >
+                                        {themeOption === 'light' ? '☀️ Light' : themeOption === 'dark' ? '🌙 Dark' : '🔄 System'}
                                     </button>
                                 ))}
                             </div>
@@ -705,7 +774,7 @@ export default function Profile() {
 
                 .profile-page {
                     min-height: 100vh;
-                    background: var(--bg-dark);
+                    background: var(--bg-color);
                     color: var(--text-primary);
                     padding-bottom: 80px;
                     position: relative;
@@ -908,8 +977,8 @@ export default function Profile() {
                 .menu-label { 
                     font-size: 1.05rem; 
                     color: #000;
-                    font-weight: 600; 
-                    margin-bottom: 4px;
+                    font-weight: 400; 
+                    margin-bottom: 0;
                     letter-spacing: -0.01em;
                 }
                 
@@ -917,11 +986,11 @@ export default function Profile() {
                 .menu-value { 
                     font-size: 0.95rem; 
                     font-weight: 600; 
-                    color: #000;
-                    margin-top: 6px;
-                    padding: 8px 12px;
-                    background: rgba(0, 132, 255, 0.12);
-                    border-left: 4px solid rgba(0, 132, 255, 0.6);
+                    color: var(--text-primary);
+                    margin-top: 2px;
+                    padding: 0;
+                    background: transparent;
+                    border-left: none;
                     border-radius: 6px;
                     white-space: nowrap;
                     overflow: hidden;
@@ -979,6 +1048,63 @@ export default function Profile() {
                 .chip-option:hover { background: #333; color: white; }
                 .chip-option.active { 
                     background: var(--accent-cyan); color: black; border-color: transparent; font-weight: bold;
+                }
+
+                /* Toggle Switch Styles */
+                .toggle-item {
+                    cursor: default !important;
+                }
+                
+                .toggle-item:hover {
+                    background: transparent !important;
+                    transform: none !important;
+                }
+
+                .toggle-switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 52px;
+                    height: 28px;
+                    margin-left: auto;
+                }
+
+                .toggle-switch input {
+                    opacity: 0;
+                    width: 0;
+                    height: 0;
+                }
+
+                .toggle-slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: #ccc;
+                    transition: 0.3s;
+                    border-radius: 28px;
+                }
+
+                .toggle-slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 22px;
+                    width: 22px;
+                    left: 3px;
+                    bottom: 3px;
+                    background-color: white;
+                    transition: 0.3s;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+
+                .toggle-switch input:checked + .toggle-slider {
+                    background-color: #34c759;
+                }
+
+                .toggle-switch input:checked + .toggle-slider:before {
+                    transform: translateX(24px);
                 }
 
                 .logout-btn {

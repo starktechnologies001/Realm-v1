@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import UserProfileCard from '../components/UserProfileCard';
@@ -78,8 +79,40 @@ function RecenterAutomatically({ lat, lng }) {
     return null;
 }
 
+
+
 export default function MapHome() {
+    const { theme } = useTheme();
+    
+    // Initialize state synchronously to prevent flash
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+         if (theme === 'dark') return true;
+         if (theme === 'light') return false;
+         if (typeof window !== 'undefined' && window.matchMedia) {
+             return window.matchMedia('(prefers-color-scheme: dark)').matches;
+         }
+         return false;
+    });
+
+    useEffect(() => {
+        const checkDarkMode = () => {
+             if (theme === 'dark') return true;
+             if (theme === 'light') return false;
+             return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        };
+        setIsDarkMode(checkDarkMode());
+
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => {
+            if (theme === 'system') setIsDarkMode(mediaQuery.matches);
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, [theme]);
+
     const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
+    // ... rest of component ...
+
     const [location, setLocation] = useState(() => {
         const cached = localStorage.getItem('lastLocation');
         return cached ? JSON.parse(cached) : null;
@@ -259,7 +292,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url, hide_status, show_last_seen')
                         .neq('id', currentUser.id)
                         .eq('is_ghost_mode', false)
                         .not('latitude', 'is', null)
@@ -330,6 +363,8 @@ export default function MapHome() {
                             avatar: u.avatar_url || fallbackAvatar, // Use real avatar if exists
                             originalAvatar: u.avatar_url,
                             status: u.status,
+                            hide_status: u.hide_status,
+                            show_last_seen: u.show_last_seen,
                             thought: u.status_message,
                             lastActive: u.last_active,
                             isLocationOn: true,
@@ -1029,12 +1064,14 @@ export default function MapHome() {
                 maxZoom={22}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
+                attributionControl={false}
             >
                 <LayersControl position="topright">
                     <LayersControl.BaseLayer checked name="Street View">
                         <TileLayer
                             attribution='&copy; Google Maps'
                             url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+                            className={isDarkMode ? 'dark-map-tiles' : ''}
                             maxNativeZoom={20}
                             maxZoom={22}
                         />
@@ -1147,6 +1184,7 @@ export default function MapHome() {
 
             <UserProfileCard 
                 user={selectedUser} 
+                currentUser={currentUser}
                 onClose={() => setSelectedUser(null)} 
                 onAction={handleUserAction}
             />
@@ -1461,7 +1499,7 @@ export default function MapHome() {
                     height: 100vh;
                     width: 100%;
                     position: relative;
-                    background: #e5e3df;
+                    background: var(--bg-color);
                 }
                 .leaflet-marker-icon {
                     transition: transform 1s linear;
@@ -1484,8 +1522,38 @@ export default function MapHome() {
                     display: flex; align-items: center; gap: 12px;
                     font-size: 0.9rem;
                 }
+                
+                /* Dark Mode Stats Card - Keep it white with black text */
+                /* Increased specificity to override global index.css rules */
+                html[data-theme="dark"] #root .stats-card {
+                    background: white !important;
+                    color: #000000 !important;
+                }
+                html[data-theme="dark"] #root .stats-card span,
+                html[data-theme="dark"] #root .stats-card strong,
+                html[data-theme="dark"] #root .stats-card div {
+                    color: #000000 !important;
+                }
+                
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] #root .stats-card {
+                        background: white !important;
+                        color: #000000 !important;
+                    }
+                    html[data-theme="system"] #root .stats-card span,
+                    html[data-theme="system"] #root .stats-card strong,
+                    html[data-theme="system"] #root .stats-card div {
+                        color: #000000 !important;
+                    }
+                }
                 .stats-divider { width: 1px; height: 16px; background: #eee; }
                 /* Controls and Thought Input Styles kept minimal here, mostly moved to App.css or generic */
+                /* Dark Map Tiles Filter */
+                .dark-map-tiles {
+                    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+                    -webkit-filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+                }
+
                 .thought-input-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.5);
                     display: flex; align-items: center; justify-content: center; z-index: 3000;
@@ -1505,6 +1573,52 @@ export default function MapHome() {
                 .thought-actions button { padding: 8px 16px; border-radius: 8px; border:none; cursor: pointer; font-weight: 600; }
                 .thought-actions button.primary { background: #4285F4; color: white; }
                 .hint { font-size: 0.75rem; color: #888; margin: 0; text-align: center; }
+
+                /* Dark Mode for Thought Card */
+                html[data-theme="dark"] .thought-card {
+                    background: #1e1e24 !important;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                }
+                html[data-theme="dark"] .thought-card h3 {
+                    color: white;
+                }
+                html[data-theme="dark"] .thought-card input {
+                    background: rgba(0, 0, 0, 0.3);
+                    color: white;
+                    border-color: rgba(255, 255, 255, 0.2);
+                }
+                html[data-theme="dark"] .thought-card input:focus {
+                    border-color: #4285F4;
+                }
+                html[data-theme="dark"] .thought-actions button {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: white;
+                }
+                html[data-theme="dark"] .thought-actions button.primary {
+                    background: #4285F4;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .thought-card {
+                        background: #1e1e24 !important;
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                    }
+                    html[data-theme="system"] .thought-card h3 {
+                        color: white;
+                    }
+                    html[data-theme="system"] .thought-card input {
+                        background: rgba(0, 0, 0, 0.3);
+                        color: white;
+                        border-color: rgba(255, 255, 255, 0.2);
+                    }
+                    html[data-theme="system"] .thought-actions button {
+                        background: rgba(255, 255, 255, 0.1);
+                        color: white;
+                    }
+                    html[data-theme="system"] .thought-actions button.primary {
+                        background: #4285F4;
+                    }
+                }
 
                 .controls-overlay {
                     position: absolute;

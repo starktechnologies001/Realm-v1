@@ -82,8 +82,8 @@ export default function Chat() {
             .from('friendships')
             .select(`
                 id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, show_last_seen),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender, show_last_seen)
             `)
             .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
             .eq('status', 'accepted');
@@ -128,7 +128,7 @@ export default function Chat() {
         // 3. Fetch Profiles for ALL these partners
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender')
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen')
             .in('id', Array.from(partnerIds));
 
         if (!profiles) {
@@ -137,14 +137,19 @@ export default function Chat() {
 
         // 4. Fetch last message and unread count for each partner
         const chatsWithDetails = await Promise.all(profiles.map(async partner => {
-            // Fetch last message
-            const { data: lastMessage } = await supabase
+            // Fetch last message (fetch more to handle deleted ones)
+            const { data: recentMessages } = await supabase
                 .from('messages')
-                .select('content, created_at, sender_id, message_type')
-                .or(`(sender_id.eq.${userId},receiver_id.eq.${partner.id}),(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
+                .select('content, created_at, sender_id, message_type, deleted_for')
+                .or(`and(sender_id.eq.${userId},receiver_id.eq.${partner.id}),and(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .limit(10); // Fetch top 10 to find first non-deleted
+
+            // Find first message NOT deleted for me
+            const lastMessage = recentMessages?.find(msg => {
+                const deletedFor = msg.deleted_for || [];
+                return !deletedFor.includes(userId);
+            });
 
             let lastMsgContent = 'Tap to chat';
             let lastMsgTime = '';
@@ -164,13 +169,20 @@ export default function Chat() {
                 rawTime = date.getTime();
             }
 
-            // Fetch unread count
-            const { count } = await supabase
+            // Fetch unread count (excluding system messages and deleted messages)
+            const { data: unreadMessages } = await supabase
                 .from('messages')
-                .select('*', { count: 'exact', head: true })
+                .select('id, deleted_for')
                 .eq('sender_id', partner.id)
                 .eq('receiver_id', userId)
-                .eq('is_read', false);
+                .eq('is_read', false)
+                .neq('message_type', 'system'); // Exclude system messages from unread count
+            
+            // Filter out deleted messages client-side
+            const count = unreadMessages ? unreadMessages.filter(msg => {
+                const deletedFor = msg.deleted_for || [];
+                return !deletedFor.includes(userId);
+            }).length : 0;
 
             // Fetch mute settings
             const { data: muteData } = await supabase
@@ -517,7 +529,8 @@ export default function Chat() {
             .update({ is_read: true })
             .eq('sender_id', senderId)
             .eq('receiver_id', receiverId)
-            .eq('is_read', false);
+            .eq('is_read', false)
+            .neq('message_type', 'system'); // Don't mark system messages as read
         
         // Update local chat list to reflect read status
         setChats(prev => prev.map(chat => 
@@ -673,7 +686,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                 }
 
                 .chat-page-container {
-                    background-color: var(--bg-dark);
+                    background-color: var(--bg-color);
                     min-height: 100vh;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                     color: var(--text-primary);
@@ -747,6 +760,27 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                 }
                 .search-bar input::placeholder {
                     color: var(--text-secondary);
+                }
+
+                /* Dark mode search bar */
+                html[data-theme="dark"] .search-bar {
+                    background: rgba(255, 255, 255, 0.1) !important;
+                }
+
+                html[data-theme="dark"] .glass-header {
+                    background: rgba(0, 0, 0, 0.95) !important;
+                    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .search-bar {
+                        background: rgba(255, 255, 255, 0.1) !important;
+                    }
+                    
+                    html[data-theme="system"] .glass-header {
+                        background: rgba(0, 0, 0, 0.95) !important;
+                        border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+                    }
                 }
 
                 .chat-list-scroll {
@@ -835,12 +869,44 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                     line-height: 1.3;
                 }
 
+                .chat-item.unread {
+                    background-color: rgba(33, 150, 243, 0.08);
+                }
+
                 .chat-item.unread .chat-name {
                     font-weight: 700;
+                    color: var(--text-primary);
                 }
                 .chat-item.unread .chat-preview {
-                    color: var(--text-primary);
-                    font-weight: 500;
+                    color: var(--text-primary) !important;
+                    font-weight: 700; /* Increased bold */
+                }
+
+                /* Dark mode unread background highlight */
+                html[data-theme="dark"] .chat-item.unread {
+                    background-color: rgba(255, 255, 255, 0.08) !important;
+                }
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .chat-item.unread {
+                         background-color: rgba(255, 255, 255, 0.08) !important;
+                    }
+                }
+
+                /* Fix for dark mode global overrides killing the grey text */
+                html[data-theme="dark"] .chat-preview {
+                    color: var(--text-secondary) !important;
+                }
+                html[data-theme="dark"] .chat-item.unread .chat-preview {
+                    color: #ffffff !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .chat-preview {
+                        color: var(--text-secondary) !important;
+                    }
+                    html[data-theme="system"] .chat-item.unread .chat-preview {
+                        color: #ffffff !important;
+                    }
                 }
 
                 .unread-badge {
@@ -1342,6 +1408,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     // Theme State (Mode: dark/light/auto)
     const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
 
     // Chat Theme State (Visual themes)
@@ -1352,82 +1419,207 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const [chatBackground, setChatBackground] = useState(null);
     const [showWallpaperMenu, setShowWallpaperMenu] = useState(false);
 
-    // Fetch Chat Theme from Database
+    // Delete chat for current user only (Delete for Me)
+    const handleDeleteChat = async () => {
+        console.log('🗑️ Delete Chat - Starting...');
+        console.log('Current User ID:', currentUser.id);
+        console.log('Target User ID:', targetUser.id);
+        
+        try {
+            // Fetch all messages for this conversation
+            const { data: messagesToUpdate, error: fetchError } = await supabase
+                .from('messages')
+                .select('id, deleted_for')
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+            
+            if (fetchError) throw fetchError;
+            
+            if (!messagesToUpdate || messagesToUpdate.length === 0) {
+                console.log('No messages found in this conversation');
+                setMessages([]);
+                showToast('No messages to delete');
+                return;
+            }
+            
+            console.log(`Found ${messagesToUpdate.length} total messages`);
+            
+            // Filter out messages already deleted by current user
+            const messagesToMark = messagesToUpdate.filter(msg => {
+                const deletedFor = msg.deleted_for || [];
+                return !deletedFor.includes(currentUser.id);
+            });
+            
+            console.log(`${messagesToMark.length} messages to mark as deleted`);
+            
+            if (messagesToMark.length === 0) {
+                console.log('All messages already deleted');
+                setMessages([]);
+                showToast('Chat already deleted');
+                return;
+            }
+            
+            // Update each message to add current user to deleted_for array
+            for (const msg of messagesToMark) {
+                const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
+                
+                await supabase
+                    .from('messages')
+                    .update({ deleted_for: updatedDeletedFor })
+                    .eq('id', msg.id);
+            }
+            
+            console.log(`✅ Marked ${messagesToMark.length} messages as deleted`);
+            
+            // Clear local messages state
+            setMessages([]);
+            showToast(`Chat deleted for you ✅`);
+            
+            // Clear local messages state
+            setMessages([]);
+            showToast(`Chat deleted for you ✅`);
+            
+            // Return to chat list and refresh
+            setTimeout(() => {
+                setActiveChatUser(null);
+                loadChats(currentUser.id);
+            }, 500);
+        } catch (error) {
+            console.error('❌ Error deleting chat:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            showToast('Failed to delete chat ❌');
+        }
+    };
+
+    // Fetch Chat Theme from Database (Shared Friendship Theme)
     useEffect(() => {
-        if (!currentUser?.id) return;
+        if (!currentUser?.id || !targetUser?.id) return;
         
         const fetchChatTheme = async () => {
-            const { data } = await supabase.from('profiles').select('chat_theme').eq('id', currentUser.id).single();
-            const localTheme = localStorage.getItem('visual_chat_theme');
+            // Find the friendship ID first
+            const { data: friendship } = await supabase
+                .from('friendships')
+                .select('id, chat_theme')
+                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                .single();
 
-            if (localTheme) {
-                // If local theme exists, prioritize it and sync to DB if different
-                if (data?.chat_theme !== localTheme) {
-                    await supabase.from('profiles').update({ chat_theme: localTheme }).eq('id', currentUser.id);
-                }
-            } else if (data?.chat_theme && CHAT_THEMES[data.chat_theme]) {
-                // If no local theme but DB has one, use DB
-                setChatTheme(data.chat_theme);
-                localStorage.setItem('visual_chat_theme', data.chat_theme);
+            if (friendship?.chat_theme && CHAT_THEMES[friendship.chat_theme]) {
+                setChatTheme(friendship.chat_theme);
+                localStorage.setItem(`chat_theme_${friendship.id}`, friendship.chat_theme);
             } else {
-                 // Fallback to default if neither exists
                  const defaultTheme = 'clean_slate';
                  setChatTheme(defaultTheme);
-                 localStorage.setItem('visual_chat_theme', defaultTheme);
-                 if (!data?.chat_theme) {
-                    await supabase.from('profiles').update({ chat_theme: defaultTheme }).eq('id', currentUser.id);
-                 }
             }
         };
         fetchChatTheme();
-    }, [currentUser?.id]);
 
-    // Handle Chat Theme Change
-    // Handle Chat Theme Change
+        // Subscribe to friendship changes for real-time theme sync
+        // Note: Supabase subscriptions don't support complex OR filters with AND conditions
+        // So we subscribe to all friendship updates and filter in the callback
+        const channel = supabase
+            .channel(`friendship_theme_${currentUser.id}_${targetUser.id}`)
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'friendships'
+            }, (payload) => {
+                console.log('📡 Received friendship update:', payload);
+                
+                // Check if this update is for the current friendship
+                const isRelevant = (
+                    (payload.new.requester_id === currentUser.id && payload.new.receiver_id === targetUser.id) ||
+                    (payload.new.requester_id === targetUser.id && payload.new.receiver_id === currentUser.id)
+                );
+                
+                console.log('🔍 Is relevant?', isRelevant, 'Current users:', currentUser.id, targetUser.id);
+                console.log('🔍 Payload users:', payload.new.requester_id, payload.new.receiver_id);
+                
+                if (isRelevant && payload.new.chat_theme && CHAT_THEMES[payload.new.chat_theme]) {
+                    console.log('✅ Applying theme:', payload.new.chat_theme);
+                    setChatTheme(payload.new.chat_theme);
+                    setChatBackground(null); // Clear custom background when theme changes
+                    localStorage.setItem(`chat_theme_${payload.new.id}`, payload.new.chat_theme);
+                    showToast(`Theme updated to ${CHAT_THEMES[payload.new.chat_theme].name}`);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, targetUser?.id]);
+
+    // Handle Chat Theme Change (Shared)
     const handleChatThemeChange = async (newTheme) => {
         setChatTheme(newTheme);
-        localStorage.setItem('visual_chat_theme', newTheme);
-        setChatBackground(null); // Clear custom wallpaper to show theme background
+        setChatBackground(null); 
         setShowChatThemeSelector(false);
         const themeName = CHAT_THEMES[newTheme].name;
         
-        // 1. Update theme in profile & clear wallpaper
-        await supabase.from('profiles').update({ 
-            chat_theme: newTheme,
-            chat_background: null 
-        }).eq('id', currentUser.id);
+        console.log('🎨 Changing theme to:', newTheme, 'for users:', currentUser.id, targetUser.id);
         
-        // 2. Insert system message for the chat
-        if (targetUser) {
-            // Fetch username for the message
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('username')
-                .eq('id', currentUser.id)
+        try {
+            // 1. Find friendship ID
+            const { data: friendship, error: friendshipError } = await supabase
+                .from('friendships')
+                .select('id')
+                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .single();
-                
-            const username = profile?.username || 'User';
 
-            await supabase.from('messages').insert({
-                sender_id: currentUser.id,
-                receiver_id: targetUser.id,
-                content: `${username} changed theme to ${themeName} ${CHAT_THEMES[newTheme].emoji}`,
-                message_type: 'system',
-                is_read: true
-            });
+            if (friendshipError) {
+                console.error('❌ Error finding friendship:', friendshipError);
+                throw friendshipError;
+            }
+
+            if (friendship) {
+                console.log('✅ Found friendship:', friendship.id);
+                localStorage.setItem(`chat_theme_${friendship.id}`, newTheme);
+                
+                // 2. Update Shared Theme
+                const { error: updateError } = await supabase
+                    .from('friendships')
+                    .update({ chat_theme: newTheme })
+                    .eq('id', friendship.id);
+
+                if (updateError) {
+                    console.error('❌ Error updating theme:', updateError);
+                    throw updateError;
+                }
+                
+                console.log('✅ Theme updated in database');
+
+                // 3. Send System Message
+                const { error: messageError } = await supabase.from('messages').insert([{
+                    sender_id: currentUser.id,
+                    receiver_id: targetUser.id,
+                    content: `changed the theme to ${themeName}`,
+                    message_type: 'system',
+                    created_at: new Date().toISOString()
+                }]);
+                
+                if (messageError) {
+                    console.error('❌ Error inserting system message:', messageError);
+                } else {
+                    console.log('✅ System message inserted');
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error updating theme:', error);
+            showToast('Failed to update theme');
+            return;
         }
 
         showToast(`Theme changed to ${themeName} ${CHAT_THEMES[newTheme].emoji}`);
     };
 
-    // Fetch Wallpaper
-    useEffect(() => {
-        const fetchWallpaper = async () => {
-            const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
-            if (data?.chat_background) setChatBackground(data.chat_background);
-        };
-        fetchWallpaper();
-    }, [currentUser.id]);
+    // Fetch Wallpaper - DISABLED: Personal wallpapers conflict with shared themes
+    // Shared themes (per-chat) should take priority over personal wallpapers
+    // useEffect(() => {
+    //     const fetchWallpaper = async () => {
+    //         const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+    //         if (data?.chat_background) setChatBackground(data.chat_background);
+    //     };
+    //     fetchWallpaper();
+    // }, [currentUser.id]);
 
     const handleWallpaperChange = async (bg) => {
         setChatBackground(bg);
@@ -1535,10 +1727,15 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .order('created_at', { ascending: true });
 
             if (!error && data) {
-                setMessages(data);
+                // Filter out messages deleted by current user
+                const filteredMessages = data.filter(msg => {
+                    const deletedFor = msg.deleted_for || [];
+                    return !deletedFor.includes(currentUser.id);
+                });
+                setMessages(filteredMessages);
 
-                // Mark UNREAD messages from this user as READ
-                const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read).map(m => m.id);
+                // Mark UNREAD messages from this user as READ (excluding system messages)
+                const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
                 if (unreadIds.length > 0) {
                     await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
                 }
@@ -1564,8 +1761,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         const withoutOptimistic = prev.filter(m => !m.tempId);
                         return [...withoutOptimistic, payload.new];
                     });
-                    // Mark as read immediately
-                    await supabase.from('messages').update({ is_read: true }).eq('id', payload.new.id);
+                    // Mark as read immediately (skip system messages)
+                    if (payload.new.message_type !== 'system') {
+                        await supabase.from('messages').update({ is_read: true }).eq('id', payload.new.id);
+                    }
                     
                     // Set delivered_at for sender
                     await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
@@ -1581,9 +1780,18 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 if (String(payload.new.sender_id) !== String(currentUser.id)) return;
 
                 // Update message status in UI
-                setMessages(prev => prev.map(m => 
-                    m.id === payload.new.id ? payload.new : m
-                ));
+                const updatedMessage = payload.new;
+                const deletedFor = updatedMessage.deleted_for || [];
+                const isDeletedForMe = deletedFor.includes(currentUser.id);
+
+                setMessages(prev => {
+                    if (isDeletedForMe) {
+                        // Remove message if it's now deleted for me
+                        return prev.filter(m => m.id !== updatedMessage.id);
+                    }
+                    // Otherwise update it
+                    return prev.map(m => m.id === updatedMessage.id ? updatedMessage : m);
+                });
             })
             .subscribe((status) => {
                 console.log(`Chat room subscription status: ${status}`);
@@ -1603,15 +1811,21 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     .order('created_at', { ascending: true });
 
                 if (data) {
+                    // Filter out messages deleted by current user
+                    const filteredData = data.filter(msg => {
+                        const deletedFor = msg.deleted_for || [];
+                        return !deletedFor.includes(currentUser.id);
+                    });
+
                     setMessages(prev => {
                         // Only update if count is different or last message is different
                         // Simple heuristic to avoid aggressive re-renders
-                        if (prev.length !== data.length) return data;
-                        if (prev.length > 0 && data.length > 0 && prev[prev.length - 1].id !== data[data.length - 1].id) return data;
+                        if (prev.length !== filteredData.length) return filteredData;
+                        if (prev.length > 0 && filteredData.length > 0 && prev[prev.length - 1].id !== filteredData[filteredData.length - 1].id) return filteredData;
                         return prev;
                     });
-                     // Mark UNREAD messages from this user as READ
-                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read).map(m => m.id);
+                     // Mark UNREAD messages from this user as READ (excluding system messages)
+                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
                     if (unreadIds.length > 0) {
                         await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
                     }
@@ -2062,6 +2276,16 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 <div className="divider"></div>
 
                                 <button onClick={() => {
+                                    setShowDeleteConfirm(true);
+                                    setShowMenu(false);
+                                }} className="danger">
+                                    <span className="icon">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                    </span>
+                                    Delete Chat
+                                </button>
+
+                                <button onClick={() => {
                                     const reason = prompt("Reason for reporting:");
                                     if (reason) showToast("Report submitted successfully ✅");
                                     setShowMenu(false);
@@ -2101,6 +2325,44 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                             </button>
                         </div>
                         <button onClick={() => setShowThemeMenu(false)} className="cancel-btn">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Chat Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="mute-menu-modal" onClick={() => setShowDeleteConfirm(false)}>
+                    <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🗑️</div>
+                            <h3 style={{ marginBottom: '10px' }}>Delete Chat?</h3>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                Delete all messages with {partner?.full_name || partner?.username || 'this user'}? This cannot be undone.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                            <button 
+                                onClick={() => setShowDeleteConfirm(false)} 
+                                className="cancel-btn"
+                                style={{ flex: 1 }}
+                            >
+                                No
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    handleDeleteChat();
+                                    setShowDeleteConfirm(false);
+                                }} 
+                                className="mute-option"
+                                style={{ 
+                                    flex: 1, 
+                                    background: '#ff453a',
+                                    color: 'white'
+                                }}
+                            >
+                                Yes, Delete
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -2222,12 +2484,32 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 data-theme={chatTheme}
                 data-pattern={CHAT_THEMES[chatTheme]?.backgroundPattern || 'none'}
                 style={{ 
-                    background: chatBackground || CHAT_THEMES[chatTheme]?.backgroundColor,
-                    backgroundSize: chatBackground?.includes('url') ? 'cover' : undefined,
+                    backgroundColor: (!chatBackground?.includes('url') && !chatBackground?.includes('http')) 
+                        ? (chatBackground || CHAT_THEMES[chatTheme]?.backgroundColor) 
+                        : undefined,
+                    backgroundImage: (chatBackground?.includes('url') || chatBackground?.includes('http')) 
+                        ? (chatBackground.includes('url') ? chatBackground : `url(${chatBackground})`) 
+                        : undefined,
+                    backgroundSize: (chatBackground?.includes('url') || chatBackground?.includes('http')) ? 'cover' : undefined,
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat'
                 }}
             >
+                {messages.length === 0 && (
+                    <div className="empty-chat-state" style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        color: 'var(--text-secondary)',
+                        opacity: 0.7
+                    }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '10px' }}>👋</div>
+                        <h3 style={{ fontWeight: 500 }}>Tap to chat</h3>
+                        <p style={{ fontSize: '0.9rem' }}>Start a conversation with {partner.full_name || partner.username}</p>
+                    </div>
+                )}
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
                     
@@ -2247,11 +2529,32 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                     // System Message Rendering
                     if (msg.message_type === 'system') {
+                        // Determine who sent the system message
+                        const senderName = msg.sender_id === currentUser.id 
+                            ? 'You' 
+                            : (partner?.full_name || partner?.username || targetUser?.full_name || targetUser?.username || 'Friend');
+                            
+                        const content = msg.content.includes('changed the theme') 
+                            ? `${senderName} ${msg.content}`
+                            : msg.content;
+
                         return (
                             <React.Fragment key={msg.id || i}>
                                 {dateHeader}
-                                <div className="msg-system">
-                                    <span>{msg.content}</span>
+                                <div className="msg-system" style={{
+                                    display: 'flex', justifyContent: 'center', margin: '15px 0', opacity: 0.85
+                                }}>
+                                    <span style={{
+                                        background: 'rgba(120, 120, 120, 0.2)',
+                                        color: 'var(--text-secondary)',
+                                        padding: '4px 12px',
+                                        borderRadius: '12px',
+                                        fontSize: '0.8rem',
+                                        backdropFilter: 'blur(4px)',
+                                        border: '1px solid rgba(255,255,255,0.05)'
+                                    }}>
+                                        {content}
+                                    </span>
                                 </div>
                             </React.Fragment>
                         );
@@ -2618,6 +2921,50 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     background: var(--theme-bubble-received, rgba(255,255,255,0.08));
                     color: var(--theme-text-color, #eee);
                 }
+
+                /* Dark mode incoming bubbles - Light bubble, black text */
+                html[data-theme="dark"] .msg-bubble.them {
+                    background: #e0e0e0 !important;
+                    color: #000000 !important;
+                    border: none !important;
+                }
+                html[data-theme="dark"] .msg-bubble.them .msg-text,
+                html[data-theme="dark"] .msg-bubble.them .msg-time {
+                    color: #000000 !important;
+                }
+
+                /* Dark mode SENT bubbles - Light bubble, black text */
+                html[data-theme="dark"] .msg-bubble.me {
+                    background: #bbdefb !important; /* Light blue to distinguish from incoming */
+                    color: #000000 !important;
+                    box-shadow: none !important;
+                }
+                html[data-theme="dark"] .msg-bubble.me .msg-text,
+                html[data-theme="dark"] .msg-bubble.me .msg-time {
+                    color: #000000 !important;
+                }
+                
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .msg-bubble.them {
+                        background: #e0e0e0 !important;
+                        color: #000000 !important;
+                        border: none !important;
+                    }
+                    html[data-theme="system"] .msg-bubble.them .msg-text,
+                    html[data-theme="system"] .msg-bubble.them .msg-time {
+                        color: #000000 !important;
+                    }
+
+                    html[data-theme="system"] .msg-bubble.me {
+                        background: #bbdefb !important;
+                        color: #000000 !important;
+                        box-shadow: none !important;
+                    }
+                    html[data-theme="system"] .msg-bubble.me .msg-text,
+                    html[data-theme="system"] .msg-bubble.me .msg-time {
+                        color: #000000 !important;
+                    }
+                }
                 
                 .msg-content-wrapper {
                     display: flex;
@@ -2837,26 +3184,66 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 /* Dropdown & Modals */
                 .dropdown-menu {
-                    position: absolute; top: 110%; right: 0;
-                    background: rgba(20, 20, 20, 0.95);
-                    backdrop-filter: blur(16px);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px; padding: 8px;
-                    width: 220px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+                    position: absolute; 
+                    top: calc(100% + 8px); 
+                    right: 0;
+                    background: rgba(28, 28, 30, 0.98);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 16px;
+                    padding: 6px;
+                    min-width: 220px;
+                    box-shadow: 
+                        0 8px 32px rgba(0, 0, 0, 0.4),
+                        0 2px 8px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
                     z-index: 10001; 
+                    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    transform-origin: top right;
+                    overflow: hidden;
                 }
                 .dropdown-menu button { 
-                    padding: 12px; width: 100%; text-align: left;
-                    background: none; border: none; color: #ddd;
-                    border-radius: 8px; cursor: pointer;
-                    display: flex; align-items: center; gap: 12px;
-                    font-size: 0.9rem; transition: background 0.2s;
+                    padding: 12px 14px; 
+                    width: 100%; 
+                    text-align: left;
+                    background: none; 
+                    border: none; 
+                    color: rgba(255, 255, 255, 0.9);
+                    border-radius: 10px; 
+                    cursor: pointer;
+                    display: flex; 
+                    align-items: center; 
+                    gap: 12px;
+                    font-size: 0.95rem; 
+                    font-weight: 500;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    letter-spacing: 0.01em;
                 }
-                .dropdown-menu button:hover { background: rgba(255,255,255,0.1); color: white; }
-                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
-                .dropdown-menu button.danger { color: #ff5555; }
-                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.15); }
+                .dropdown-menu button:active {
+                    transform: scale(0.98);
+                }
+                .dropdown-menu button:hover { 
+                    background: rgba(255,255,255,0.1); 
+                    color: white; 
+                }
+                .dropdown-menu .divider { 
+                    height: 1px; 
+                    background: linear-gradient(
+                        90deg, 
+                        transparent, 
+                        rgba(255, 255, 255, 0.12) 50%, 
+                        transparent
+                    );
+                    margin: 6px 8px; 
+                }
+                .dropdown-menu button.danger { 
+                    color: #ff5757; 
+                }
+                .dropdown-menu button.danger:hover { 
+                    background: rgba(255, 69, 58, 0.15); 
+                    color: #ff6b6b;
+                }
                 
                 .glass-panel {
                     background: rgba(20,20,20,0.8); backdrop-filter: blur(20px);
@@ -2891,39 +3278,92 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .header-actions button { background: none; border: none; font-size: 1.2rem; color: white; cursor: pointer; }
                 
                 .dropdown-menu {
-                    position: absolute; top: 110%; right: 0;
-                    background: rgba(30, 30, 30, 0.95);
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 8px;
-                    display: flex; flex-direction: column; gap: 4px;
-                    min-width: 200px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    position: absolute; 
+                    top: calc(100% + 8px); 
+                    right: 0;
+                    background: rgba(28, 28, 30, 0.98);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 16px;
+                    padding: 6px;
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 2px;
+                    min-width: 220px;
+                    box-shadow: 
+                        0 8px 32px rgba(0, 0, 0, 0.4),
+                        0 2px 8px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
                     z-index: 10001; 
-                    animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
                     transform-origin: top right;
+                    overflow: hidden;
                 }
                 @keyframes slideDown {
-                    from { opacity: 0; transform: scale(0.95); }
-                    to { opacity: 1; transform: scale(1); }
+                    from { 
+                        opacity: 0; 
+                        transform: scale(0.92) translateY(-8px); 
+                    }
+                    to { 
+                        opacity: 1; 
+                        transform: scale(1) translateY(0); 
+                    }
                 }
                 .dropdown-menu button { 
-                    font-size: 0.95rem; color: #ececec; 
-                    padding: 10px 12px; 
-                    text-align: left; width: 100%; 
-                    cursor: pointer; background: none; border: none; 
-                    border-radius: 8px;
-                    display: flex; align-items: center; gap: 10px;
-                    transition: all 0.2s ease;
+                    font-size: 0.95rem; 
+                    color: rgba(255, 255, 255, 0.9); 
+                    padding: 12px 14px; 
+                    text-align: left; 
+                    width: 100%; 
+                    cursor: pointer; 
+                    background: none; 
+                    border: none; 
+                    border-radius: 10px;
+                    display: flex; 
+                    align-items: center; 
+                    gap: 12px;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                     font-weight: 500;
+                    position: relative;
+                    letter-spacing: 0.01em;
                 }
-                .dropdown-menu button:hover { background: rgba(255,255,255,0.08); color: white; transform: translateX(2px); }
-                .dropdown-menu button.danger { color: #ff5555; }
-                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.1); }
-                .dropdown-menu .icon { display: flex; align-items: center; justify-content: center; opacity: 0.8; }
-                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
+                .dropdown-menu button:active {
+                    transform: scale(0.98);
+                }
+                .dropdown-menu button:hover { 
+                    background: rgba(255, 255, 255, 0.1); 
+                    color: white; 
+                }
+                .dropdown-menu button.danger { 
+                    color: #ff5757; 
+                }
+                .dropdown-menu button.danger:hover { 
+                    background: rgba(255, 69, 58, 0.15); 
+                    color: #ff6b6b;
+                }
+                .dropdown-menu .icon { 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    width: 20px;
+                    height: 20px;
+                    opacity: 0.85;
+                    flex-shrink: 0;
+                }
+                .dropdown-menu button:hover .icon {
+                    opacity: 1;
+                }
+                .dropdown-menu .divider { 
+                    height: 1px; 
+                    background: linear-gradient(
+                        90deg, 
+                        transparent, 
+                        rgba(255, 255, 255, 0.12) 50%, 
+                        transparent
+                    );
+                    margin: 6px 8px; 
+                }
 
 
                 .sent-image { max-width: 100%; max-height: 300px; border-radius: 10px; display: block; }

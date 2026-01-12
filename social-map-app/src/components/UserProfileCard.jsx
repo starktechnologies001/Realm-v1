@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
 
 
-export default function UserProfileCard({ user, onClose, onAction }) {
+export default function UserProfileCard({ user, onClose, onAction, currentUser }) {
     if (!user) return null;
 
     // Debug: Log user data to see what's available
@@ -15,6 +15,11 @@ export default function UserProfileCard({ user, onClose, onAction }) {
     const avatarUrl = user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`;
     const displayAvatar = getAvatar2D(avatarUrl);
     console.log('🔵 [UserProfileCard] Display Avatar:', displayAvatar);
+    console.log('🔵 [UserProfileCard] hide_status:', user.hide_status);
+    console.log('🔵 [UserProfileCard] FULL USER OBJECT:', user);
+
+    // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled
+    const canShowLastSeen = (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
 
     // Calculate time since active
     const getLastActive = (dateStr) => {
@@ -22,6 +27,12 @@ export default function UserProfileCard({ user, onClose, onAction }) {
         const diff = Date.now() - new Date(dateStr).getTime();
         const mins = Math.floor(diff / 60000);
         if (mins < 1) return 'Online';
+        
+        // If privacy is disabled, don't show "last seen" times
+        if (!canShowLastSeen) {
+            return null; // Hide status completely
+        }
+        
         if (mins < 60) return `${mins}m ago`;
         const hours = Math.floor(mins / 60);
         if (hours < 24) return `${hours}h ago`;
@@ -73,8 +84,15 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                                         🤝 Friend
                                     </span>
                                 )}
-                                <span className="badge-pill status">{user.status || 'Available'}</span>
-                                <span className="badge-pill active-time">{getLastActive(user.lastActive)}</span>
+                                {!user.hide_status && <span className="badge-pill status">{user.status || 'Available'}</span>}
+                                {(() => {
+                                    const lastActive = getLastActive(user.lastActive);
+                                    // Always show if Online, otherwise respect privacy
+                                    if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
+                                        return <span className="badge-pill active-time">{lastActive}</span>;
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             {user.friendshipStatus === 'accepted' && (
                                 <button className="view-profile-sm" onClick={() => onAction('view-profile', user)}>View Profile</button>

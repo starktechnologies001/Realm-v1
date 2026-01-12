@@ -12,28 +12,31 @@ import Layout from './components/Layout';
 import './App.css';
 
 import { CallProvider } from './context/CallContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
   return (
-    <Router>
-      <CallProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+    <ThemeProvider>
+      <Router>
+        <CallProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
 
-          {/* Protected Routes with Bottom Nav */}
-          <Route element={<Layout />}>
-            <Route path="/map" element={<MapHome />} />
-            <Route path="/friends" element={<Friends />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/profile" element={<Profile />} />
-          </Route>
+            {/* Protected Routes with Bottom Nav */}
+            <Route element={<Layout />}>
+              <Route path="/map" element={<MapHome />} />
+              <Route path="/friends" element={<Friends />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/profile" element={<Profile />} />
+            </Route>
 
-          <Route path="/confirm-email" element={<ConfirmEmail />} />
-          <Route path="/update-password" element={<UpdatePassword />} />
-          <Route path="/" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </CallProvider>
-    </Router>
+            <Route path="/confirm-email" element={<ConfirmEmail />} />
+            <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </CallProvider>
+      </Router>
+    </ThemeProvider>
   );
 }
 

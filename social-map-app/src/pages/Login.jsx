@@ -537,7 +537,7 @@ export default function Login() {
               <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.799 L -6.744 42.389 C -8.804 40.469 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z" />
             </g>
           </svg>
-          Continue with Google
+          Continue with Gmail
         </button>
       </div>
 
@@ -1159,10 +1159,10 @@ export default function Login() {
             padding: 0 18px; 
         }
 
-        .btn-google {
+        .login-container .login-card .btn-google {
           width: 100%; 
           background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%);
-          color: #1a1a1a;
+          color: #000000 !important;
           border: 1px solid rgba(0,0,0,0.08);
           padding: 14px;
           border-radius: 14px;
@@ -1177,7 +1177,7 @@ export default function Login() {
           box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         
-        .btn-google:hover { 
+        .login-container .login-card .btn-google:hover { 
             background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
             transform: translateY(-2px);
             box-shadow: 0 4px 16px rgba(0,0,0,0.15);

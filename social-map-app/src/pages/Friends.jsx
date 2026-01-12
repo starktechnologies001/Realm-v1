@@ -21,7 +21,10 @@ export default function Friends() {
 
     const fetchFriendsData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+            navigate('/login');
+            return;
+        }
         setCurrentUser(user);
 
         // Fetch Pending Requests (where I am receiver)
@@ -29,7 +32,7 @@ export default function Friends() {
             .from('friendships')
             .select(`
                 id, 
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
             `)
             .eq('receiver_id', user.id)
             .eq('status', 'pending');
@@ -48,8 +51,8 @@ export default function Friends() {
                 id,
                 requester_id,
                 receiver_id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
             `)
             .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
             .eq('status', 'accepted');
@@ -195,6 +198,8 @@ export default function Friends() {
             name: friend.username || friend.full_name,
             avatar: friend.avatar_url || (friend.gender === 'Male' ? `https://avatar.iran.liara.run/public/boy?username=${encodeURIComponent(friend.username)}` : friend.gender === 'Female' ? `https://avatar.iran.liara.run/public/girl?username=${encodeURIComponent(friend.username)}` : `https://avatar.iran.liara.run/public?username=${encodeURIComponent(friend.username)}`),
             status: friend.status,
+            hide_status: friend.hide_status,
+            show_last_seen: friend.show_last_seen,
             gender: friend.gender,
             friendshipStatus: 'accepted' // For UserProfileCard logic
         };
@@ -334,7 +339,7 @@ export default function Friends() {
                                         </div>
                                         <div className="info">
                                             <h3>{friend.username || friend.full_name}</h3>
-                                            <span className="status-text">{friend.status || 'Offline'}</span>
+                                            {!friend.hide_status && <span className="status-text">{friend.status || 'Offline'}</span>}
                                         </div>
                                         
                                         <div className="menu-wrapper">
@@ -368,6 +373,7 @@ export default function Friends() {
             {/* Profile Modal */}
             <UserProfileCard 
                 user={viewingProfile} 
+                currentUser={currentUser}
                 onClose={() => setViewingProfile(null)} 
                 onAction={handleCardAction}
             />
@@ -469,6 +475,19 @@ export default function Friends() {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 }
                 .tab-btn:hover:not(.active) { color: #0084ff; }
+
+                /* Dark mode tab buttons */
+                html[data-theme="dark"] .tab-btn.active {
+                    background: rgba(255, 255, 255, 0.15) !important;
+                    color: white !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .tab-btn.active {
+                        background: rgba(255, 255, 255, 0.15) !important;
+                        color: white !important;
+                    }
+                }
                 
                 .tab-badge {
                     background: #ff453a; color: white;
@@ -545,7 +564,7 @@ export default function Friends() {
 
                 .friends-page {
                     min-height: 100vh;
-                    background: var(--bg-dark);
+                    background: var(--bg-color);
                     color: var(--text-primary);
                     font-family: 'Inter', sans-serif;
                     position: relative;
@@ -560,6 +579,17 @@ export default function Friends() {
                     position: sticky; top: 0; z-index: 10;
                     background: var(--bg-dark);
                     /* Removed border for ultra-clean look */
+                }
+
+                /* Dark mode Friends header */
+                html[data-theme="dark"] .glass-header {
+                    background: rgba(0, 0, 0, 0.95) !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .glass-header {
+                        background: rgba(0, 0, 0, 0.95) !important;
+                    }
                 }
 
                 .back-btn {

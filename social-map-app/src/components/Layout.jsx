@@ -33,12 +33,13 @@ export default function Layout() {
             
             if (mounted) setFriendRequestCount(friendCount || 0);
 
-            // Fetch unread message count
+            // Fetch unread message count (excluding system messages)
             const { count: msgCount } = await supabase
                 .from('messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('receiver_id', session.user.id)
-                .eq('is_read', false);
+                .eq('is_read', false)
+                .neq('message_type', 'system'); // Exclude system messages
             
             if (mounted) setUnreadMessageCount(msgCount || 0);
         };
