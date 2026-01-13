@@ -1,17 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { generateRandomRPMAvatar } from '../utils/avatarUtils';
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Other'];
 
-const DEFAULT_AVATARS = {
-  'Male': 'https://avatar.iran.liara.run/public/boy',
-  'Female': 'https://avatar.iran.liara.run/public/girl',
-  'Non-binary': 'https://avatar.iran.liara.run/public',
-  'Other': 'https://avatar.iran.liara.run/public'
-};
+
 
 export default function Login() {
   // New Reset Password States
@@ -154,10 +150,9 @@ export default function Login() {
           throw new Error('Password must be 8+ chars with Upper, Lower, Number & Symbol.');
         }
 
-        // 3. Upload Selfie (for verification) & Assign Gender-Based Avatar
-        let avatarUrl = '';
+        // 3. Upload Selfie for Verification & Generate RPM Avatar for Display
         try {
-          // Upload selfie to storage for verification purposes
+          // Upload selfie to storage for verification purposes only
           const blob = await (await fetch(capturedImage)).blob();
           const fileName = `${Date.now()}_${username.replace(/\s+/g, '')}.jpg`;
 
@@ -165,18 +160,14 @@ export default function Login() {
             .from('avatars')
             .upload(fileName, blob);
 
-
           if (uploadError) throw uploadError;
-
-          // Use gender-based avatar instead of selfie as profile picture
-          const safeUsername = encodeURIComponent(username || 'User');
-          const baseUrl = DEFAULT_AVATARS[gender] || DEFAULT_AVATARS['Other'];
-          avatarUrl = `${baseUrl}?username=${safeUsername}`;
-
         } catch (uploadErr) {
           console.error("Upload failed", uploadErr);
           throw new Error('Failed to upload selfie. Please try again.');
         }
+
+        // Generate random Ready Player Me avatar for map display
+        const avatarUrl = generateRandomRPMAvatar();
 
         // 4. Sign Up
         const { data, error: signUpError } = await supabase.auth.signUp({
@@ -385,7 +376,7 @@ export default function Login() {
 
               {/* Selfie Camera Section */}
               <div className="field-section">
-                <label>Profile Picture</label>
+                <label>Selfie for Verification 📸</label>
                 <div className="camera-container">
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
 
@@ -413,7 +404,7 @@ export default function Login() {
 
               {/* Gender */}
               <div className="field-section">
-                <label>Gender <span className="sub-label">For customized avatars</span></label>
+                <label>Gender</label>
                 <div className="custom-select-wrapper">
                   <select 
                     value={gender} 

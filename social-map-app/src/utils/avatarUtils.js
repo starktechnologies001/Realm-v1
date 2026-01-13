@@ -1,24 +1,34 @@
+// Generate a random avatar URL using DiceBear (fast and reliable)
+export const generateRandomRPMAvatar = () => {
+    // Generate a unique identifier using timestamp and random string
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 15);
+    const uniqueId = `${timestamp}-${randomStr}`;
+    
+    // Use DiceBear avatars which load instantly (no 404 errors)
+    // These are SVG-based and extremely fast
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${uniqueId}`;
+};
+
 // Generate a fallback avatar URL using DiceBear
 export const getFallbackAvatar = (identifier = 'default') => {
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(identifier)}`;
 };
 
 export const getAvatar2D = (url, fallbackSeed) => {
-    console.log('🟡 [avatarUtils] getAvatar2D input:', url);
-    
     // Return fallback if no URL provided
     if (!url) {
         return fallbackSeed ? getFallbackAvatar(fallbackSeed) : '';
     }
     
-    // Split query params if any
-    const [baseUrl, queryString] = url.split('?');
-    console.log('🟡 [avatarUtils] Base URL:', baseUrl);
-    console.log('🟡 [avatarUtils] Query String:', queryString);
+    // DiceBear and other SVG avatars can be used directly
+    if (url.includes('dicebear.com') || url.includes('avatar.iran.liara.run')) {
+        return url;
+    }
     
-    // If it's a Ready Player Me GLB, convert to PNG
+    // For any GLB models, convert to PNG (though we're not using these anymore)
+    const [baseUrl, queryString] = url.split('?');
     if (baseUrl.includes('models.readyplayer.me') && baseUrl.endsWith('.glb')) {
-        // Filter out 3D-only params irrelevant for 2D renders
         const params = new URLSearchParams(queryString);
         params.delete('quality');
         params.delete('textureAtlas');
@@ -26,14 +36,10 @@ export const getAvatar2D = (url, fallbackSeed) => {
         params.delete('morphTargets');
 
         const cleanQuery = params.toString();
-        // RPM PNGs are transparent by default, no need for background param
         const suffix = cleanQuery ? `?${cleanQuery}` : '';
-        const result = baseUrl.replace('.glb', '.png') + suffix;
-        console.log('🟡 [avatarUtils] Converted PNG URL:', result);
-        return result;
+        return baseUrl.replace('.glb', '.png') + suffix;
     }
     
-    console.log('🟡 [avatarUtils] Returning original URL (not RPM GLB)');
     return url;
 };
 

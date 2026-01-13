@@ -8,7 +8,7 @@ import UserProfileCard from '../components/UserProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -165,14 +165,20 @@ export default function MapHome() {
                     setShowProfileSetup(true);
                     setLoading(false); 
                 }
-                // Force Update Avatar if NOT Iran Liara AND NOT Ready Player Me AND NOT DiceBear
-                // We allow RPM URLs now
-                else if (!profile.avatar_url || (!profile.avatar_url.includes('avatar.iran.liara.run') && !profile.avatar_url.includes('models.readyplayer.me') && !profile.avatar_url.includes('dicebear'))) {
-                    const safeName = encodeURIComponent(profile.username || profile.full_name || 'User');
-                    let newAvatar;
-                    if (profile.gender === 'Male') newAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                    else if (profile.gender === 'Female') newAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                    else newAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                // Check if user needs a new avatar
+                // Assign avatar if:
+                // 1. No avatar exists
+                // 2. Has Google profile picture (OAuth users)
+                // 3. Has old/invalid avatar system
+                else if (!profile.avatar_url || 
+                         profile.avatar_url.includes('googleusercontent.com') ||
+                         profile.avatar_url.includes('lh3.googleusercontent.com') ||
+                         (!profile.avatar_url.includes('models.readyplayer.me') && 
+                          !profile.avatar_url.includes('dicebear') && 
+                          !profile.avatar_url.includes('avatar.iran.liara.run'))) {
+                    
+                    // Generate random avatar (fast DiceBear avatars)
+                    const newAvatar = generateRandomRPMAvatar();
                     
                     await supabase.from('profiles')
                         .update({ avatar_url: newAvatar })

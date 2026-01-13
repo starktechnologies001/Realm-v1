@@ -156,7 +156,24 @@ export default function Chat() {
             let rawTime = 0;
 
             if (lastMessage) {
-                if (lastMessage.message_type === 'image') {
+                if (lastMessage.message_type === 'system') {
+                    // Handle system messages (like theme changes)
+                    if (lastMessage.content.includes('changed the theme')) {
+                        // Determine sender name by checking who sent it
+                        let senderName;
+                        const isSenderCurrentUser = String(lastMessage.sender_id) === String(userId);
+                        
+                        if (isSenderCurrentUser) {
+                            senderName = 'You';
+                        } else {
+                            // The sender is the partner (the other person in this chat)
+                            senderName = partner.username || partner.full_name || 'Friend';
+                        }
+                        lastMsgContent = `${senderName} ${lastMessage.content}`;
+                    } else {
+                        lastMsgContent = lastMessage.content;
+                    }
+                } else if (lastMessage.message_type === 'image') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📷 Photo' : '📷 Photo';
                 } else if (lastMessage.message_type === 'attachment') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📎 Attachment' : '📎 Attachment';
@@ -278,9 +295,25 @@ export default function Chat() {
                 console.log('🔔 [ChatList] NEW MESSAGE:', payload.new);
 
                 const senderId = payload.new.sender_id;
-                const newContent = payload.new.message_type === 'image' ? '📷 Photo' : 
-                                 payload.new.message_type === 'attachment' ? '📎 Attachment' : 
-                                 payload.new.content;
+                
+                // Format message content based on type
+                let newContent;
+                if (payload.new.message_type === 'system') {
+                    // Handle system messages (like theme changes)
+                    if (payload.new.content.includes('changed the theme')) {
+                        const senderName = String(payload.new.sender_id) === String(currentUser.id) ? 'You' : null;
+                        // If sender is current user, show "You", otherwise we'll fetch the sender's name below
+                        newContent = senderName ? `${senderName} ${payload.new.content}` : payload.new.content;
+                    } else {
+                        newContent = payload.new.content;
+                    }
+                } else if (payload.new.message_type === 'image') {
+                    newContent = '📷 Photo';
+                } else if (payload.new.message_type === 'attachment') {
+                    newContent = '📎 Attachment';
+                } else {
+                    newContent = payload.new.content;
+                }
                 
                 // Format time string
                 const date = new Date(payload.new.created_at);
@@ -288,6 +321,17 @@ export default function Chat() {
 
                 setChats(prev => {
                     const existingChatIndex = prev.findIndex(chat => String(chat.id) === String(senderId));
+                    
+                    // For system messages from others, prepend their name
+                    if (payload.new.message_type === 'system' && 
+                        payload.new.content.includes('changed the theme') &&
+                        String(payload.new.sender_id) !== String(currentUser.id)) {
+                        if (existingChatIndex !== -1) {
+                            const chatName = prev[existingChatIndex].name;
+                            const senderName = chatName || 'Friend';
+                            newContent = `${senderName} ${payload.new.content}`;
+                        }
+                    }
                     
                     if (existingChatIndex !== -1) {
                         // Update existing chat
@@ -1388,6 +1432,91 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     // Emoji Picker State
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    
+    // Reply-to message state
+    const [replyToMessage, setReplyToMessage] = useState(null);
+    
+    // Message context menu state (long-press)
+    // Message context menu state (long-press) REPLACED by Selection Mode
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedMessages, setSelectedMessages] = useState(new Set());
+    const [showMessageMenu, setShowMessageMenu] = useState(false); // Kept for backward compat if needed, but will likely remove
+    const [selectedMessage, setSelectedMessage] = useState(null); // Kept for backward compat
+
+    // Message refs for scroll-to functionality
+    const messageRefs = useRef({});
+    const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+
+    // Scroll to message function
+    const scrollToMessage = (messageId) => {
+        const messageElement = messageRefs.current[messageId];
+        if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setHighlightedMessageId(messageId);
+            setTimeout(() => setHighlightedMessageId(null), 2000);
+        }
+    };
+
+    // Selection Mode Handlers
+    const toggleSelection = (msgId) => {
+        setSelectedMessages(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(msgId)) {
+                newSet.delete(msgId);
+            } else {
+                newSet.add(msgId);
+            }
+            if (newSet.size === 0) {
+                setIsSelectionMode(false);
+            }
+            return newSet;
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedMessages(new Set());
+        setIsSelectionMode(false);
+    };
+
+    const handleMessageAction = async (action) => {
+        const selectedIds = Array.from(selectedMessages);
+        if (selectedIds.length === 0) return;
+
+        if (action === 'delete') {
+            if (!confirm(`Delete ${selectedIds.length} message(s)?`)) return;
+            
+            // Optimistic update
+            setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)));
+            clearSelection();
+
+            // DB Update
+            for (const id of selectedIds) {
+                const msg = messages.find(m => m.id === id);
+                if (msg) {
+                    const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
+                    await supabase.from('messages').update({ deleted_for: updatedDeletedFor }).eq('id', id);
+                }
+            }
+            showToast('Messages deleted');
+        } else if (action === 'reply') {
+            if (selectedIds.length !== 1) return;
+            const msg = messages.find(m => m.id === selectedIds[0]);
+            if (msg) {
+                setReplyToMessage(msg);
+                clearSelection();
+            }
+        } else if (action === 'forward') {
+            showToast('Forwarding feature coming soon!');
+            clearSelection();
+        } else if (action === 'copy') {
+             const texts = selectedIds.map(id => messages.find(m => m.id === id)?.content).filter(Boolean).join('\n');
+             if (texts) {
+                 navigator.clipboard.writeText(texts);
+                 showToast('Copied to clipboard');
+             }
+             clearSelection();
+        }
+    };
 
 
     // Fetch mute settings
@@ -1474,14 +1603,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             setMessages([]);
             showToast(`Chat deleted for you ✅`);
             
-            // Clear local messages state
-            setMessages([]);
-            showToast(`Chat deleted for you ✅`);
-            
-            // Return to chat list and refresh
+            // Return to chat list
             setTimeout(() => {
-                setActiveChatUser(null);
-                loadChats(currentUser.id);
+                onBack(); // Navigate back to chat list
             }, 500);
         } catch (error) {
             console.error('❌ Error deleting chat:', error);
@@ -1721,7 +1845,14 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .from('messages')
                 .select(`
                     *,
-                    attachments:message_attachments(*)
+                    attachments:message_attachments(*),
+                    reply_to:reply_to_message_id(
+                        id,
+                        sender_id,
+                        content,
+                        message_type,
+                        image_url
+                    )
                 `)
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .order('created_at', { ascending: true });
@@ -1761,13 +1892,14 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         const withoutOptimistic = prev.filter(m => !m.tempId);
                         return [...withoutOptimistic, payload.new];
                     });
-                    // Mark as read immediately (skip system messages)
-                    if (payload.new.message_type !== 'system') {
-                        await supabase.from('messages').update({ is_read: true }).eq('id', payload.new.id);
-                    }
                     
-                    // Set delivered_at for sender
-                    await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
+                    // Don't mark as read here - let the polling mechanism handle it
+                    // This avoids 400 errors from RLS policies
+                    
+                    // Set delivered_at for sender (skip system messages)
+                    if (payload.new.message_type !== 'system') {
+                        await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
+                    }
                 }
             })
             // Listen for message updates (read/delivered status)
@@ -1856,12 +1988,24 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             created_at: new Date().toISOString(),
             is_read: false,
             delivered_at: null,
-            sending: true // Flag for UI
+            sending: true, // Flag for UI
+            reply_to_message_id: replyToMessage?.id || null,
+            reply_to: replyToMessage ? {
+                id: replyToMessage.id,
+                sender_id: replyToMessage.sender_id,
+                content: replyToMessage.content,
+                message_type: replyToMessage.message_type,
+                image_url: replyToMessage.image_url
+            } : null
         };
 
         // Optimistic Update - show immediately
         setMessages(prev => [...prev, optimisticMessage]);
         if (type === 'text') setInput('');
+        
+        // Clear reply state after adding to messages
+        const replyId = replyToMessage?.id || null;
+        setReplyToMessage(null);
 
         // DB Insert
         const { data, error } = await supabase.from('messages').insert({
@@ -1870,7 +2014,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             content: optimisticMessage.content,
             message_type: type,
             image_url: imageUrl,
-            is_read: true
+            is_read: true,
+            reply_to_message_id: replyId
         }).select();
 
         if (error) {
@@ -1881,7 +2026,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         } else if (data && data[0]) {
             // Replace optimistic with real message
             setMessages(prev => prev.map(m => 
-                m.tempId === tempId ? data[0] : m
+                m.tempId === tempId ? { ...data[0], reply_to: optimisticMessage.reply_to } : m
             ));
         }
     };
@@ -2189,123 +2334,227 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     --theme-font-color: ${currentTheme.fontColor};
                     --theme-icon-color: ${currentTheme.iconColor};
                 }
+
+                /* Selection Mode Styles */
+                .chat-room-header.selection-mode { 
+                    background: rgba(30, 30, 35, 0.95) !important; 
+                    border-bottom: 1px solid rgba(255,255,255,0.15); 
+                }
+                .selection-header-left { 
+                    display: flex; align-items: center; gap: 15px; 
+                    flex: 1;
+                }
+                .selection-count {
+                    font-size: 1.2rem; font-weight: 600; color: white;
+                }
+                .selection-actions {
+                    display: flex; gap: 8px;
+                }
+                .msg-bubble.selected {
+                    background: rgba(0, 240, 255, 0.15) !important;
+                    border: 1px solid rgba(0, 240, 255, 0.3);
+                    box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+                }
+                .selection-overlay {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 5;
+                    pointer-events: none;
+                }
+                .selection-checkbox {
+                    position: absolute;
+                    bottom: -8px;
+                    right: -8px;
+                    width: 22px; height: 22px;
+                    border-radius: 50%;
+                    border: 2px solid rgba(255,255,255,0.4);
+                    background: #2a2a2a;
+                    display: flex; align-items: center; justify-content: center;
+                    color: white;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                }
+                .selection-checkbox.checked {
+                    background: #00f0ff;
+                    border-color: #00f0ff;
+                    color: black;
+                    transform: scale(1.1);
+                }
+
+                /* Quoted Message (Reply Preview) Styles */
+                .quoted-message {
+                    background: rgba(0, 0, 0, 0.1);
+                    border-left: 3px solid var(--theme-accent, #00f0ff);
+                    padding: 8px 10px;
+                    margin-bottom: 8px;
+                    border-radius: 6px;
+                    font-size: 0.85rem;
+                }
+                .quoted-message.clickable {
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                .quoted-message.clickable:hover {
+                    background: rgba(0, 0, 0, 0.15);
+                }
+                .quoted-message-header {
+                    font-weight: 600;
+                    color: var(--theme-accent, #00f0ff);
+                    margin-bottom: 4px;
+                    font-size: 0.8rem;
+                }
+                .quoted-message-content {
+                    color: var(--theme-text-color, #e0e0e0);
+                    opacity: 0.8;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                /* Message Highlight Animation */
+                .message-highlight {
+                    animation: highlightPulse 2s ease-in-out;
+                }
+                @keyframes highlightPulse {
+                    0%, 100% { 
+                        box-shadow: 0 0 0 rgba(0, 240, 255, 0);
+                    }
+                    50% { 
+                        box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+                        background: rgba(0, 240, 255, 0.1) !important;
+                    }
+                }
             `}</style>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
             <div className="ambient-glow-chat"></div>
 
-            <div className="chat-room-header glass-header">
-                <button onClick={onBack} className="back-btn">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                </button>
-                <div className="header-user">
-                    <img src={(() => {
-                        // Priority 1: Stored avatar
-                        if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
-
-                        // Priority 2: Consistent generation
-                        const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
-                        const g = partner.gender?.toLowerCase();
-                        if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                        if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                        return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                    })()} className="header-avatar" alt="avatar" />
-                    <div className="header-text">
-                        <h3>{partner.username || partner.full_name}</h3>
-                        {presence.displayStatus && (
-                            <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
-                                {presence.isOnline && <span className="online-dot">●</span>}
-                                {presence.displayStatus}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className="header-actions">
-                    <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
-                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+            <div className={`chat-room-header glass-header ${isSelectionMode ? 'selection-mode' : ''}`}>
+                {isSelectionMode ? (
+                    <>
+                        <div className="selection-header-left">
+                            <button onClick={clearSelection} className="icon-btn">
+                                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                            <span className="selection-count">{selectedMessages.size}</span>
+                        </div>
+                        <div className="selection-actions">
+                            {selectedMessages.size === 1 && (
+                                <button className="icon-btn" onClick={() => handleMessageAction('reply')} title="Reply">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"></path></svg>
+                                </button>
+                            )}
+                            <button className="icon-btn" onClick={() => handleMessageAction('delete')} title="Delete">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                            <button className="icon-btn" onClick={() => handleMessageAction('copy')} title="Copy">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                            <button className="icon-btn" onClick={() => handleMessageAction('forward')} title="Forward">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 10l5 5-5 5"></path><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>
+                            </button>
+                            {selectedMessages.size === 1 && messages.find(m => m.id === Array.from(selectedMessages)[0])?.sender_id === currentUser.id && (
+                                <button className="icon-btn" onClick={() => showToast('Edit coming soon!')} title="Edit">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                    <button onClick={onBack} className="back-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
-                    <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
-                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                    </button>
-                    <div style={{ position: 'relative' }}>
-                        <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
-                        {showMenu && (
-                            <div className="dropdown-menu">
-                                <button onClick={toggleMuteCalls}>
-                                    <span className="icon">
-                                        {muteCalls ? (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                        ) : (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                        )}
-                                    </span>
-                                    {muteCalls ? 'Unmute Call' : 'Mute Call'}
-                                </button>
-                                
-                                <button onClick={() => handleMenuAction('mute')}>
-                                    <span className="icon">
-                                        {isChatMuted() ? (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
-                                        ) : (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                        )}
-                                    </span>
-                                    {isChatMuted() ? 'Unmute Message' : 'Mute Message'}
-                                </button>
+                    <div className="header-user">
+                        <img src={(() => {
+                            // Priority 1: Stored avatar
+                            if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
 
-                                <button onClick={() => {
-                                    setShowChatThemeSelector(true);
-                                    setShowMenu(false);
-                                }}>
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                                    </span>
-                                    Theme
-                                </button>
-                                
-                                <button onClick={() => {
-                                    setShowThemeMenu(true);
-                                    setShowMenu(false);
-                                }}>
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
-                                    </span>
-                                    Mode
-                                </button>
-
-                                <div className="divider"></div>
-
-                                <button onClick={() => {
-                                    setShowDeleteConfirm(true);
-                                    setShowMenu(false);
-                                }} className="danger">
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                                    </span>
-                                    Delete Chat
-                                </button>
-
-                                <button onClick={() => {
-                                    const reason = prompt("Reason for reporting:");
-                                    if (reason) showToast("Report submitted successfully ✅");
-                                    setShowMenu(false);
-                                }} className="danger">
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                    </span>
-                                    Report
-                                </button>
-
-                                <button onClick={() => handleMenuAction('block')} className="danger">
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-                                    </span>
-                                    Block
-                                </button>
-                            </div>
-                        )}
+                            // Priority 2: Consistent generation
+                            const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
+                            const g = partner.gender?.toLowerCase();
+                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        })()} className="header-avatar" alt="avatar" />
+                        <div className="header-text">
+                            <h3>{partner.username || partner.full_name}</h3>
+                            {presence.displayStatus && (
+                                <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
+                                    {presence.isOnline && <span className="online-dot">●</span>}
+                                    {presence.displayStatus}
+                                </span>
+                            )}
+                        </div>
                     </div>
-                </div>
+                    <div className="header-actions">
+                        <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
+                            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                        </button>
+                        <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
+                            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                        </button>
+                        <div style={{ position: 'relative' }}>
+                            <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
+                            {showMenu && (
+                                <div className="dropdown-menu">
+                                    
+                                    <button onClick={() => handleMenuAction('mute')}>
+                                        <span className="icon">
+                                            {isChatMuted() ? (
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
+                                            ) : (
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                            )}
+                                        </span>
+                                        {isChatMuted() ? 'Unmute Notifications' : 'Notifications'}
+                                    </button>
+
+                                    <button onClick={() => {
+                                        setShowChatThemeSelector(true);
+                                        setShowMenu(false);
+                                    }}>
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                        </span>
+                                        Theme
+                                    </button>
+
+                                    <div className="divider"></div>
+
+                                    <button onClick={() => {
+                                        setShowDeleteConfirm(true);
+                                        setShowMenu(false);
+                                    }} className="danger">
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                        </span>
+                                        Delete Chat
+                                    </button>
+
+                                    <button onClick={() => {
+                                        const reason = prompt("Reason for reporting:");
+                                        if (reason) showToast("Report submitted successfully ✅");
+                                        setShowMenu(false);
+                                    }} className="danger">
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                        </span>
+                                        Report
+                                    </button>
+
+                                    <button onClick={() => handleMenuAction('block')} className="danger">
+                                        <span className="icon">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                                        </span>
+                                        Block
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    </>
+                )}
             </div>
 
             {/* Theme Menu Modal */}
@@ -2530,16 +2779,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     // System Message Rendering
                     if (msg.message_type === 'system') {
                         // Determine who sent the system message
-                        const senderName = msg.sender_id === currentUser.id 
-                            ? 'You' 
-                            : (partner?.full_name || partner?.username || targetUser?.full_name || targetUser?.username || 'Friend');
+                        let senderName;
+                        const msgSenderId = String(msg.sender_id);
+                        const currentUserId = String(currentUser.id);
+                        const targetUserId = String(targetUser.id);
+                        
+                        if (msgSenderId === currentUserId) {
+                            senderName = 'You';
+                        } else if (msgSenderId === targetUserId) {
+                            // Use targetUser directly (not partner state which might be stale)
+                            senderName = targetUser.username || targetUser.full_name || 'Friend';
+                        } else {
+                            senderName = 'Someone';
+                        }
                             
                         const content = msg.content.includes('changed the theme') 
                             ? `${senderName} ${msg.content}`
                             : msg.content;
 
                         return (
-                            <React.Fragment key={msg.id || i}>
+                            <React.Fragment key={`system-${msg.id || i}`}>
                                 {dateHeader}
                                 <div className="msg-system" style={{
                                     display: 'flex', justifyContent: 'center', margin: '15px 0', opacity: 0.85
@@ -2594,7 +2853,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         };
 
                         return (
-                            <React.Fragment key={msg.id || msg.tempId || i}>
+                            <React.Fragment key={`call-${msg.id || msg.tempId || i}`}>
                                 {dateHeader}
                                 <div className={`call-log-entry ${callData.status}`}>
                                     <span className="call-icon">{getCallIcon()}</span>
@@ -2610,24 +2869,160 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     const isImage = msg.message_type === 'image' || msg.type === 'image';
                     const imageUrl = msg.image_url || msg.media_url;
 
-                    // Determine message status
+                    // Determine message status with proper tick indicators
                     let statusIcon = '';
+                    let statusColor = '#999'; // Default gray
+                    
                     if (isMe) {
                         if (msg.sending) {
-                            statusIcon = '🕐'; // Sending
+                            statusIcon = '🕐'; // Sending (clock)
+                            statusColor = '#999';
                         } else if (msg.is_read) {
-                            statusIcon = '✓✓'; // Read (blue)
+                            statusIcon = '✓✓'; // Read (double tick)
+                            statusColor = '#FFD700'; // Yellow/gold for read
                         } else if (msg.delivered_at) {
-                            statusIcon = '✓✓'; // Delivered (gray)
+                            statusIcon = '✓✓'; // Delivered (double tick) - recipient is online
+                            statusColor = '#999'; // Gray for delivered
                         } else {
-                            statusIcon = '✓'; // Sent
+                            statusIcon = '✓'; // Sent but not delivered (single tick) - recipient offline
+                            statusColor = '#999'; // Gray for sent
                         }
                     }
 
+                    // Swipe-to-reply and long-press gesture handling (using refs to avoid hook violations)
+                    let swipeX = 0;
+                    let touchStartX = null;
+                    let longPressTimer = null;
+                    let touchMoved = false;
+                    const isSelected = selectedMessages.has(msg.id);
+                    
+                    const handleTouchStart = (e) => {
+                        touchStartX = e.touches[0].clientX;
+                        touchMoved = false;
+                        
+                        // Only start long press timer if NOT in selection mode
+                        if (!isSelectionMode) {
+                            longPressTimer = setTimeout(() => {
+                                if (!touchMoved) {
+                                    // Long press detected - enter selection mode
+                                    if (navigator.vibrate) navigator.vibrate(50);
+                                    touchMoved = true; // Mark as handled to prevent click
+                                    setIsSelectionMode(true);
+                                    // Add to selection (using a function reference since we're in a loop)
+                                    toggleSelection(msg.id);
+                                }
+                            }, 600); // Reduced to 600ms for better responsiveness
+                        }
+                    };
+                    
+                    const handleTouchMove = (e) => {
+                        if (!touchStartX) return;
+                        
+                        const currentX = e.touches[0].clientX;
+                        const diff = currentX - touchStartX;
+
+                        // Ignore micro-movements (jitter) to allow taps
+                        if (Math.abs(diff) < 5) return;
+
+                        touchMoved = true;
+                        
+                        // Cancel long press if moved significantly
+                        if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                        
+                        // Disable swipe gesture during selection mode
+                        if (isSelectionMode) return;
+                        
+                        // Only allow right swipe (positive diff) and limit to 80px
+                        if (diff > 0 && diff <= 80) {
+                            swipeX = diff;
+                            // Update the element's transform directly
+                            e.currentTarget.style.transform = `translateX(${swipeX}px)`;
+                        }
+                    };
+                    
+                    const handleTouchEnd = (e) => {
+                        // Clear long-press timer
+                        if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                        
+                        if (swipeX > 50 && !touchMoved && !isSelectionMode) {
+                            setReplyToMessage(msg);
+                        }
+                        
+                        // Reset transform
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        e.currentTarget.style.transition = 'transform 0.2s';
+                        
+                        swipeX = 0;
+                        touchStartX = null;
+                        // touchMoved will be reset on next touchStart
+                    };
+
+                    const handleBubbleClick = (e) => {
+                         // Prevent click if we moved (swipe) or long-pressed
+                         if (touchMoved) {
+                             e.stopPropagation();
+                             return;
+                         }
+
+                         // If in selection mode, toggle selection
+                         if (isSelectionMode) {
+                             e.preventDefault();
+                             e.stopPropagation();
+                             toggleSelection(msg.id);
+                             return;
+                         }
+                         // Normal click behavior (e.g. image view) will propagate if not handled here
+                    };
+
                     return (
-                        <React.Fragment key={msg.id || msg.tempId || i}>
+                        <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
                             {dateHeader}
-                            <div className={`msg-bubble ${isMe ? 'me' : 'them'}`}>
+                            <div 
+                                ref={el => messageRefs.current[msg.id] = el}
+                                className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${highlightedMessageId === msg.id ? 'message-highlight' : ''}`}
+                                onTouchStart={handleTouchStart}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
+                                onClickCapture={handleBubbleClick}
+                                style={{
+                                    transform: isSelected ? 'scale(0.98)' : 'scale(1)',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {/* Selection Overlay/Checkbox */}
+                                {isSelectionMode && (
+                                    <div className="selection-overlay">
+                                        <div className={`selection-checkbox ${isSelected ? 'checked' : ''}`}>
+                                            {isSelected && <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quoted Message (Reply Preview) */}
+                                {msg.reply_to && (
+                                    <div 
+                                        className="quoted-message clickable" 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            scrollToMessage(msg.reply_to.id);
+                                        }}
+                                    >
+                                        <div className="quoted-message-header">
+                                            {msg.reply_to.sender_id === currentUser.id ? 'You' : (partner.username || partner.full_name)}
+                                        </div>
+                                        <div className="quoted-message-content">
+                                            {msg.reply_to.message_type === 'image' ? '📷 Photo' : 
+                                             msg.reply_to.content?.length > 50 ? msg.reply_to.content.substring(0, 50) + '...' : msg.reply_to.content}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {isImage ? (
                                     <img 
                                         src={imageUrl} 
@@ -2640,7 +3035,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                     <div className="msg-content-wrapper">
                                         <span className="msg-text">{msg.content}</span>
                                         <span className="msg-time">{formatTime(msg.created_at)}</span>
-                                        {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
+                                        {isMe && <span className="msg-status" style={{ color: statusColor }}>{statusIcon}</span>}
                                     </div>
                                 )}
                                 
@@ -2659,7 +3054,30 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* Message Context Menu (Long-Press) */}
+
+
             <div className="chat-input-container">
+                {/* Reply Preview */}
+                {replyToMessage && (
+                    <div className="reply-preview">
+                        <div className="reply-preview-content">
+                            <div className="reply-preview-header">
+                                <span className="reply-icon">↩️</span>
+                                <span className="reply-to-name">
+                                    {replyToMessage.sender_id === currentUser.id ? 'You' : (partner.username || partner.full_name)}
+                                </span>
+                            </div>
+                            <div className="reply-preview-text">
+                                {replyToMessage.message_type === 'image' ? '📷 Photo' : replyToMessage.content}
+                            </div>
+                        </div>
+                        <button className="reply-preview-close" onClick={() => setReplyToMessage(null)}>
+                            ✕
+                        </button>
+                    </div>
+                )}
+                
                 <div className="glass-input-bar">
                     <input
                         type="file"
