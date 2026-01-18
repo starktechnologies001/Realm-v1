@@ -3,7 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
+import Badge from '../components/Badge';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { getBlockedUserIds } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
 import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
@@ -14,10 +16,12 @@ import { initializePresence, cleanupPresence } from '../services/presenceService
 import { useIncomingCall } from '../hooks/useIncomingCall';
 import IncomingCallPopup from '../components/IncomingCallPopup';
 import { initiateCall } from '../services/callSignalingService';
+import StatusView from '../components/StatusView';
+import StoryViewer from '../components/StoryViewer';
+import { useCall } from '../context/CallContext';
+import { useLocationContext } from '../context/LocationContext';
 
 const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
-
-import { useCall } from '../context/CallContext';
 
 // Chat Theme Configuration
 const CHAT_THEMES = {
@@ -68,12 +72,16 @@ const CHAT_THEMES = {
 
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
+    const [selectedStoryUser, setSelectedStoryUser] = useState(null);
+    const [refreshTrigger, setRefreshTrigger] = useState(0); // For StoryViewer
     const [chats, setChats] = useState([]);
+    const [totalUnreadCount, setTotalUnreadCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
+    const { isLocationEnabled } = useLocationContext();
 
     // Refactored fetchChats to be a pure function that returns the chat data
     const fetchChats = async (userId) => {
@@ -125,7 +133,15 @@ export default function Chat() {
             return [];
         }
 
-        // 3. Fetch Profiles for ALL these partners
+        // 2.5. Get blocked user IDs and filter them out
+        const blockedIds = await getBlockedUserIds(userId);
+        blockedIds.forEach(id => partnerIds.delete(id));
+
+        if (partnerIds.size === 0) {
+            return [];
+        }
+
+        // 3. Fetch Profiles for ALL these partners (excluding blocked)
         const { data: profiles } = await supabase
             .from('profiles')
             .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen')
@@ -234,7 +250,14 @@ export default function Chat() {
             };
         }));
         return chatsWithDetails.sort((a, b) => {
-            // Sort by time (newest first)
+            // 1. Prioritize unread chats
+            const aHasUnread = (a.unread || 0) > 0;
+            const bHasUnread = (b.unread || 0) > 0;
+            if (aHasUnread !== bHasUnread) {
+                return bHasUnread ? 1 : -1; // Unread chats first
+            }
+            
+            // 2. Sort by time (newest first)
             const timeA = new Date(a.rawTime || 0);
             const timeB = new Date(b.rawTime || 0);
             return timeB - timeA;
@@ -246,6 +269,11 @@ export default function Chat() {
         setLoading(true);
         const results = await fetchChats(userId);
         setChats(results);
+        
+        // Calculate total unread count
+        const total = results.reduce((sum, chat) => sum + (chat.unread || 0), 0);
+        setTotalUnreadCount(total);
+        
         setLoading(false);
     };
 
@@ -391,7 +419,15 @@ export default function Chat() {
             navigate('/login');
             return;
         }
-        setCurrentUser(user);
+        
+        // Fetch full profile to get avatar and username
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+            
+        setCurrentUser(profile || user);
         
         // Initialize presence tracking
         initializePresence(user.id);
@@ -590,10 +626,36 @@ export default function Chat() {
         }
     };
 
-    return <ChatList chats={chats} onSelectChat={handleSelectChat} loading={loading} currentUser={currentUser} connectionStatus={connectionStatus} />;
+
+
+    return (
+        <>
+            <ChatList 
+                chats={chats} 
+                onSelectChat={handleSelectChat} 
+                onSelectStory={setSelectedStoryUser}
+                loading={loading} 
+                currentUser={currentUser} 
+                connectionStatus={connectionStatus} 
+                refreshTrigger={refreshTrigger}
+            />
+            
+            {/* Story Viewer Overlay */}
+            {selectedStoryUser && (
+                <StoryViewer 
+                    userStories={selectedStoryUser} 
+                    currentUser={currentUser}
+                    onClose={() => {
+                        setSelectedStoryUser(null);
+                        setRefreshTrigger(prev => prev + 1); // Refresh status view
+                    }}
+                />
+            )}
+        </>
+    );
 }
 
-function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus }) {
+function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('messages');
     
@@ -667,7 +729,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
 
             <div className="chat-list-scroll">
                 {activeTab === 'status' ? (
-                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectChat} />
+                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectStory} refreshTrigger={refreshTrigger} />
                 ) : loading ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
@@ -710,7 +772,11 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                                     <p className="chat-preview">
                                         {chat.lastMsg}
                                     </p>
-                                    {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
+                                    {chat.unread > 0 && (
+                                        <div style={{ position: 'relative' }}>
+                                            <Badge count={chat.unread} size="small" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1017,368 +1083,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
     );
 }
 
-function StatusView({ currentUser, friends, onSelectFriend }) {
-    const [myStatus, setMyStatus] = useState(currentUser?.status_message || '');
-    const [isEditing, setIsEditing] = useState(false);
-    const [loading, setLoading] = useState(false);
 
-    // Filter displaying friends with status
-    // Also ensuring no duplicates if possible, though 'chats' is unique by ID
-    const statusFriends = friends?.filter(f => f.fullProfile?.status_message && f.id !== currentUser?.id) || [];
-
-    const handleSave = async () => {
-        if (!currentUser) return;
-        setLoading(true);
-        const { error } = await supabase.from('profiles').update({ status_message: myStatus }).eq('id', currentUser.id);
-        setLoading(false);
-        setIsEditing(false);
-        if (error) {
-            console.error(error);
-            // simple alert for now
-        }
-    };
-
-    return (
-        <div className="status-view">
-            <div className="status-section">
-                <h3 className="section-title">My Status</h3>
-                <div className="status-item me">
-                    <div className="avatar-wrapper">
-                        <img 
-                            src={getAvatarHeadshot(currentUser?.avatar_url)} 
-                            className="status-avatar" 
-                            loading="eager" decoding="sync"
-                        />
-                         <div className="add-badge">+</div>
-                    </div>
-                    <div className="status-content">
-                        {isEditing ? (
-                            <div className="edit-area">
-                                <input 
-                                    className="status-input"
-                                    value={myStatus} 
-                                    onChange={e=>setMyStatus(e.target.value)} 
-                                    placeholder="What's on your mind?"
-                                    autoFocus
-                                />
-                                <div className="edit-actions">
-                                    <button className="save-btn" onClick={handleSave} disabled={loading}>
-                                        {loading ? '...' : 'Save'}
-                                    </button>
-                                    <button className="cancel-btn" onClick={()=>{
-                                        setIsEditing(false);
-                                        setMyStatus(currentUser?.status_message || '');
-                                    }}>✕</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="view-area" onClick={() => setIsEditing(true)}>
-                                <span className="status-name">My Status</span>
-                                <p className="status-text">{myStatus || "Tap to add a status update"}</p>
-                            </div>
-                        )}
-                    </div>
-                    {!isEditing && (
-                        <button className="edit-icon-btn" onClick={()=>setIsEditing(true)}>✎</button>
-                    )}
-                </div>
-            </div>
-
-            <div className="status-section">
-                <h3 className="section-title">Recent Updates</h3>
-                {statusFriends.length === 0 ? (
-                     <div className="no-status">
-                         <p>No recent updates from friends.</p>
-                     </div>
-                ) : (
-                    statusFriends.map(friend => (
-                        <div key={friend.id} className="status-item" onClick={() => onSelectFriend(friend)}>
-                             <div className="avatar-wrapper ring">
-                                <img 
-                                    src={friend.avatar} 
-                                    className="status-avatar" 
-                                    loading="eager" decoding="sync"
-                                />
-                             </div>
-                             <div className="status-content">
-                                 <span className="status-name">{friend.name}</span>
-                                 <p className="status-text">{friend.fullProfile.status_message}</p>
-                             </div>
-                        </div>
-                    ))
-                )}
-            </div>
-            
-            <style>{`
-                .status-view { 
-                    padding: 16px 0 0 0;
-                    min-height: 60vh;
-                }
-                
-                .status-section { 
-                    margin-bottom: 32px; 
-                    padding: 0 16px;
-                }
-                
-                .section-title {
-                    font-size: 13px; 
-                    font-weight: 700; 
-                    color: var(--text-secondary);
-                    margin: 0 0 16px 4px; 
-                    text-transform: uppercase; 
-                    letter-spacing: 1px;
-                    opacity: 0.8;
-                }
-                
-                .status-item {
-                    display: flex; 
-                    align-items: center; 
-                    gap: 14px;
-                    padding: 16px;
-                    background: linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(28, 28, 30, 0.85) 100%);
-                    border-radius: 16px; 
-                    margin-bottom: 12px;
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    cursor: pointer;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                    position: relative;
-                    overflow: hidden;
-                }
-                
-                .status-item::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 1px;
-                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-                }
-                
-                .status-item:hover {
-                    background: linear-gradient(135deg, rgba(35, 35, 38, 0.95) 0%, rgba(32, 32, 35, 0.9) 100%);
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-                    border-color: rgba(255, 255, 255, 0.08);
-                }
-                
-                .status-item:active { 
-                    transform: translateY(0) scale(0.98);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                }
-                
-                .status-item.me { 
-                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.12) 0%, rgba(10, 132, 255, 0.05) 100%);
-                    border: 1.5px solid rgba(10, 132, 255, 0.25);
-                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.1);
-                }
-                
-                .status-item.me:hover {
-                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.18) 0%, rgba(10, 132, 255, 0.08) 100%);
-                    border-color: rgba(10, 132, 255, 0.35);
-                    box-shadow: 0 6px 20px rgba(10, 132, 255, 0.15);
-                }
-                
-                .avatar-wrapper { 
-                    position: relative; 
-                    width: 56px; 
-                    height: 56px;
-                    flex-shrink: 0;
-                }
-                
-                .status-avatar { 
-                    width: 100%; 
-                    height: 100%; 
-                    border-radius: 50%; 
-                    object-fit: cover; 
-                    background: linear-gradient(135deg, #2a2a2e 0%, #1a1a1e 100%);
-                    border: 2px solid rgba(255, 255, 255, 0.05);
-                }
-                
-                .avatar-wrapper.ring { 
-                    padding: 3px;
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    border-radius: 50%;
-                    box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
-                }
-                
-                .avatar-wrapper.ring .status-avatar { 
-                    border: 3px solid var(--bg-dark);
-                }
-                
-                .add-badge {
-                    position: absolute; 
-                    bottom: -2px; 
-                    right: -2px;
-                    width: 24px; 
-                    height: 24px; 
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    color: white; 
-                    border-radius: 50%; 
-                    border: 3px solid var(--bg-dark);
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center; 
-                    font-size: 16px; 
-                    font-weight: 700;
-                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.4);
-                }
-
-                .status-content { 
-                    flex: 1; 
-                    display: flex; 
-                    flex-direction: column; 
-                    gap: 6px; 
-                    overflow: hidden;
-                    min-width: 0;
-                }
-                
-                .status-name { 
-                    font-weight: 600; 
-                    font-size: 17px; 
-                    color: var(--text-primary);
-                    letter-spacing: -0.3px;
-                }
-                
-                .status-text { 
-                    color: var(--text-secondary); 
-                    font-size: 15px; 
-                    margin: 0; 
-                    line-height: 1.4;
-                    display: -webkit-box;
-                    -webkit-line-clamp: 2;
-                    -webkit-box-orient: vertical;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                
-                .view-area {
-                    width: 100%;
-                    cursor: pointer;
-                }
-                
-                .edit-area { 
-                    display: flex; 
-                    flex-direction: column;
-                    gap: 12px; 
-                    width: 100%;
-                }
-                
-                .status-input {
-                    background: rgba(255,255,255,0.08);
-                    border: 1.5px solid rgba(255,255,255,0.1);
-                    padding: 12px 14px;
-                    border-radius: 12px;
-                    color: white;
-                    width: 100%;
-                    outline: none;
-                    font-size: 15px;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    transition: all 0.2s;
-                }
-                
-                .status-input:focus {
-                    background: rgba(255,255,255,0.12);
-                    border-color: var(--accent-blue);
-                    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
-                }
-                
-                .status-input::placeholder {
-                    color: var(--text-secondary);
-                    opacity: 0.6;
-                }
-                
-                .edit-actions {
-                    display: flex;
-                    gap: 10px;
-                    justify-content: flex-end;
-                }
-                
-                .save-btn {
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 15px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
-                }
-                
-                .save-btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.4);
-                }
-                
-                .save-btn:active {
-                    transform: translateY(0);
-                }
-                
-                .save-btn:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-                
-                .cancel-btn { 
-                    background: rgba(255, 255, 255, 0.08);
-                    border: none;
-                    color: var(--text-secondary);
-                    font-size: 15px;
-                    cursor: pointer;
-                    padding: 10px 16px;
-                    border-radius: 10px;
-                    transition: all 0.2s;
-                    font-weight: 600;
-                }
-                
-                .cancel-btn:hover {
-                    background: rgba(255, 255, 255, 0.12);
-                    color: var(--text-primary);
-                }
-                
-                .edit-icon-btn {
-                    background: rgba(10, 132, 255, 0.12);
-                    border: none;
-                    color: var(--accent-blue);
-                    font-size: 20px;
-                    cursor: pointer;
-                    padding: 10px;
-                    border-radius: 10px;
-                    transition: all 0.2s;
-                    flex-shrink: 0;
-                }
-                
-                .edit-icon-btn:hover {
-                    background: rgba(10, 132, 255, 0.2);
-                    transform: scale(1.05);
-                }
-                
-                .edit-icon-btn:active {
-                    transform: scale(0.95);
-                }
-                
-                .no-status { 
-                    padding: 60px 20px;
-                    text-align: center;
-                    color: var(--text-secondary);
-                    font-size: 15px;
-                    opacity: 0.7;
-                    background: rgba(255, 255, 255, 0.02);
-                    border-radius: 16px;
-                    border: 1px dashed rgba(255, 255, 255, 0.1);
-                }
-                
-                .no-status p {
-                    margin: 0;
-                    line-height: 1.6;
-                }
-            `}</style>
-        </div>
-    );
-}
 
 function ChatRoom({ currentUser, targetUser, onBack }) {
     // Local state for partner to handle real-time updates (e.g. online status)
@@ -1852,6 +1557,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         content,
                         message_type,
                         image_url
+                    ),
+                    reply_to_story:reply_to_story_id(
+                        id,
+                        media_url,
+                        caption
                     )
                 `)
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
@@ -2580,36 +2290,46 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
             {/* Delete Chat Confirmation Modal */}
             {showDeleteConfirm && (
-                <div className="mute-menu-modal" onClick={() => setShowDeleteConfirm(false)}>
-                    <div className="mute-menu-content glass-panel" onClick={(e) => e.stopPropagation()}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🗑️</div>
-                            <h3 style={{ marginBottom: '10px' }}>Delete Chat?</h3>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                                Delete all messages with {partner?.full_name || partner?.username || 'this user'}? This cannot be undone.
-                            </p>
+                <div className="delete-confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
+                    <div className="delete-confirm-modal" onClick={(e) => e.stopPropagation()}>
+                        {/* Warning Icon */}
+                        <div className="delete-icon-wrapper">
+                            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18"/>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                <line x1="10" x2="10" y1="11" y2="17"/>
+                                <line x1="14" x2="14" y1="11" y2="17"/>
+                            </svg>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+
+                        {/* Title and Description */}
+                        <h3 className="delete-title">Delete Chat?</h3>
+                        <p className="delete-description">
+                            All messages with <strong>{partner?.full_name || partner?.username || 'this user'}</strong> will be permanently deleted. This action cannot be undone.
+                        </p>
+
+                        {/* Action Buttons */}
+                        <div className="delete-actions">
                             <button 
                                 onClick={() => setShowDeleteConfirm(false)} 
-                                className="cancel-btn"
-                                style={{ flex: 1 }}
+                                className="delete-btn-cancel"
                             >
-                                No
+                                Cancel
                             </button>
                             <button 
                                 onClick={() => {
                                     handleDeleteChat();
                                     setShowDeleteConfirm(false);
                                 }} 
-                                className="mute-option"
-                                style={{ 
-                                    flex: 1, 
-                                    background: '#ff453a',
-                                    color: 'white'
-                                }}
+                                className="delete-btn-confirm"
                             >
-                                Yes, Delete
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 6h18"/>
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                </svg>
+                                Delete Chat
                             </button>
                         </div>
                     </div>
@@ -3000,6 +2720,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                     <div className="selection-overlay">
                                         <div className={`selection-checkbox ${isSelected ? 'checked' : ''}`}>
                                             {isSelected && <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Story Reply Preview */}
+                                {msg.reply_to_story && (
+                                    <div className="quoted-story clickable" style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '4px 8px 4px 4px', marginBottom: '4px', background: 'rgba(100,100,100,0.2)',
+                                        borderRadius: '8px', borderLeft: '3px solid #f09433', overflow: 'hidden'
+                                    }}>
+                                        <div style={{ width: '32px', height: '42px', flexShrink: 0 }}>
+                                            <img 
+                                                src={msg.reply_to_story.media_url} 
+                                                alt="Story"
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} 
+                                            />
+                                        </div>
+                                        <div style={{ fontSize: '12px', opacity: 0.9, display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontWeight: 600 }}>Replied to story</span>
                                         </div>
                                     </div>
                                 )}
@@ -3842,6 +3582,154 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     transition: all 0.2s;
                 }
                 .cancel-btn:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.3); }
+                
+                /* Delete Confirmation Modal */
+                .delete-confirm-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0, 0, 0, 0.85);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    z-index: 15000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    animation: fadeIn 0.2s ease-out;
+                }
+
+                .delete-confirm-modal {
+                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
+                    backdrop-filter: blur(40px);
+                    -webkit-backdrop-filter: blur(40px);
+                    border-radius: 24px;
+                    padding: 32px 28px;
+                    width: 90%;
+                    max-width: 380px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+                    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-align: center;
+                }
+
+                @keyframes slideUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(20px) scale(0.95);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0) scale(1);
+                    }
+                }
+
+                .delete-icon-wrapper {
+                    width: 80px;
+                    height: 80px;
+                    margin: 0 auto 20px;
+                    background: rgba(255, 69, 58, 0.1);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 2px solid rgba(255, 69, 58, 0.2);
+                    animation: iconPulse 2s ease-in-out infinite;
+                }
+
+                .delete-icon-wrapper svg {
+                    color: #ff453a;
+                    filter: drop-shadow(0 2px 8px rgba(255, 69, 58, 0.3));
+                }
+
+                @keyframes iconPulse {
+                    0%, 100% {
+                        transform: scale(1);
+                        box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.4);
+                    }
+                    50% {
+                        transform: scale(1.05);
+                        box-shadow: 0 0 0 10px rgba(255, 69, 58, 0);
+                    }
+                }
+
+                .delete-title {
+                    margin: 0 0 12px 0;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    color: white;
+                    letter-spacing: -0.02em;
+                }
+
+                .delete-description {
+                    margin: 0 0 28px 0;
+                    font-size: 0.95rem;
+                    line-height: 1.5;
+                    color: rgba(255, 255, 255, 0.7);
+                }
+
+                .delete-description strong {
+                    color: white;
+                    font-weight: 600;
+                }
+
+                .delete-actions {
+                    display: flex;
+                    gap: 12px;
+                }
+
+                .delete-btn-cancel {
+                    flex: 1;
+                    padding: 14px 20px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .delete-btn-cancel:hover {
+                    background: rgba(255, 255, 255, 0.12);
+                    border-color: rgba(255, 255, 255, 0.25);
+                    transform: translateY(-1px);
+                }
+
+                .delete-btn-cancel:active {
+                    transform: translateY(0) scale(0.98);
+                }
+
+                .delete-btn-confirm {
+                    flex: 1;
+                    padding: 14px 20px;
+                    background: linear-gradient(135deg, #ff453a 0%, #e63946 100%);
+                    border: none;
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    box-shadow: 0 4px 16px rgba(255, 69, 58, 0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }
+
+                .delete-btn-confirm:hover {
+                    background: linear-gradient(135deg, #ff5a50 0%, #ff4757 100%);
+                    box-shadow: 0 6px 24px rgba(255, 69, 58, 0.4);
+                    transform: translateY(-2px);
+                }
+
+                .delete-btn-confirm:active {
+                    transform: translateY(0) scale(0.98);
+                }
+
+                .delete-btn-confirm svg {
+                    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+                }
                 
                 /* Chat Theme Selector Modal */
                 .theme-selector-modal {

@@ -8,17 +8,34 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
         mutuals: 0,
         joinedDate: 'Loading...',
         bio: '',
-        birthDate: null
+        birthDate: null,
+        interests: []
     });
+
+    const isFriend = user.friendshipStatus === 'accepted';
+    const isOwner = currentUser?.id === user.id;
+    const isPublic = user.is_public !== false;
+    const canViewDetails = isOwner || isFriend || isPublic;
 
     useEffect(() => {
         const fetchDetails = async () => {
             if (!user || !currentUser) return;
+            
+            if (!canViewDetails) {
+                setStats({
+                    mutuals: 0,
+                    joinedDate: 'Private',
+                    bio: 'This profile is private.',
+                    birthDate: null,
+                    interests: []
+                });
+                return;
+            }
 
-            // 1. Fetch Profile Details (Bio, Joined, etc)
+            // 1. Fetch Profile Details (Bio, Joined, Interests, etc)
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, created_at, birth_date')
+                .select('bio, created_at, birth_date, interests')
                 .eq('id', user.id)
                 .maybeSingle();
 
@@ -53,7 +70,8 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 mutuals: mutualCount,
                 joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown',
                 bio: profile?.bio || 'No bio available.',
-                birthDate: profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : null
+                birthDate: profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : null,
+                interests: profile?.interests || []
             });
         };
 
@@ -115,26 +133,41 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
 
                     {/* Bio Section */}
                     <div className="fp-bio-section">
-                        <h3>About</h3>
+                        <h3>ABOUT</h3>
                         <p>{stats.bio}</p>
                     </div>
 
+                    {/* Interests Section */}
+                    {stats.interests && stats.interests.length > 0 && (
+                        <div className="fp-interests-section">
+                            <h3>INTERESTS</h3>
+                            <div className="fp-interests-chips">
+                                {stats.interests.map((interest, idx) => (
+                                    <span key={idx} className="fp-interest-chip">{interest}</span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Action Grid */}
-                    <div className="fp-actions">
-                        <button className="fp-btn primary" onClick={() => onAction('message', user)}>
-                            <span>💬</span> Message
-                        </button>
-                        <button className="fp-btn secondary" onClick={() => onAction('call-audio', user)}>
-                            <span>📞</span> Audio Call
-                        </button>
-                        <button className="fp-btn secondary" onClick={() => onAction('call-video', user)}>
-                            <span>📹</span> Video Call
-                        </button>
-                    </div>
+                    {canViewDetails && isFriend && (
+                        <div className="fp-actions">
+                            <button className="fp-btn primary" onClick={() => onAction('message', user)}>
+                                <span>💬</span> Message
+                            </button>
+                            <button className="fp-btn secondary" onClick={() => onAction('call-audio', user)}>
+                                <span>📞</span> Audio Call
+                            </button>
+                            <button className="fp-btn secondary" onClick={() => onAction('call-video', user)}>
+                                <span>📹</span> Video Call
+                            </button>
+                        </div>
+                    )}
 
                     {/* Footer Actions */}
                     <div className="fp-footer-actions">
                          <button className="fp-text-btn danger" onClick={() => onAction('block', user)}>Block User</button>
+                         <span className="separator">•</span>
                          <button className="fp-text-btn danger" onClick={() => onAction('report', user)}>Report User</button>
                     </div>
 
@@ -296,7 +329,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     .fp-bio-section {
                         text-align: center;
                         width: 100%;
-                        margin-bottom: 28px;
+                        margin-bottom: 20px;
                         padding: 20px;
                         background: rgba(255,255,255,0.02);
                         border-radius: 16px;
@@ -318,6 +351,44 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         line-height: 1.6;
                         margin: 0;
                         font-style: italic;
+                    }
+
+                    .fp-interests-section {
+                        width: 100%;
+                        margin-bottom: 28px;
+                    }
+
+                    .fp-interests-section h3 {
+                        color: rgba(255,255,255,0.4);
+                        font-size: 0.75rem;
+                        text-transform: uppercase;
+                        margin-bottom: 12px;
+                        letter-spacing: 1.2px;
+                        font-weight: 700;
+                        text-align: center;
+                    }
+
+                    .fp-interests-chips {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                        justify-content: center;
+                    }
+
+                    .fp-interest-chip {
+                        background: rgba(0, 132, 255, 0.15);
+                        color: #00d4ff;
+                        padding: 8px 16px;
+                        border-radius: 18px;
+                        font-size: 0.85rem;
+                        font-weight: 500;
+                        border: 1px solid rgba(0, 132, 255, 0.25);
+                        transition: all 0.2s;
+                    }
+
+                    .fp-interest-chip:hover {
+                        background: rgba(0, 132, 255, 0.25);
+                        transform: scale(1.05);
                     }
 
                     .fp-actions {
@@ -371,9 +442,16 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
 
                     .fp-footer-actions {
                         display: flex;
-                        gap: 24px;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 16px;
                         padding-top: 16px;
                         border-top: 1px solid rgba(255,255,255,0.06);
+                    }
+
+                    .separator {
+                        color: rgba(255,255,255,0.2);
+                        font-size: 0.8rem;
                     }
                     
                     .fp-text-btn {

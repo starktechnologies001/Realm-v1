@@ -18,8 +18,14 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     console.log('🔵 [UserProfileCard] hide_status:', user.hide_status);
     console.log('🔵 [UserProfileCard] FULL USER OBJECT:', user);
 
-    // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled
-    const canShowLastSeen = (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
+    // Privacy Logic hierarchy
+    const isOwner = currentUser?.id === user.id;
+    const isFriend = user.friendshipStatus === 'accepted';
+    const isPublic = user.is_public !== false; // Default to public if undefined
+    const canViewDetails = isOwner || isFriend || isPublic;
+
+    // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
+    const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
 
     // Calculate time since active
     const getLastActive = (dateStr) => {
@@ -59,42 +65,51 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     <div className="card-drag-handle" />
                     
                     <div className="card-header">
-                        <div className="avatar-large-container" onClick={() => onAction('view-profile', user)}>
+                        <div className="avatar-large-container" onClick={() => canViewDetails && onAction('view-profile', user)}>
                             <img 
                                 src={displayAvatar} 
                                 alt={user.name} 
                                 className="avatar-large"
+                                style={{ filter: canViewDetails ? 'none' : 'blur(5px)' }}
                             />
                             <div className={`status-dot ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         
                         <div className="user-info-area">
-                            <h2 onClick={() => onAction('view-profile', user)} style={{ cursor: 'pointer' }}>
+                            <h2 onClick={() => canViewDetails && onAction('view-profile', user)} style={{ cursor: canViewDetails ? 'pointer' : 'default' }}>
                                 {user.name} 
                                 {user.email_verified && (
                                     <span className="verified-badge" title="Email Verified">
                                         ✔ Verified
                                     </span>
                                 )}
-                                <span>›</span>
+                                {canViewDetails && <span>›</span>}
                             </h2>
                             <div className="badges-row">
-                                {user.friendshipStatus === 'accepted' && (
-                                    <span className="badge-pill status" style={{ background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', border: '1px solid rgba(52, 199, 89, 0.3)' }}>
-                                        🤝 Friend
+                                {!canViewDetails ? (
+                                    <span className="badge-pill status" style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#aaa', border: '1px solid rgba(255,255,255,0.2)' }}>
+                                        🔒 Private Profile
                                     </span>
+                                ) : (
+                                    <>
+                                        {user.friendshipStatus === 'accepted' && (
+                                            <span className="badge-pill status" style={{ background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', border: '1px solid rgba(52, 199, 89, 0.3)' }}>
+                                                🤝 Friend
+                                            </span>
+                                        )}
+                                        {!user.hide_status && <span className="badge-pill status">{user.status || 'Available'}</span>}
+                                        {(() => {
+                                            const lastActive = getLastActive(user.lastActive);
+                                            // Always show if Online, otherwise respect privacy
+                                            if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
+                                                return <span className="badge-pill active-time">{lastActive}</span>;
+                                            }
+                                            return null;
+                                        })()}
+                                    </>
                                 )}
-                                {!user.hide_status && <span className="badge-pill status">{user.status || 'Available'}</span>}
-                                {(() => {
-                                    const lastActive = getLastActive(user.lastActive);
-                                    // Always show if Online, otherwise respect privacy
-                                    if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
-                                        return <span className="badge-pill active-time">{lastActive}</span>;
-                                    }
-                                    return null;
-                                })()}
                             </div>
-                            {user.friendshipStatus === 'accepted' && (
+                            {canViewDetails && user.friendshipStatus === 'accepted' && (
                                 <button className="view-profile-sm" onClick={() => onAction('view-profile', user)}>View Profile</button>
                             )}
                         </div>
@@ -127,15 +142,47 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                             </>
                         ) : (
                             <>
-                                <button 
-                                    className="action-btn primary-action"
-                                    onClick={() => onAction('poke', user)}
-                                    disabled={user.friendshipStatus === 'pending'}
-                                    style={{ opacity: user.friendshipStatus === 'pending' ? 0.6 : 1 }}
-                                >
-                                    <span className="icon">👋</span>
-                                    <span className="label">{user.friendshipStatus === 'pending' ? 'Poke Sent' : 'Poke'}</span>
-                                </button>
+                                {(() => {
+                                    // Logic for Pending State
+                                    if (user.friendshipStatus === 'pending') {
+                                         const isRequester = user.requesterId === currentUser?.id;
+                                         if (isRequester) {
+                                             return (
+                                                <button 
+                                                    className="action-btn primary-action"
+                                                    disabled
+                                                    style={{ opacity: 0.6 }}
+                                                >
+                                                    <span className="icon">👋</span>
+                                                    <span className="label">Poke Sent</span>
+                                                </button>
+                                             );
+                                         } else {
+                                             // I am the receiver -> Show Accept Option (functionally same as poke back logic)
+                                             return (
+                                                <button 
+                                                    className="action-btn primary-action"
+                                                    onClick={() => onAction('poke', user)}
+                                                    style={{ background: 'linear-gradient(135deg, #34c759 0%, #30b350 100%)' }}
+                                                >
+                                                    <span className="icon">🤝</span>
+                                                    <span className="label">Accept Poke</span>
+                                                </button>
+                                             );
+                                         }
+                                    }
+                                    
+                                    // Default Poke Button
+                                    return (
+                                        <button 
+                                            className="action-btn primary-action"
+                                            onClick={() => onAction('poke', user)}
+                                        >
+                                            <span className="icon">👋</span>
+                                            <span className="label">Poke</span>
+                                        </button>
+                                    );
+                                })()}
                                 <button 
                                     className="action-btn secondary-action"
                                     onClick={() => onAction('message', user)}

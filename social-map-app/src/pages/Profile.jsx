@@ -5,6 +5,7 @@ import Toast from '../components/Toast';
 import Avatar3D from '../components/Avatar3D';
 import AvatarEditor from '../components/AvatarEditor';
 import { useTheme } from '../context/ThemeContext';
+import { useLocationContext } from '../context/LocationContext';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -16,6 +17,7 @@ export default function Profile() {
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const { theme, updateTheme } = useTheme();
+    const { isLocationEnabled, resetPermission, setPermission } = useLocationContext();
 
     useEffect(() => {
         fetchProfile();
@@ -59,42 +61,83 @@ export default function Profile() {
 
     const fetchBlockedUsers = async (userId) => {
         try {
-            const { data, error } = await supabase
-                .from('friendships')
-                .select(`
-                    id,
-                    receiver:profiles!receiver_id(id, full_name, username, gender)
-                `)
-                .eq('requester_id', userId)
-                .eq('status', 'blocked');
+            // Updated to use manual join to ensure correct profile is fetched
+            // 1. Get the list of blocked IDs
+            const { data: blocks, error: blocksError } = await supabase
+                .from('blocks')
+                .select('id, blocked_id')
+                .eq('blocker_id', userId);
 
-            if (!error && data) {
-                setBlockedUsers(data.map(b => ({
-                    friendship_id: b.id,
-                    ...b.receiver
-                })));
+            if (blocksError) throw blocksError;
+
+            if (!blocks || blocks.length === 0) {
+                setBlockedUsers([]);
+                return;
             }
+
+            const blockedIds = blocks.map(b => b.blocked_id);
+
+            // 2. Fetch the actual profiles for these IDs
+            const { data: profiles, error: profilesError } = await supabase
+                .from('profiles')
+                .select('id, full_name, username, gender, avatar_url')
+                .in('id', blockedIds);
+
+            if (profilesError) throw profilesError;
+
+            // 3. Map back to include the block_id for unblocking
+            const combinedData = profiles.map(profile => {
+                const blockRecord = blocks.find(b => b.blocked_id === profile.id);
+                return {
+                    block_id: blockRecord?.id,
+                    ...profile
+                };
+            });
+
+            setBlockedUsers(combinedData);
+
         } catch (err) {
             console.error('Error fetching blocked users:', err);
         }
     };
 
-    const handleUnblock = async (friendshipId, userName) => {
+    const handleUnblock = async (blockId, userName) => {
         try {
             const { error } = await supabase
-                .from('friendships')
+                .from('blocks')
                 .delete()
-                .eq('id', friendshipId);
+                .eq('id', blockId);
 
             if (error) throw error;
 
-            setBlockedUsers(prev => prev.filter(u => u.friendship_id !== friendshipId));
+            setBlockedUsers(prev => prev.filter(u => u.block_id !== blockId));
             showToast(`Unblocked ${userName}`);
         } catch (err) {
             console.error('Unblock error:', err);
             showToast('Failed to unblock user');
         }
     };
+
+    const blockUser = async (userId, userName) => {
+        try {
+            const { error } = await supabase
+                .from('blocks')
+                .insert({
+                    blocker_id: user.id,
+                    blocked_id: userId
+                });
+
+            if (error) throw error;
+
+            // Refresh blocked users list
+            await fetchBlockedUsers(user.id);
+            showToast(`Blocked ${userName}`);
+        } catch (err) {
+            console.error('Block error:', err);
+            showToast('Failed to block user');
+        }
+    };
+
 
     const updateProfile = async (updates) => {
         // OPTIMISTIC UPDATE: Update local state + LocalStorage immediately
@@ -148,6 +191,7 @@ export default function Profile() {
 
     const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
     const [activeModal, setActiveModal] = useState(null); // 'password' or 'delete'
+    const [showPublicConfirm, setShowPublicConfirm] = useState(false);
 
     // Password Form State
     const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
@@ -294,9 +338,18 @@ export default function Profile() {
                             </button>
                         )}
                     </div>
+                    {/* Location Warning */}
+                    {!isLocationEnabled && (
+                        <div className="location-warning-badge">
+                            <span>📍 Location is disabled</span>
+                            <button onClick={() => { resetPermission(); navigate('/map'); }}>
+                                Enable
+                            </button>
+                        </div>
+                    )}
                     {/* Bio Section */}
-                    <div className={`user-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
-                        {user.bio || "Tap to add a bio..."}
+                    <div className={`profile-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
+                        {user.bio || "Ready for adventure 🌎"}
                     </div>
                 </div>
                 {/* Edit Username Button */}
@@ -371,9 +424,63 @@ export default function Profile() {
                     />
                 </div>
 
-                {/* Section: App Settings */}
                 <div className="section-label">Settings</div>
                 <div className="menu-group">
+                    <div className="menu-item toggle-item">
+                        <span className="menu-icon-wrapper icon-lock" style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        </span>
+                        <div className="menu-content">
+                            <span className="menu-label">Public Profile</span>
+                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                {user.is_public !== false ? 'Visible to everyone' : 'Friends only'}
+                            </span>
+                        </div>
+                        <label className="toggle-switch">
+                            <input 
+                                type="checkbox" 
+                                checked={user.is_public !== false}
+                                onChange={async (e) => {
+                                    const newValue = e.target.checked;
+                                    if (newValue) {
+                                        // Turning Public -> Confirm first
+                                        setShowPublicConfirm(true);
+                                    } else {
+                                        // Turning Private -> Immediate
+                                        await updateProfile({ is_public: false });
+                                    }
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div className="menu-item toggle-item">
+                        <span className="menu-icon-wrapper icon-location" style={{ background: 'rgba(0, 198, 255, 0.15)', color: '#00C6FF' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </span>
+                        <div className="menu-content">
+                            <span className="menu-label">Location Services</span>
+                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                {isLocationEnabled ? 'Visible on map' : 'Location hidden'}
+                            </span>
+                        </div>
+                        <label className="toggle-switch">
+                            <input 
+                                type="checkbox" 
+                                checked={isLocationEnabled}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        setPermission('granted');
+                                    } else {
+                                        setPermission('denied');
+                                    }
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>}
                         label="Notifications"
@@ -477,6 +584,30 @@ export default function Profile() {
 
                 <div className="version-info">RealMM v1.0.3</div>
             </div>
+
+            {/* Public Profile Confirmation Modal */}
+            {showPublicConfirm && (
+                <div className="modal-backdrop">
+                    <div className="modal-content">
+                        <div className="modal-header">
+                            <div className="icon-wrapper desc-lock">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            </div>
+                            <h3>Go Public?</h3>
+                        </div>
+                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                            Everyone can see your profile and status.
+                        </p>
+                        <div className="modal-footer">
+                            <button className="btn-sec" onClick={() => setShowPublicConfirm(false)}>Cancel</button>
+                            <button className="btn-pri" onClick={async () => {
+                                await updateProfile({ is_public: true });
+                                setShowPublicConfirm(false);
+                            }}>Public</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modals */}
             {activeModal && (
@@ -729,9 +860,9 @@ export default function Profile() {
                         ) : (
                             <div className="blocked-list">
                                 {blockedUsers.map(user => (
-                                    <div key={user.friendship_id} className="blocked-user-item">
+                                    <div key={user.block_id} className="blocked-user-item">
                                         <img 
-                                            src={(() => {
+                                            src={user.avatar_url || (() => {
                                                 const safeName = encodeURIComponent(user.username || user.full_name || 'User');
                                                 if (user.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
                                                 if (user.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
@@ -745,7 +876,7 @@ export default function Profile() {
                                         </div>
                                         <button 
                                             className="unblock-btn"
-                                            onClick={() => handleUnblock(user.friendship_id, user.full_name || user.username)}
+                                            onClick={() => handleUnblock(user.block_id, user.full_name || user.username)}
                                         >
                                             Unblock
                                         </button>
@@ -802,16 +933,16 @@ export default function Profile() {
                 }
 
                 .profile-avatar {
-                    width: 100px; height: 100px; border-radius: 50%; object-fit: cover;
-                    border: 4px solid #ffffff;
+                    width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+                    border: 3px solid #ffffff;
                     box-shadow: 0 4px 16px rgba(0,0,0,0.1);
                 }
 
                 .status-indicator {
-                    position: absolute; bottom: 8px; right: 8px;
-                    width: 18px; height: 18px; 
+                    position: absolute; bottom: 4px; right: 4px;
+                    width: 14px; height: 14px; 
                     background: #00ff88;
-                    border: 3px solid #ffffff;
+                    border: 2px solid #ffffff;
                     border-radius: 50%;
                 }
 
@@ -841,7 +972,7 @@ export default function Profile() {
                     font-weight: 600;
                 }
 
-                .user-bio {
+                .profile-bio {
                     font-size: 0.95rem; color: var(--text-primary); /* Brighter text */
                     font-weight: 600; /* Bold */
                     max-width: 85%; 
@@ -851,8 +982,8 @@ export default function Profile() {
                     margin-top: 6px;
                     text-align: center;
                 }
-                .user-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
-                .user-bio.empty { font-style: italic; opacity: 0.6; }
+                .profile-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
+                .profile-bio.empty { font-style: italic; opacity: 0.6; }
 
                 .edit-btn {
                     position: absolute; top: 0; right: 0;
@@ -1414,6 +1545,35 @@ export default function Profile() {
                     position: relative;
                 }
 
+                .edit-avatar-btn-overlay:hover {
+                    background: white;
+                    color: black;
+                }
+
+                .location-warning-badge {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    background: rgba(255, 69, 58, 0.15);
+                    border: 1px solid rgba(255, 69, 58, 0.3);
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    margin: 10px 0;
+                    color: #FF453A;
+                    font-size: 0.9rem;
+                    font-weight: 500;
+                }
+                .location-warning-badge button {
+                    background: #FF453A;
+                    color: white;
+                    border: none;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                
                 .edit-avatar-btn-3d {
                     position: absolute;
                     bottom: 20px;

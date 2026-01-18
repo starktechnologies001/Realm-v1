@@ -13,12 +13,14 @@ import './App.css';
 
 import { CallProvider } from './context/CallContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LocationProvider } from './context/LocationContext';
 
 function App() {
   return (
     <ThemeProvider>
-      <Router>
-        <CallProvider>
+      <LocationProvider>
+        <Router>
+          <CallProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
 
@@ -36,6 +38,7 @@ function App() {
           </Routes>
         </CallProvider>
       </Router>
+      </LocationProvider>
     </ThemeProvider>
   );
 }
