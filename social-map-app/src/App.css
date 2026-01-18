@@ -8,8 +8,8 @@
 
 .avatar-group {
     position: relative;
-    width: 55px;
-    height: 82px;
+    width: 60px;
+    height: 60px;
     overflow: visible;
     /* CRITICAL: Ensure bubble isn't clipped */
 }
@@ -81,13 +81,14 @@
 
 /* Avatar Visuals */
 .avatar-marker {
-    width: 55px;
-    height: 82px;
-    background-size: contain;
+    width: 100%;
+    height: 100%;
+    background-size: cover; /* Fill the circle */
     background-repeat: no-repeat;
-    background-position: center bottom;
-    /* Clean look: No background shape */
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+    background-position: center;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 

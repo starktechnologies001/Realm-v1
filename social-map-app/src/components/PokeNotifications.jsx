@@ -72,6 +72,14 @@ export default function PokeNotifications({ currentUser }) {
                     setPendingPokes(prev => prev.filter(p => p.id !== payload.new.id));
                 }
             })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'friendships'
+            }, (payload) => {
+                // Remove from list if deleted (cancelled)
+                setPendingPokes(prev => prev.filter(p => p.id !== payload.old.id));
+            })
             .subscribe();
 
         return () => {

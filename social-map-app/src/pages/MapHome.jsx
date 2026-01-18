@@ -203,14 +203,22 @@ export default function MapHome() {
                 // 3. Has old/invalid avatar system
                 else if (!profile.avatar_url || 
                          profile.avatar_url.includes('googleusercontent.com') ||
-                         profile.avatar_url.includes('lh3.googleusercontent.com') ||
-                         (!profile.avatar_url.includes('models.readyplayer.me') && 
-                          !profile.avatar_url.includes('dicebear') && 
-                          !profile.avatar_url.includes('avatar.iran.liara.run'))) {
+                         profile.avatar_url.includes('lh3.googleusercontent.com')) {
                     
-                    // Generate random avatar (fast DiceBear avatars)
-                    const newAvatar = generateRandomRPMAvatar();
+                    // Generate specific default avatar based on gender (User Request)
+                    const gender = profile.gender || 'Other';
+                    let newAvatar;
                     
+                    if (gender === 'Male') {
+                        newAvatar = '/defaults/male_avatar.jpg';
+                    } else if (gender === 'Female') {
+                         newAvatar = '/defaults/female_avatar.jpg';
+                    } else {
+                         const baseName = (profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
+                         newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${baseName}_${Math.floor(Math.random() * 1000)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+                    }
+                    
+                    // Auto-save immediately
                     await supabase.from('profiles')
                         .update({ avatar_url: newAvatar })
                         .eq('id', profile.id);
@@ -221,6 +229,9 @@ export default function MapHome() {
                          setCurrentUser(updated);
                          localStorage.setItem('currentUser', JSON.stringify(updated));
                     }
+                    
+                    // Update profile ref for UI
+                    profile.avatar_url = newAvatar;
                 }
             }
         };
@@ -302,6 +313,31 @@ export default function MapHome() {
                     setSelectedUser(prev => prev && prev.id === relevantId ? { ...prev, friendshipStatus: 'accepted' } : prev);
                     setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
                 }
+
+                // CASE 4: PENDING (New Poke)
+                if (newRec?.status === 'pending') {
+                    friendshipsRef.current.set(newRec.id, relevantId); // Cache it
+                    
+                    const isIncoming = newRec.receiver_id === currentUser.id;
+                    if (isIncoming) {
+                        showToast(`New Poke received! 👋`);
+                    }
+
+                    // Update UI
+                    setSelectedUser(prev => prev && prev.id === relevantId ? { 
+                        ...prev, 
+                        friendshipStatus: 'pending', 
+                        requesterId: newRec.requester_id,
+                        friendshipId: newRec.id
+                    } : prev);
+
+                    setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { 
+                        ...u, 
+                        friendshipStatus: 'pending',
+                        requesterId: newRec.requester_id,
+                        friendshipId: newRec.id
+                    } : u));
+                }
             })
             .subscribe();
 
@@ -356,7 +392,13 @@ export default function MapHome() {
                              myFriendships.set(partnerId, { status: 'accepted', id: f.id });
                          }
                          if (f.status === 'pending') {
-                             myFriendships.set(partnerId, { status: 'pending', id: f.id });
+                             // Cache pending ID too for deletion lookup
+                             friendshipsRef.current.set(f.id, partnerId);
+                             myFriendships.set(partnerId, { 
+                                 status: 'pending', 
+                                 id: f.id,
+                                 requesterId: f.requester_id // Store requester to know direction
+                             });
                          }
                     });
                 }
@@ -758,13 +800,10 @@ export default function MapHome() {
             showToast("Please select Gender and Status!");
             return;
         }
-        if (!onboardingImage) {
-            showToast("A selfie is mandatory! 📸");
-            return;
-        }
-
+        // Selfie check REMOVED
+        
         try {
-            showToast("Uploading profile... ⏳");
+            showToast("Saving profile... ⏳");
 
             let userId = currentUser?.id;
             // Fallback: Check auth if currentUser state is not ready (which shouldn't happen but defensive coding)
@@ -774,25 +813,18 @@ export default function MapHome() {
                 userId = user.id;
             }
 
-            // Upload Selfie
-            const blob = await (await fetch(onboardingImage)).blob();
-            const fileName = `${Date.now()}_${userId}.jpg`;
-            const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, blob);
 
-            if (uploadError) {
-                console.error("Storage Error:", uploadError);
-                throw new Error("Storage Error: " + uploadError.message);
-            }
-
-            const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
 
             // Update Profile
             const updates = {
                 gender: setupData.gender,
                 status: setupData.status,
-                avatar_url: urlData.publicUrl,
-                username: setupData.username // Use user-provided username
+                username: setupData.username
             };
+            
+            // FORCE Avatar Update
+            if (setupData.gender === 'Male') updates.avatar_url = '/defaults/male_avatar.jpg';
+            else if (setupData.gender === 'Female') updates.avatar_url = '/defaults/female_avatar.jpg';
             
             // Validate username
             if (!updates.username) {
@@ -970,42 +1002,86 @@ export default function MapHome() {
                     }
                 }
 
+                // OPTIMISTIC UPDATE: Show "Requested" immediately
+                showToast(`Poke Request Sent 📨`);
+                
+                // Track previous state for rollback
+                const prevSelectedUser = { ...selectedUser };
+                
+                setSelectedUser({ 
+                    ...targetUser, 
+                    friendshipStatus: 'pending',
+                    requesterId: currentUser.id,
+                    // Temporary ID or null, will update after DB
+                    friendshipId: 'temp-' + Date.now() 
+                });
+                
                 // Send Poke Request
-                const { error } = await supabase
+                const { data: newRecs, error } = await supabase
                     .from('friendships')
                     .insert({
                         requester_id: currentUser.id,
                         receiver_id: targetUser.id,
                         status: 'pending'
-                    });
+                    })
+                    .select();
 
                 if (error) {
-                    // Handle duplicate key error (race condition or RLS visibility issue)
-                    if (error.code === '23505') {
+                    // Revert UI on error
+                    setSelectedUser(prevSelectedUser);
+                    console.error('Poke error:', error);
+                    
+                     if (error.code === '23505') {
                          console.warn('Handling duplicate poke insert...');
-                         // Upsert/Update the existing record to pending
-                         const { error: upsertError } = await supabase
-                            .from('friendships')
-                            .upsert({
-                                requester_id: currentUser.id,
-                                receiver_id: targetUser.id,
-                                status: 'pending'
-                            }, { onConflict: 'requester_id, receiver_id' });
-                            
-                         if (upsertError) throw upsertError;
-                    } else {
-                        throw error;
-                    }
+                         // Was already requested maybe? Refresh user?
+                         showToast("Poke already sent!");
+                         // Refetch to get truth
+                     } else {
+                         showToast("Failed to send poke.");
+                         throw error;
+                     }
+                } else {
+                    // Success: Update with real ID so Cancel works
+                    const newFriendship = newRecs[0];
+                    friendshipsRef.current.set(newFriendship.id, targetUser.id);
+                    
+                    setSelectedUser(prev => ({ 
+                        ...prev, 
+                        friendshipId: newFriendship.id
+                    }));
                 }
+            } catch (err) {
+                 // Already handled rollback above for most cases
+            }
+        }
+        else if (action === 'cancel-poke') {
+            try {
+                // Delete the friendship row (cancels request)
+                // Remove from ref first so realtime listener doesn't show duplicate toast
+                if (targetUser.friendshipId) {
+                    friendshipsRef.current.delete(targetUser.friendshipId);
+                }
+
+                const { error } = await supabase
+                    .from('friendships')
+                    .delete()
+                    .eq('id', targetUser.friendshipId);
+
+                if (error) throw error;
+
+                showToast("Request cancelled ❌");
                 
-                showToast(`👋 Poked ${targetUser.name}!`);
-                
-                // Update UI immediately
-                setSelectedUser({ ...targetUser, friendshipStatus: 'pending' });
+                // Update UI immediately (Revert to no status)
+                setSelectedUser({ 
+                    ...targetUser, 
+                    friendshipStatus: null, 
+                    friendshipId: null,
+                    requesterId: null 
+                });
 
             } catch (err) {
-                console.error('Poke error:', err);
-                showToast("Failed to send poke.");
+                console.error('Cancel poke error:', err);
+                showToast("Failed to cancel request");
             }
         }
         else if (action === 'block') {
@@ -1100,7 +1176,7 @@ export default function MapHome() {
         }
     };
 
-    const createAvatarIcon = (url, isSelf = false, thought = null, name = '') => {
+    const createAvatarIcon = (url, isSelf = false, thought = null, name = '', status = null) => {
         let className = 'avatar-marker';
         // Ensure url is safely wrapped and background is configured
         // Use double quotes for style attribute, single for url
@@ -1112,11 +1188,14 @@ export default function MapHome() {
         }
 
         // Only show thought if it exists (simplified check)
-        // Add name display
+        // Add name display and include status if available
         const thoughtHTML = thought
             ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800;">${name}</div>
-                 <div class="thought-content" style="color: #000000 !important; font-weight: 600;">${thought}</div>
+                 <div class="thought-content" style="color: #000000 !important; font-weight: 600;">
+                    ${status ? `<span style="margin-right:4px;">${status}</span>` : ''} 
+                    ${thought}
+                 </div>
                </div>`
             : '';
 
@@ -1128,9 +1207,9 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [55, 82], // Larger size per user request
-            iconAnchor: [27, 80], 
-            popupAnchor: [0, -75]
+            iconSize: [60, 60], 
+            iconAnchor: [30, 30], 
+            popupAnchor: [0, -35]
         });
     };
 
@@ -1161,25 +1240,46 @@ export default function MapHome() {
         );
     }, [currentUser, location?.lat, location?.lng]);
 
+    // 1. Permission Prompt (Highest Priority)
+    if (permissionStatus === 'prompt') {
+        return <LocationPermissionModal onSelect={handlePermissionSelect} />;
+    }
+
+    // 2. Permission Denied
+    if (permissionStatus === 'denied') {
+        return <LimitedModeScreen onEnableLocation={handleEnableLocation} />;
+    }
+
+    // 3. Loading User or Waiting for Location (Permission is Granted at this point)
     if (loading || !location) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#e0e0e0', color: '#333' }}>
-                <h2>Starting Map...</h2>
+                <h2>{loading ? 'Loading Profile...' : 'Acquiring Location...'}</h2>
             </div>
         );
     }
 
+    // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
 
     return (
-        <>
-            {permissionStatus === 'prompt' && <LocationPermissionModal onSelect={handlePermissionSelect} />}
-            
-            {permissionStatus === 'denied' ? (
-                <LimitedModeScreen onEnableLocation={handleEnableLocation} />
-            ) : (
-                <div className="map-container">
+        <div className="map-container">
+            {/* PROFILE UPDATE NUDGE */}
+            {currentUser && (
+                (!currentUser.avatar_url || 
+                 currentUser.avatar_url.includes('/defaults/') || 
+                 currentUser.avatar_url.includes('dicebear') || 
+                 currentUser.avatar_url.includes('googleusercontent'))
+            ) && (
+                <div 
+                    className="update-nudge"
+                    onClick={() => navigate('/profile')}
+                >
+                    ⚠️ Update profile avatar
+                </div>
+            )}
+
             {/* BLOCKING ONBOARDING MODAL */}
             {showProfileSetup && (
                 <div className="onboarding-overlay">
@@ -1225,24 +1325,22 @@ export default function MapHome() {
                         </div>
 
                         <div className="ob-section">
-                            <label>Mandatory Selfie 📸</label>
-                            <div className="camera-box">
-                                <canvas ref={canvasRef} style={{ display: 'none' }} />
-                                {!isCameraOpen && !onboardingImage && (
-                                    <button onClick={startCamera} className="start-cam-btn">Open Camera</button>
-                                )}
-                                {isCameraOpen && (
-                                    <div className="video-wrap">
-                                        <video ref={videoRef} autoPlay playsInline muted />
-                                        <button onClick={capturePhoto} className="snap-btn"></button>
-                                    </div>
-                                )}
-                                {onboardingImage && !isCameraOpen && (
-                                    <div className="preview-wrap">
-                                        <img src={onboardingImage} alt="Selfie" />
-                                        <button onClick={startCamera} className="retake-sm">Retake</button>
-                                    </div>
-                                )}
+                            <label>Your Avatar 👤</label>
+                            <div className="avatar-preview-box">
+                                <img 
+                                    src={(() => {
+                                        // Dynamic preview based on selection
+                                        if (setupData.gender === 'Male') return '/defaults/male_avatar.jpg';
+                                        if (setupData.gender === 'Female') return '/defaults/female_avatar.jpg';
+                                        // Fallback to existing or random
+                                        return currentUser?.avatar_url || `https://api.dicebear.com/9.x/adventurer/svg?seed=${setupData.username || 'preview'}`;
+                                    })()}
+                                    alt="Your Avatar" 
+                                />
+                                <p className="avatar-hint">
+                                    We've assigned you separate look based on gender! <br/>
+                                    You can customize this later in your profile.
+                                </p>
                             </div>
                         </div>
 
@@ -1306,11 +1404,19 @@ export default function MapHome() {
                 {/* Current User Marker (Memoized above) */}
                 {currentUserMarker}
 
-                {nearbyUsers.map(u => (
-                    <Marker
-                        key={`${u.id}-${u.avatar}`}
-                        position={[u.lat, u.lng]}
-                        icon={createAvatarIcon(getAvatar2D(u.avatar), false, u.thought, u.name)}
+                {nearbyUsers.map(u => {
+                    // Check thought expiration (2 hours)
+                    let displayThought = u.thought;
+                    if (u.status_updated_at) {
+                        const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
+                        if (diffHours > 2) displayThought = null;
+                    }
+
+                    return (
+                        <Marker
+                            key={`${u.id}-${u.avatar}`}
+                            position={[u.lat, u.lng]}
+                            icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
                         eventHandlers={{
                             click: async () => {
 
@@ -1353,7 +1459,8 @@ export default function MapHome() {
                             }
                         }}
                     />
-                ))}
+                    );
+                })}
             </MapContainer>
 
             <UserProfileCard
@@ -1653,57 +1760,184 @@ export default function MapHome() {
             </div>
 
             <style>{`
-                /* Onboarding Styles */
+                .update-nudge {
+                    position: absolute;
+                    top: 100px; /* Below Top Nav which might be hidden on map, or just safe top area */
+                    /* Actually MapHome usually has no top nav, so maybe top: 20px */
+                    top: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(255, 69, 58, 0.9);
+                    backdrop-filter: blur(10px);
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 30px;
+                    font-weight: 600;
+                    box-shadow: 0 4px 15px rgba(255, 69, 58, 0.3);
+                    z-index: 2000;
+                    cursor: pointer;
+                    animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 0.9rem;
+                    border: 1px solid rgba(255,255,255,0.2);
+                }
+                .update-nudge:hover {
+                    background: rgba(255, 69, 58, 1);
+                    transform: translateX(-50%) scale(1.05);
+                }
+                @keyframes bounceIn {
+                    from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+                    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                }
+
+                /* Onboarding Styles - Premium Glassmorphism */
                 .onboarding-overlay {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.95); /* Solid dark, no blur */
-                    z-index: 999999; /* Super high z-index */
+                    background: rgba(0, 0, 0, 0.6);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    z-index: 999999;
                     display: flex; align-items: center; justify-content: center;
+                    animation: fadeIn 0.4s ease-out;
                 }
-                .onboarding-card {
-                    background: #1e1e24; padding: 30px; border-radius: 20px;
-                    width: 90%; max-width: 400px; color: white;
-                    border: 1px solid rgba(255,255,255,0.1);
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-                    max-height: 90vh; overflow-y: auto;
-                }
-                .ob-input {
-                    width: 100%; padding: 12px;
-                    background: rgba(255,255,255,0.1);
-                    border: 1px solid rgba(255,255,255,0.2);
-                    border-radius: 12px; color: white;
-                    font-size: 1rem; outline: none;
-                }
-                .ob-input:focus { border-color: #00f0ff; }
-                .onboarding-card h2 { margin-top: 0; background: linear-gradient(to right, #00f0ff, #bd00ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-                .ob-section { margin-bottom: 20px; }
-                .ob-section label { display: block; margin-bottom: 8px; font-weight: 600; color: #aaa; }
-                .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
-                .chip {
-                    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1);
-                    color: white; padding: 6px 12px; border-radius: 15px; cursor: pointer;
-                }
-                .chip.selected { background: #00f0ff; color: black; border-color: #00f0ff; font-weight: bold; }
                 
-                .camera-box {
-                    width: 100%; height: 200px; background: black; border-radius: 12px;
-                    overflow: hidden; position: relative; border: 1px dashed #555;
-                    display: flex; align-items: center; justify-content: center;
+                .onboarding-card {
+                    background: rgba(30, 30, 35, 0.7);
+                    backdrop-filter: blur(30px);
+                    -webkit-backdrop-filter: blur(30px);
+                    padding: 40px; 
+                    border-radius: 32px;
+                    width: 90%; max-width: 420px; 
+                    color: white;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    box-shadow: 
+                        0 20px 60px rgba(0, 0, 0, 0.5),
+                        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+                    max-height: 90vh; overflow-y: auto;
+                    animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                    position: relative;
                 }
-                .start-cam-btn { background: white; color: black; padding: 10px 20px; border-radius: 20px; border: none; font-weight: bold; cursor: pointer; }
-                .video-wrap, .preview-wrap { width: 100%; height: 100%; position: relative; }
-                .video-wrap video, .preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
-                .snap-btn {
-                    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-                    width: 50px; height: 50px; background: white; border-radius: 50%; border: 4px solid rgba(0,0,0,0.3);
+                
+                /* Scrollbar polish */
+                .onboarding-card::-webkit-scrollbar { width: 4px; }
+                .onboarding-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+                .onboarding-card h2 { 
+                    margin-top: 0; 
+                    margin-bottom: 8px;
+                    font-size: 2rem;
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); 
+                    -webkit-background-clip: text; 
+                    -webkit-text-fill-color: transparent; 
+                    text-align: center;
+                    letter-spacing: -1px;
                 }
-                .retake-sm {
-                    position: absolute; bottom: 10px; right: 10px;
-                    background: rgba(0,0,0,0.6); color: white; border: none; padding: 5px 10px; border-radius: 5px;
+                
+                .onboarding-subtitle {
+                    text-align: center;
+                    color: rgba(255,255,255,0.6);
+                    font-size: 0.95rem;
+                    margin-bottom: 30px;
                 }
+
+                .ob-section { margin-bottom: 24px; }
+                .ob-section label { 
+                    display: block; 
+                    margin-bottom: 10px; 
+                    font-weight: 600; 
+                    color: rgba(255,255,255,0.9);
+                    font-size: 0.95rem;
+                    letter-spacing: 0.3px;
+                }
+
+                .ob-input {
+                    width: 100%; padding: 14px 16px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px; 
+                    color: white;
+                    font-size: 1rem; 
+                    outline: none;
+                    transition: all 0.2s ease;
+                }
+                .ob-input:focus { 
+                    background: rgba(255, 255, 255, 0.1);
+                    border-color: #00C6FF; 
+                    box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15);
+                }
+
+                .chip-group { display: flex; flex-wrap: wrap; gap: 10px; }
+                .chip {
+                    background: rgba(255, 255, 255, 0.05); 
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    color: rgba(255,255,255,0.8); 
+                    padding: 10px 18px; 
+                    border-radius: 20px; 
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    font-weight: 500;
+                    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                }
+                .chip:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    transform: translateY(-1px);
+                }
+                .chip.selected { 
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); 
+                    color: white; 
+                    border-color: transparent; 
+                    font-weight: 600; 
+                    box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);
+                    transform: translateY(-1px);
+                }
+                
                 .complete-btn {
-                    width: 100%; padding: 15px; background: linear-gradient(to right, #00f0ff, #bd00ff);
-                    color: white; font-weight: bold; font-size: 1.1rem; border: none; border-radius: 12px; cursor: pointer;
+                    width: 100%; padding: 16px; 
+                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+                    color: white; 
+                    font-weight: 700; 
+                    font-size: 1.1rem; 
+                    border: none; 
+                    border-radius: 18px; 
+                    cursor: pointer;
+                    margin-top: 10px;
+                    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    box-shadow: 0 8px 25px rgba(0, 114, 255, 0.3);
+                }
+                .complete-btn:hover {
+                    transform: translateY(-2px) scale(1.02);
+                    box-shadow: 0 12px 30px rgba(0, 114, 255, 0.5);
+                }
+                .complete-btn:active { transform: scale(0.98); }
+
+                .avatar-preview-box {
+                    text-align: center; 
+                    padding: 24px; 
+                    background: rgba(255, 255, 255, 0.05); 
+                    border-radius: 24px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    margin-top: 5px;
+                }
+                .avatar-preview-box img {
+                    width: 120px; height: 120px; 
+                    border-radius: 50%; 
+                    border: 4px solid rgba(255, 255, 255, 0.2); 
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                    object-fit: cover;
+                    transition: all 0.3s ease;
+                }
+                .avatar-preview-box img:hover {
+                    transform: scale(1.05) rotate(2deg);
+                    border-color: #00C6FF;
+                    box-shadow: 0 15px 40px rgba(0, 198, 255, 0.3);
+                }
+                .avatar-hint {
+                    margin-top: 16px; 
+                    font-size: 0.9rem; 
+                    color: rgba(255, 255, 255, 0.6);
+                    line-height: 1.5;
                 }
 
                 .map-container {
@@ -1746,17 +1980,7 @@ export default function MapHome() {
                     color: #000000 !important;
                 }
                 
-                @media (prefers-color-scheme: dark) {
-                    html[data-theme="system"] #root .stats-card {
-                        background: white !important;
-                        color: #000000 !important;
-                    }
-                    html[data-theme="system"] #root .stats-card span,
-                    html[data-theme="system"] #root .stats-card strong,
-                    html[data-theme="system"] #root .stats-card div {
-                        color: #000000 !important;
-                    }
-                }
+                /* System theme block removed */
                 .stats-divider { width: 1px; height: 16px; background: #eee; }
                 /* Controls and Thought Input Styles kept minimal here, mostly moved to App.css or generic */
                 /* Dark Map Tiles Filter */
@@ -1888,21 +2112,8 @@ export default function MapHome() {
                 }
                 .cancel-report-btn:hover { background: rgba(0,0,0,0.1); }
                 
-                .avatar-marker {
-                    width: 100%; height: 100%;
-                    background-color: transparent;
-                    background-size: contain;
-                    background-repeat: no-repeat;
-                    background-position: center bottom;
-                    transition: all 0.3s ease;
-                }
-                .avatar-marker.self {
-                    filter: drop-shadow(0 0 5px rgba(66, 133, 244, 0.5));
-                }
-
+                /* Avatar styles moved to App.css for consistency */
             `}</style>
         </div>
-    )}
-        </>
     );
 }

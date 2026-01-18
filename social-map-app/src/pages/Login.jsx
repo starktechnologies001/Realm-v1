@@ -21,10 +21,7 @@ export default function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [capturedImage, setCapturedImage] = useState(null);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+
 
   // New Profile Fields
   const [status, setStatus] = useState('');
@@ -82,40 +79,7 @@ export default function Login() {
     }
   };
 
-  const startCamera = async () => {
-    setIsCameraOpen(true);
-    setCapturedImage(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      console.error("Error accessing camera:", err);
-      alert("Could not access camera. Please allow permissions.");
-      setIsCameraOpen(false);
-    }
-  };
 
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d');
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      context.drawImage(videoRef.current, 0, 0);
-
-      const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      setCapturedImage(dataUrl);
-
-      // Stop stream
-      const stream = videoRef.current.srcObject;
-      if (stream) {
-        const tracks = stream.getTracks();
-        tracks.forEach(track => track.stop());
-      }
-      setIsCameraOpen(false);
-    }
-  };
 
   const validatePassword = (pwd) => {
     const minLength = 8;
@@ -143,31 +107,29 @@ export default function Login() {
         if (!username.trim()) throw new Error('Username is required.');
         if (!status) throw new Error('Please select a relationship status.');
         if (!gender) throw new Error('Please select a gender.');
-        if (!capturedImage) throw new Error('A selfie is mandatory for verification! 📸');
 
         // 2. Password Strength
         if (!validatePassword(password)) {
           throw new Error('Password must be 8+ chars with Upper, Lower, Number & Symbol.');
         }
 
-        // 3. Upload Selfie for Verification & Generate RPM Avatar for Display
-        try {
-          // Upload selfie to storage for verification purposes only
-          const blob = await (await fetch(capturedImage)).blob();
-          const fileName = `${Date.now()}_${username.replace(/\s+/g, '')}.jpg`;
+        // 3. (Selfie Verification Removed)
 
-          const { error: uploadError } = await supabase.storage
-            .from('avatars')
-            .upload(fileName, blob);
-
-          if (uploadError) throw uploadError;
-        } catch (uploadErr) {
-          console.error("Upload failed", uploadErr);
-          throw new Error('Failed to upload selfie. Please try again.');
+        // Assign specific default avatar based on gender (User Request)
+        let avatarUrl;
+        if (gender === 'Male') {
+            avatarUrl = '/defaults/male_avatar.jpg';
+        } else if (gender === 'Female') {
+            avatarUrl = '/defaults/female_avatar.jpg';
+        } else {
+            // Fallback for Non-binary/Other to a neutral one or one of the above
+            // Using Male as generic fallback or maybe I should copy a neutral one.
+            // For now, let's use Male as generic default if no other option, or maybe a dicebear backup.
+            // User said: "if female then girl avatar if male then boy avatar". didn't specify others.
+            // I'll use a neutral dicebear for others to be safe, or just default to male.
+            // Let's use DiceBear for others to keep it distinct.
+             avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${username}`;
         }
-
-        // Generate random Ready Player Me avatar for map display
-        const avatarUrl = generateRandomRPMAvatar();
 
         // 4. Sign Up
         const { data, error: signUpError } = await supabase.auth.signUp({
@@ -190,7 +152,6 @@ export default function Login() {
 
         setError('✅ Account created! Please check your email to verify your account.');
         setTimeout(() => navigate("/confirm-email"), 2000);
-        setCapturedImage(null); // Reset
 
       } else {
         // Login Logic - Look up email from username
@@ -375,31 +336,29 @@ export default function Login() {
             <div className="signup-fields">
 
               {/* Selfie Camera Section */}
-              <div className="field-section">
-                <label>Selfie for Verification 📸</label>
-                <div className="camera-container">
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-                  {!isCameraOpen && !capturedImage && (
-                    <div className="camera-placeholder" onClick={startCamera}>
-                      <span>📸 Tap to take selfie</span>
-                    </div>
-                  )}
 
-                  {isCameraOpen && (
-                    <div className="video-wrapper">
-                      <video ref={videoRef} autoPlay playsInline muted className="camera-preview"></video>
-                      <button type="button" className="capture-btn" onClick={capturePhoto}></button>
-                    </div>
-                  )}
-
-                  {capturedImage && !isCameraOpen && (
-                    <div className="captured-preview">
-                      <img src={capturedImage} alt="Selfie" />
-                      <button type="button" className="retake-btn" onClick={startCamera}>Retake</button>
-                    </div>
-                  )}
-                </div>
+              {/* Avatar Preview */}
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                  <div style={{ 
+                      width: '100px', height: '100px', 
+                      borderRadius: '50%', margin: '0 auto 10px',
+                      border: '3px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(255,255,255,0.05)',
+                      overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                      {gender === 'Male' ? (
+                          <img src="/defaults/male_avatar.jpg" alt="Boy Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : gender === 'Female' ? (
+                          <img src="/defaults/female_avatar.jpg" alt="Girl Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                          <span style={{ fontSize: '2rem', opacity: 0.5 }}>👤</span>
+                      )}
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#aaa', margin: 0 }}>
+                      {gender ? `Default ${gender} Avatar` : 'Select gender to preview avatar'}
+                  </p>
               </div>
 
               {/* Gender */}

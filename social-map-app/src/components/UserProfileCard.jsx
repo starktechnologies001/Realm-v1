@@ -149,12 +149,16 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                                          if (isRequester) {
                                              return (
                                                 <button 
-                                                    className="action-btn primary-action"
-                                                    disabled
-                                                    style={{ opacity: 0.6 }}
+                                                    className="action-btn"
+                                                    onClick={() => onAction('cancel-poke', user)}
+                                                    style={{ 
+                                                        background: 'rgba(255, 149, 0, 0.15)', 
+                                                        color: '#FF9500', 
+                                                        border: '1px solid rgba(255, 149, 0, 0.3)' 
+                                                    }}
                                                 >
-                                                    <span className="icon">👋</span>
-                                                    <span className="label">Poke Sent</span>
+                                                    <span className="icon">⏳</span>
+                                                    <span className="label">Requested</span>
                                                 </button>
                                              );
                                          } else {

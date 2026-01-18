@@ -307,9 +307,7 @@ export default function Profile() {
                                 if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                                 return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                             })()} alt="Avatar" className="profile-avatar" />
-                            <button className="edit-avatar-btn-overlay" onClick={() => setShowAvatarEditor(true)}>
-                                ✏️
-                            </button>
+                            {/* Edit Overlay Removed */}
                             <div className="status-indicator"></div>
                         </>
                     )}
@@ -319,24 +317,15 @@ export default function Profile() {
                     <div className="profile-username">@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</div>
                     <div className="tags-row">
                         {user.status && !user.hide_status && <span className="tag status">{user.status}</span>}
-                        {is3DAvatar && (
-                            <button 
-                                onClick={() => setShowAvatarEditor(true)}
-                                style={{
-                                    background: 'transparent',
-                                    border: '1px solid #333',
-                                    borderRadius: '50%',
-                                    width: '28px',
-                                    height: '28px',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    color: 'var(--accent-cyan)',
-                                    marginLeft: '8px'
-                                }}
-                            >
-                                ✏️
-                            </button>
-                        )}
+                        
+                        {/* Edit Avatar Button - Always visible, right of status */}
+                        <button 
+                            onClick={() => setShowAvatarEditor(true)}
+                            className="edit-avatar-btn-inline"
+                            title="Change Avatar"
+                        >
+                            ✏️
+                        </button>
                     </div>
                     {/* Location Warning */}
                     {!isLocationEnabled && (
@@ -522,13 +511,13 @@ export default function Profile() {
                         <div className="inner-submenu">
                             <div className="submenu-hint">Choose your theme:</div>
                             <div className="chip-grid">
-                                {['light', 'dark', 'system'].map(themeOption => (
+                                {['light', 'dark'].map(themeOption => (
                                     <button
                                         key={themeOption}
                                         className={`chip-option ${theme === themeOption ? 'active' : ''}`}
                                         onClick={() => updateTheme(themeOption)}
                                     >
-                                        {themeOption === 'light' ? '☀️ Light' : themeOption === 'dark' ? '🌙 Dark' : '🔄 System'}
+                                        {themeOption === 'light' ? '☀️ Light' : '🌙 Dark'}
                                     </button>
                                 ))}
                             </div>
@@ -970,6 +959,23 @@ export default function Profile() {
                     border: 1px solid rgba(0, 212, 255, 0.3);
                     color: var(--accent-cyan);
                     font-weight: 600;
+                }
+                .edit-avatar-btn-inline {
+                    width: 32px; height: 32px;
+                    border-radius: 50%;
+                    background: var(--accent-cyan);
+                    color: white;
+                    border: 2px solid white;
+                    box-shadow: 0 4px 10px rgba(0, 132, 255, 0.3);
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    transition: all 0.2s;
+                    margin-left: 8px; /* Ensure spacing from tag */
+                }
+                .edit-avatar-btn-inline:hover {
+                    transform: scale(1.1);
+                    background: #0077e6;
                 }
 
                 .profile-bio {

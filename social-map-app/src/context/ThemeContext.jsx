@@ -15,9 +15,13 @@ export const ThemeProvider = ({ children }) => {
     // Initialize from localStorage immediately to prevent flash
     const [theme, setTheme] = useState(() => {
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('app_theme') || 'system';
+            const saved = localStorage.getItem('app_theme');
+            // User requested default to Light, and we removed System mode.
+            // If saved is 'system' or null, default to 'light'.
+            if (!saved || saved === 'system') return 'light';
+            return saved;
         }
-        return 'system';
+        return 'light';
     });
     const [loading, setLoading] = useState(true);
 
@@ -36,7 +40,9 @@ export const ThemeProvider = ({ children }) => {
         const loadTheme = async () => {
             try {
                 // Try localStorage first (faster)
-                const savedTheme = localStorage.getItem('app_theme');
+                let savedTheme = localStorage.getItem('app_theme');
+                if (savedTheme === 'system') savedTheme = 'light'; // Coerce system to light
+                
                 if (savedTheme) {
                     setTheme(savedTheme);
                     applyTheme(savedTheme);
@@ -52,9 +58,12 @@ export const ThemeProvider = ({ children }) => {
                         .single();
 
                     if (profile?.app_theme) {
-                        setTheme(profile.app_theme);
-                        applyTheme(profile.app_theme);
-                        localStorage.setItem('app_theme', profile.app_theme);
+                        let dbTheme = profile.app_theme;
+                        if (dbTheme === 'system') dbTheme = 'light'; // Coerce system to light
+                        
+                        setTheme(dbTheme);
+                        applyTheme(dbTheme);
+                        localStorage.setItem('app_theme', dbTheme);
                     }
                 }
             } catch (error) {

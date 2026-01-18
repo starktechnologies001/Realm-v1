@@ -1,0 +1,2 @@
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ DEFAULT NOW();
