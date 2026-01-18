@@ -861,7 +861,7 @@ export default function Profile() {
                                             className="blocked-avatar"
                                         />
                                         <div className="blocked-info">
-                                            <strong>{user.full_name || user.username}</strong>
+                                            <strong>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</strong>
                                         </div>
                                         <button 
                                             className="unblock-btn"
