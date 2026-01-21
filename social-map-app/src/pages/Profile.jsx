@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
@@ -6,6 +6,8 @@ import Avatar3D from '../components/Avatar3D';
 import AvatarEditor from '../components/AvatarEditor';
 import { useTheme } from '../context/ThemeContext';
 import { useLocationContext } from '../context/LocationContext';
+import { getAvatar2D } from '../utils/avatarUtils';
+import './Profile.css';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -18,6 +20,42 @@ export default function Profile() {
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const { theme, updateTheme } = useTheme();
     const { isLocationEnabled, resetPermission, setPermission } = useLocationContext();
+    const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
+    const wallpaperInputRef = useRef(null);
+
+    const handleWallpaperUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+             showToast("Image too large (Max 5MB) ⚠️");
+             return;
+        }
+
+        setUploadingWallpaper(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `wallpapers/${user.id}_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('chat-images')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage.from('chat-images').getPublicUrl(fileName);
+            
+            // Update profile with new wallpaper URL
+            await updateProfile({ chat_background: `url('${data.publicUrl}')` });
+            showToast("Wallpaper updated 🖼️");
+            
+        } catch (error) {
+            console.error('Wallpaper upload failed:', error);
+            showToast("Upload failed ❌");
+        } finally {
+            setUploadingWallpaper(false);
+        }
+    };
 
     useEffect(() => {
         fetchProfile();
@@ -181,6 +219,13 @@ export default function Profile() {
         const timestampedUrl = `${url}${separator}t=${Date.now()}`;
         console.log('🔵 [Profile] Avatar Save - Original URL:', url);
         console.log('🔵 [Profile] Avatar Save - Timestamped URL:', timestampedUrl);
+        
+        // Aggressively preload the 2D version for the Map
+        const avatar2D = getAvatar2D(timestampedUrl);
+        const preloadImg = new Image();
+        preloadImg.src = avatar2D;
+        console.log('🔵 [Profile] Preloading 2D Avatar for Map:', avatar2D);
+
         updateProfile({ avatar_url: timestampedUrl });
     };
 
@@ -293,7 +338,7 @@ export default function Profile() {
                 <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`}>
                     {is3DAvatar ? (
                         <div className="avatar-3d-container">
-                             <Avatar3D url={user.avatar_url} key={user.avatar_url} />
+                             <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
                              {/* Customize button moved to detailed info section */}
                         </div>
                     ) : (
@@ -370,6 +415,7 @@ export default function Profile() {
                         </span>
                         <div className="menu-content">
                             <span className="menu-label">Hide Status</span>
+                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Status : Single</span>
                         </div>
                         <label className="toggle-switch">
                             <input 
@@ -390,7 +436,7 @@ export default function Profile() {
                         </span>
                         <div className="menu-content">
                             <span className="menu-label">Show Last Seen</span>
-                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>If turned off, you won't see others' status either</span>
+
                         </div>
                         <label className="toggle-switch">
                             <input 
@@ -807,13 +853,36 @@ export default function Profile() {
                                     <h3>Chat Wallpaper</h3>
                                 </div>
                                 <div className="wallpaper-grid">
+                                    {/* Upload Option */}
+                                    <input 
+                                        type="file" 
+                                        ref={wallpaperInputRef}
+                                        style={{ display: 'none' }}
+                                        accept="image/*"
+                                        onChange={handleWallpaperUpload}
+                                    />
+                                    <div 
+                                        className="wallpaper-option upload-btn"
+                                        onClick={() => wallpaperInputRef.current.click()}
+                                    >
+                                        {uploadingWallpaper ? '⏳' : '📤 Upload'}
+                                    </div>
                                     {[
                                         { name: 'Default', value: '' }, // Null/Empty = Default Theme
-                                        { name: 'Sunset', value: 'linear-gradient(to bottom, #ff7e5f, #feb47b)' },
+                                        // Soft Gradients
+                                        { name: 'Air', value: 'linear-gradient(to bottom, #E3F2FD, #FFFFFF)' },
+                                        { name: 'Blush', value: 'linear-gradient(to bottom, #E1BEE7, #F8BBD0)' },
+                                        { name: 'Fresh', value: 'linear-gradient(to bottom, #B2DFDB, #C8E6C9)' },
+                                        // Minimal Patterns
+                                        { name: 'Dots', value: 'radial-gradient(#cfd8dc 1.5px, transparent 1.5px) 0 0 / 24px 24px, #ffffff' },
+                                        { name: 'Waves', value: 'radial-gradient(circle at 50% 120%, #81d4fa 0%, transparent 50%), radial-gradient(circle at 100% 0%, #e1bee7 0%, transparent 50%), #ffffff' },
+                                        // Solids
+                                        { name: 'Paper', value: '#F5F5F7' },
+                                        { name: 'Sand', value: '#FDFbf7' },
+                                        { name: 'Slate', value: '#f0f2f5' },
+                                        // Legacy Favorites
                                         { name: 'Ocean', value: 'linear-gradient(to bottom, #2b5876, #4e4376)' },
-                                        { name: 'Forest', value: 'linear-gradient(to bottom, #134e5e, #71b280)' },
                                         { name: 'Cyber', value: 'linear-gradient(to bottom, #0f0c29, #302b63, #24243e)' },
-                                        { name: 'Love', value: 'linear-gradient(to bottom, #DA4453, #89216B)' },
                                     ].map(wp => (
                                         <div 
                                             key={wp.name}
@@ -851,7 +920,7 @@ export default function Profile() {
                                 {blockedUsers.map(user => (
                                     <div key={user.block_id} className="blocked-user-item">
                                         <img 
-                                            src={user.avatar_url || (() => {
+                                            src={user.avatar_url ? getAvatar2D(user.avatar_url) : (() => {
                                                 const safeName = encodeURIComponent(user.username || user.full_name || 'User');
                                                 if (user.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
                                                 if (user.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
@@ -859,6 +928,10 @@ export default function Profile() {
                                             })()} 
                                             alt={user.full_name} 
                                             className="blocked-avatar"
+                                            onError={(e) => {
+                                                const safeName = encodeURIComponent(user.username || user.full_name || 'User');
+                                                e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                            }}
                                         />
                                         <div className="blocked-info">
                                             <strong>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</strong>
@@ -880,736 +953,7 @@ export default function Profile() {
                 </div>
             )}
 
-            <style>{`
-                :root {
-                    /* Light Professional Theme */
-                    --card-bg: #ffffff;
-                    --card-bg-hover: #f5f3f0;
-                    --bg-dark: #faf8f5;
-                    --border-subtle: #e5e5ea;
-                    --text-primary: #1d1d1f;
-                    --text-secondary: #6e6e73;
-                    --accent-cyan: #0084ff;
-                }
-
-                .profile-page {
-                    min-height: 100vh;
-                    background: var(--bg-color);
-                    color: var(--text-primary);
-                    padding-bottom: 80px;
-                    position: relative;
-                    overflow-x: hidden;
-                    font-family: 'Inter', -apple-system, sans-serif;
-                }
-
-                /* Removed Ambient Glow */
-                .ambient-glow { display: none; }
-
-                /* Header Card */
-                .profile-header-card {
-                    margin: 15px; margin-top: 20px;
-                    background: transparent;
-                    border: none;
-                    padding: 20px 25px;
-                    display: flex; flex-direction: column; align-items: center;
-                    text-align: center; gap: 18px;
-                    position: relative; z-index: 1;
-                }
-
-                .avatar-wrapper { 
-                    position: relative; padding: 0; background: transparent; 
-                    border-radius: 50%;
-                }
-
-                .profile-avatar {
-                    width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
-                    border: 3px solid #ffffff;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-                }
-
-                .status-indicator {
-                    position: absolute; bottom: 4px; right: 4px;
-                    width: 14px; height: 14px; 
-                    background: #00ff88;
-                    border: 2px solid #ffffff;
-                    border-radius: 50%;
-                }
-
-                .profile-info { display: flex; flex-direction: column; align-items: center; }
-                .profile-info h1 { 
-                    margin: 0; font-size: 1.8rem; font-weight: 700; margin-bottom: 8px;
-                    color: var(--text-primary);
-                }
-                
-                .profile-username {
-                    font-size: 1.8rem;
-                    font-weight: 700;
-                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    background-clip: text;
-                    margin-bottom: 12px;
-                    letter-spacing: 0.5px;
-                }
-
-                .tags-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
-                .tag {
-                    font-size: 0.8rem; padding: 6px 14px; border-radius: 14px;
-                    background: rgba(0, 212, 255, 0.1); 
-                    border: 1px solid rgba(0, 212, 255, 0.3);
-                    color: var(--accent-cyan);
-                    font-weight: 600;
-                }
-                .edit-avatar-btn-inline {
-                    width: 32px; height: 32px;
-                    border-radius: 50%;
-                    background: var(--accent-cyan);
-                    color: white;
-                    border: 2px solid white;
-                    box-shadow: 0 4px 10px rgba(0, 132, 255, 0.3);
-                    display: flex; align-items: center; justify-content: center;
-                    cursor: pointer;
-                    font-size: 0.9rem;
-                    transition: all 0.2s;
-                    margin-left: 8px; /* Ensure spacing from tag */
-                }
-                .edit-avatar-btn-inline:hover {
-                    transform: scale(1.1);
-                    background: #0077e6;
-                }
-
-                .profile-bio {
-                    font-size: 0.95rem; color: var(--text-primary); /* Brighter text */
-                    font-weight: 600; /* Bold */
-                    max-width: 85%; 
-                    white-space: pre-wrap; word-break: break-word; /* Allow multi-line */
-                    cursor: pointer; padding: 6px 14px; border-radius: 10px;
-                    transition: background 0.2s;
-                    margin-top: 6px;
-                    text-align: center;
-                }
-                .profile-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
-                .profile-bio.empty { font-style: italic; opacity: 0.6; }
-
-                .edit-btn {
-                    position: absolute; top: 0; right: 0;
-                    padding: 8px 16px; border-radius: 20px;
-                    background: #333;
-                    border: none; color: white;
-                    font-size: 0.85rem; font-weight: 600;
-                    cursor: pointer; transition: all 0.2s;
-                }
-                .edit-btn:hover { background: #444; color: white; }
-                .edit-btn:active { transform: scale(0.96); }
-
-                .scroll-content { 
-                    padding: 0 15px; 
-                    z-index: 1; 
-                    position: relative; 
-                    display: flex; 
-                    flex-direction: column; 
-                    gap: 8px; 
-                }
-
-                /* Modern Section Labels */
-                .section-label {
-                    margin: 24px 0 12px 4px;
-                    font-size: 0.8rem; 
-                    text-transform: uppercase; 
-                    letter-spacing: 1.2px;
-                    color: rgba(0, 0, 0, 0.6);
-                    font-weight: 800;
-                    position: relative;
-                    padding-left: 12px;
-                }
-                
-                .section-label::before {
-                    content: '';
-                    position: absolute;
-                    left: 0;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    width: 3px;
-                    height: 14px;
-                    background: linear-gradient(180deg, #00d4ff, #0072ff);
-                    border-radius: 2px;
-                }
-
-                .menu-group {
-                    background: transparent;
-                    backdrop-filter: none;
-                    -webkit-backdrop-filter: none;
-                    border-radius: 0;
-                    overflow: hidden;
-                    margin-bottom: 16px;
-                    border: none;
-                    box-shadow: none;
-                }
-
-                .menu-item {
-                    display: flex; 
-                    align-items: center; 
-                    padding: 12px 16px;
-                    cursor: pointer; 
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-                    background: transparent;
-                    position: relative;
-                }
-                
-                .menu-item::before {
-                    content: '';
-                    position: absolute;
-                    left: 0;
-                    top: 0;
-                    bottom: 0;
-                    width: 0;
-                    background: rgba(0,0,0,0.02);
-                    transition: width 0.3s ease;
-                }
-                
-                .menu-item:hover::before {
-                    width: 100%;
-                }
-                
-                .menu-item:last-child { border-bottom: none; }
-                
-                .menu-item:hover { 
-                    background: rgba(0,0,0,0.03);
-                    transform: translateX(4px);
-                }
-                
-                .menu-item:active {
-                    transform: translateX(2px) scale(0.99);
-                }
-
-                .menu-icon-wrapper {
-                    width: 36px; 
-                    height: 36px; 
-                    border-radius: 10px;
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center;
-                    margin-right: 12px; 
-                    font-size: 1rem;
-                    background: rgba(0,0,0,0.06);
-                    border: 1px solid rgba(0,0,0,0.08);
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                    transition: all 0.3s ease;
-                }
-                
-                .menu-item:hover .menu-icon-wrapper {
-                    transform: scale(1.1) rotate(-5deg);
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-                }
-
-                .menu-content { 
-                    flex: 1; 
-                    display: flex; 
-                    flex-direction: column; 
-                    justify-content: center;
-                    min-width: 0;
-                }
-                
-                .menu-label { 
-                    font-size: 0.95rem; 
-                    color: #000;
-                    font-weight: 400; 
-                    margin-bottom: 0;
-                    letter-spacing: -0.01em;
-                }
-                
-                
-                .menu-value { 
-                    font-size: 0.85rem; 
-                    font-weight: 600; 
-                    color: var(--text-primary);
-                    margin-top: 2px;
-                    padding: 0;
-                    background: transparent;
-                    border-left: none;
-                    border-radius: 6px;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                
-                .menu-chevron { 
-                    color: rgba(0, 0, 0, 0.3);
-                    font-size: 1.2rem; 
-                    transition: all 0.3s ease; 
-                    margin-left: 12px;
-                }
-                
-                .menu-item:hover .menu-chevron {
-                    color: rgba(0, 0, 0, 0.6);
-                    transform: translateX(4px);
-                }
-                
-                .menu-chevron.expanded { 
-                    transform: rotate(90deg); 
-                }
-                
-                /* Icon Color Schemes - Simple & Professional */
-                .icon-personal,
-                .icon-interests,
-                .icon-birthday,
-                .icon-notif,
-                .icon-lock,
-                .icon-block,
-                .icon-safety,
-                .icon-delete {
-                    color: #1d1d1f;
-                    background: rgba(0,0,0,0.04);
-                    border-color: rgba(0,0,0,0.08);
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                }
-                
-                .menu-icon-wrapper svg { stroke-width: 2px; }
-
-                /* Solid Submenu */
-                .inner-submenu {
-                    background: transparent;
-                    padding: 4px 16px 16px 54px; /* Indented alignment */
-                    border-top: none;
-                }
-                .submenu-hint { 
-                    font-size: 0.8rem; color: #aaa; margin-bottom: 12px; font-weight: 500;
-                }
-                .chip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-                .chip-option {
-                    background: #222; border: 1px solid #333;
-                    color: #aaa; padding: 8px 4px; border-radius: 8px;
-                    font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
-                }
-                .chip-option:hover { background: #333; color: white; }
-                .chip-option.active { 
-                    background: var(--accent-cyan); color: black; border-color: transparent; font-weight: bold;
-                }
-
-                /* Toggle Switch Styles */
-                .toggle-item {
-                    cursor: default !important;
-                }
-                
-                .toggle-item:hover {
-                    background: transparent !important;
-                    transform: none !important;
-                }
-
-                .toggle-switch {
-                    position: relative;
-                    display: inline-block;
-                    width: 52px;
-                    height: 28px;
-                    margin-left: auto;
-                }
-
-                .toggle-switch input {
-                    opacity: 0;
-                    width: 0;
-                    height: 0;
-                }
-
-                .toggle-slider {
-                    position: absolute;
-                    cursor: pointer;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background-color: #ccc;
-                    transition: 0.3s;
-                    border-radius: 28px;
-                }
-
-                .toggle-slider:before {
-                    position: absolute;
-                    content: "";
-                    height: 22px;
-                    width: 22px;
-                    left: 3px;
-                    bottom: 3px;
-                    background-color: white;
-                    transition: 0.3s;
-                    border-radius: 50%;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                }
-
-                .toggle-switch input:checked + .toggle-slider {
-                    background-color: #34c759;
-                }
-
-                .toggle-switch input:checked + .toggle-slider:before {
-                    transform: translateX(24px);
-                }
-
-                .logout-btn {
-                    width: 100%; padding: 16px; border-radius: 16px;
-                    background: transparent;
-                    border: 1px solid rgba(255, 69, 58, 0.3);
-                    color: #ff453a; font-weight: 600; font-size: 1rem;
-                    cursor: pointer; margin-top: 20px;
-                    transition: all 0.2s;
-                }
-                .logout-btn:hover { background: rgba(255, 69, 58, 0.1); }
-                
-                .version-info { text-align: center; color: #333; font-size: 0.75rem; padding: 20px 0; }
-
-                /* Modal Styles - Modern Professional Design */
-                .modal-backdrop {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0,0,0,0.85);
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    z-index: 10000;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 20px;
-                }
-                
-                .modal-content {
-                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 28px;
-                    padding: 32px 28px;
-                    width: 90%;
-                    max-width: 420px;
-                    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
-                    display: flex;
-                    flex-direction: column;
-                    gap: 24px;
-                }
-                
-                .modal-header {
-                    display: flex;
-                    align-items: center;
-                    gap: 16px;
-                    margin-bottom: 4px;
-                }
-                
-                .icon-wrapper {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 14px;
-                    background: rgba(255,255,255,0.04);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                }
-                
-                .desc-lock {
-                    color: #00C6FF;
-                    background: rgba(0, 198, 255, 0.08);
-                    border-color: rgba(0, 198, 255, 0.2);
-                    box-shadow: 0 4px 16px rgba(0, 198, 255, 0.15);
-                }
-                
-                .modal-content h3 {
-                    margin: 0;
-                    color: white;
-                    font-size: 1.5rem;
-                    font-weight: 700;
-                    letter-spacing: -0.02em;
-                }
-                
-                .modal-form {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 20px;
-                }
-                
-                .input-group {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 10px;
-                    text-align: left;
-                }
-                
-                .input-group label {
-                    font-size: 0.875rem;
-                    color: rgba(255,255,255,0.6);
-                    font-weight: 600;
-                    margin-left: 4px;
-                    letter-spacing: -0.01em;
-                }
-                
-                .input-group input {
-                    width: 100%;
-                    padding: 14px 16px;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 14px;
-                    color: white;
-                    font-size: 0.95rem;
-                    outline: none;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                
-                .input-group input::placeholder {
-                    color: rgba(255,255,255,0.3);
-                }
-                
-                .input-group input:focus {
-                    border-color: #00C6FF;
-                    background: rgba(0, 198, 255, 0.05);
-                    box-shadow: 0 0 0 3px rgba(0, 198, 255, 0.1);
-                }
-
-                .modal-footer {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 12px;
-                    margin-top: 8px;
-                }
-                
-                .btn-sec {
-                    background: rgba(255,255,255,0.06);
-                    color: rgba(255,255,255,0.8);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    padding: 14px 24px;
-                    cursor: pointer;
-                    font-size: 0.95rem;
-                    font-weight: 600;
-                    border-radius: 14px;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                
-                .btn-sec:hover {
-                    background: rgba(255,255,255,0.1);
-                    color: white;
-                    transform: translateY(-2px);
-                }
-                
-                .btn-sec:active {
-                    transform: scale(0.96);
-                }
-                
-                .btn-pri {
-                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
-                    color: white;
-                    border: none;
-                    padding: 14px 24px;
-                    border-radius: 14px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    font-size: 0.95rem;
-                    box-shadow: 0 8px 20px rgba(0, 198, 255, 0.3);
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                
-                .btn-pri:hover {
-                    box-shadow: 0 12px 28px rgba(0, 198, 255, 0.4);
-                    transform: translateY(-2px);
-                }
-                
-                .btn-pri:active {
-                    transform: scale(0.96);
-                }
-                
-                /* Cyan Button Variant for Edit Name */
-                .btn-pri-cyan {
-                    background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
-                    color: white;
-                    border: none;
-                    padding: 14px 24px;
-                    border-radius: 14px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    font-size: 0.95rem;
-                    box-shadow: 0 8px 20px rgba(0, 198, 255, 0.3);
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                
-                .btn-pri-cyan:hover {
-                    box-shadow: 0 12px 28px rgba(0, 198, 255, 0.4);
-                    transform: translateY(-2px);
-                }
-                
-                .btn-pri-cyan:active {
-                    transform: scale(0.96);
-                }
-                
-                /* Edit Icon Styling */
-                .icon-edit {
-                    color: #00C6FF;
-                    background: rgba(0, 198, 255, 0.08);
-                    border-color: rgba(0, 198, 255, 0.2);
-                    box-shadow: 0 4px 16px rgba(0, 198, 255, 0.15);
-                }
-                
-                /* Name Fields Grid */
-                .name-fields-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 16px;
-                }
-                
-                @media (max-width: 480px) {
-                    .name-fields-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
-                
-                /* Bio Textarea Styling */
-                .bio-textarea {
-                    resize: vertical;
-                    min-height: 100px;
-                    font-family: inherit;
-                    line-height: 1.6;
-                    width: 100%;
-                    padding: 14px 16px;
-                    background: rgba(255,255,255,0.04);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 14px;
-                    color: white;
-                    font-size: 0.95rem;
-                    outline: none;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                
-                .bio-textarea::placeholder {
-                    color: rgba(255,255,255,0.3);
-                }
-                
-                .bio-textarea:focus {
-                    border-color: #ff9500;
-                    background: rgba(255, 149, 0, 0.05);
-                    box-shadow: 0 0 0 3px rgba(255, 149, 0, 0.1);
-                }
-                
-                .char-counter {
-                    font-size: 0.75rem;
-                    color: rgba(255,255,255,0.4);
-                    text-align: right;
-                    margin-top: 8px;
-                }
-                
-                /* Bio Icon Styling */
-                .icon-bio {
-                    color: #ff9500;
-                    background: rgba(255, 149, 0, 0.08);
-                    border-color: rgba(255, 149, 0, 0.2);
-                    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15);
-                }
-                
-                /* Blocked list */
-                .blocked-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-                .blocked-user-item { display: flex; align-items: center; gap: 10px; padding: 10px; background: #222; border-radius: 12px; }
-                .blocked-avatar { width: 40px; height: 40px; border-radius: 50%; }
-                .blocked-info { flex: 1; color: white; font-size: 0.9rem; }
-                .unblock-btn { padding: 6px 12px; border-radius: 8px; border: none; background: #333; color: white; cursor: pointer; }
-                
-                .icon-warn { font-size: 3rem; margin-bottom: 8px; display: block; }
-                .btn-danger { background: #ff453a; color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; }
-            
-                /* Wallpaper Grid */
-                .wallpaper-grid {
-                    display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 10px 0;
-                }
-                .wallpaper-option {
-                    aspect-ratio: 1; border-radius: 16px; cursor: pointer;
-                    border: 2px solid transparent; position: relative;
-                    display: flex; align-items: center; justify-content: center;
-                    transition: transform 0.2s;
-                }
-                .wallpaper-option:hover { transform: scale(1.05); }
-                .wallpaper-option.active { border-color: var(--accent-cyan); box-shadow: 0 0 15px rgba(0, 212, 255, 0.3); }
-                .check-icon { font-weight: bold; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-
-                /* 3D Avatar Styles */
-                .profile-header-card.expanded-3d {
-                    background: transparent;
-                    border-bottom: none;
-                    padding-bottom: 20px;
-                    padding-top: 0;
-                    margin-top: 0;
-                }
-
-                .avatar-wrapper.wrapper-3d {
-                    width: 100%;
-                    height: auto;
-                    background: transparent;
-                    border-radius: 0;
-                    margin-bottom: 20px;
-                    margin-top: -30px; /* Pull up a bit more */
-                    display: flex; 
-                    justify-content: center;
-                }
-
-                .avatar-3d-container {
-                    width: 100%;
-                    max-width: 400px;
-                    height: 280px; /* Shortened from 400px */
-                    position: relative;
-                }
-
-                .edit-avatar-btn-overlay:hover {
-                    background: white;
-                    color: black;
-                }
-
-                .location-warning-badge {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    background: rgba(255, 69, 58, 0.15);
-                    border: 1px solid rgba(255, 69, 58, 0.3);
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    margin: 10px 0;
-                    color: #FF453A;
-                    font-size: 0.9rem;
-                    font-weight: 500;
-                }
-                .location-warning-badge button {
-                    background: #FF453A;
-                    color: white;
-                    border: none;
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 0.8rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                }
-                
-                .edit-avatar-btn-3d {
-                    position: absolute;
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: rgba(0,0,0,0.6);
-                    border: 1px solid rgba(255,255,255,0.2);
-                    color: white;
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    backdrop-filter: blur(5px);
-                    transition: all 0.2s;
-                    display: flex; align-items: center; gap: 8px;
-                    z-index: 10;
-                }
-                .edit-avatar-btn-3d:hover { background: rgba(0,0,0,0.8); border-color: var(--accent-cyan); }
-
-                .edit-avatar-btn-overlay {
-                    position: absolute; bottom: 0; right: 0;
-                    width: 32px; height: 32px; border-radius: 50%;
-                    background: var(--accent-cyan); color: black;
-                    border: 2px solid #1a1a2e;
-                    cursor: pointer;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 1rem;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-                }
-            `}</style>
+            {/* Styles moved to Profile.css */}
         </div>
     );
 }

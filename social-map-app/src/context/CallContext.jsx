@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import CallOverlay from '../components/CallOverlay';
 import IncomingCallModal from '../components/IncomingCallModal';
 
+import { useNavigate } from 'react-router-dom';
+
 const CallContext = createContext();
 
 export const useCall = () => useContext(CallContext);
@@ -13,6 +15,10 @@ export const CallProvider = ({ children }) => {
     const [callData, setCallData] = useState(null); // { partner, type, isIncoming }
     const [incomingCall, setIncomingCall] = useState(null); // Payload from DB
     const [autoDeclineTimer, setAutoDeclineTimer] = useState(null);
+    const navigate = useNavigate();
+    
+    // Guard to prevent double-invocations (e.g. double clicks)
+    const processingAction = useRef(false);
 
     // Fetch Current User on Mount
     useEffect(() => {
@@ -43,8 +49,10 @@ export const CallProvider = ({ children }) => {
                 event: 'INSERT', 
                 schema: 'public', 
                 table: 'calls', 
+ 
                 filter: `receiver_id=eq.${currentUser.id}` 
             }, async (payload) => {
+                console.log('🔔 [CallContext] REALTIME EVENT RECEIVED:', payload);
                 // Check status is pending
                 if (payload.new.status === 'pending') {
                     // Check if we are already busy
@@ -55,12 +63,16 @@ export const CallProvider = ({ children }) => {
                         return;
                     }
 
+                    console.log('🔔 [CallContext] Processing Incoming Call from:', payload.new.caller_id);
+
                     // Fetch caller details
-                    const { data: callerProfile } = await supabase
+                    const { data: callerProfile, error: profileError } = await supabase
                         .from('profiles')
                         .select('*')
                         .eq('id', payload.new.caller_id)
                         .single();
+
+                    if (profileError) console.error("Error fetching caller profile:", profileError);
 
                     if (callerProfile) {
                         const callInfo = { ...payload.new, caller: callerProfile };
@@ -77,7 +89,10 @@ export const CallProvider = ({ children }) => {
                     }
                 }
             })
-            .subscribe();
+            .subscribe((status, err) => {
+                console.log(`📡 [CallContext] Subscription Status for ${currentUser.id}:`, status);
+                if (err) console.error("Subscription Error:", err);
+            });
 
         return () => {
             supabase.removeChannel(channel);
@@ -96,97 +111,138 @@ export const CallProvider = ({ children }) => {
     };
 
     const answerCall = async () => {
-        if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
-        
-        if (incomingCall) {
-            // Update status to active
-            await supabase.from('calls').update({ status: 'active' }).eq('id', incomingCall.id);
+        if (processingAction.current) return;
+        processingAction.current = true;
+
+        try {
+            if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
             
-            setCallData({
-                partner: incomingCall.caller,
-                type: incomingCall.type,
-                isIncoming: true
-            });
-            setIsCalling(true);
-            setIncomingCall(null);
+            if (incomingCall) {
+                // Update status to active
+                await supabase.from('calls').update({ status: 'active' }).eq('id', incomingCall.id);
+                
+                setCallData({
+                    partner: incomingCall.caller,
+                    type: incomingCall.type,
+                    isIncoming: true
+                });
+                setIsCalling(true);
+                setIncomingCall(null);
+            }
+        } finally {
+            processingAction.current = false;
         }
     };
 
     // Helper to log call messages to Chat
-    const logCallMessage = async (callId, status, partnerId) => {
+    const logCallMessage = async (callId, status, partnerId, callType = 'audio', duration = 0) => {
         if (!callId || !currentUser || !partnerId) return;
 
-        let content = '';
-        if (status === 'ended') content = 'Call ended';
-        else if (status === 'rejected') content = 'Call declined';
-        else if (status === 'missed') content = 'Missed call';
-        else if (status === 'busy') content = 'Line busy';
-        else content = `Call ${status}`;
+        // Structured content for UI rendering
+        const contentPayload = {
+            status,
+            call_type: callType,
+            duration
+        };
 
-        await supabase.from('messages').insert({
+        const { error } = await supabase.from('messages').insert({
             sender_id: currentUser.id,
             receiver_id: partnerId,
-            content: content,
-            message_type: 'call_log', // Special type for UI rendering
+            content: JSON.stringify(contentPayload),
+            message_type: 'call_log', // Special type for Chat.jsx
             is_read: true // System messages read by default
         });
+
+        if (error) console.error("Error logging call message:", error);
     };
 
     const rejectCall = async (callId = null, reason = 'rejected') => {
-        if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
-        
-        const idToReject = callId || (incomingCall ? incomingCall.id : null);
-        const partnerId = incomingCall ? incomingCall.caller_id : null;
+        if (processingAction.current) return;
+        processingAction.current = true;
 
-        if (idToReject) {
-            await supabase.from('calls').update({ status: reason }).eq('id', idToReject);
+        try {
+            if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
             
-            // Log missed/rejected call to chat
-            if (partnerId) {
-                // If it was a missed call (timeout), log it. If rejected manually, log it.
-                // We log from our perspective (Receiver) -> "Missed call"
-                // Actually, typically "Missed Call" is logged by the system or the caller sees "Declined".
-                // Let's settle on: Receiver logs nothing if they reject? 
-                // Better: Log a system message that "You missed a call" or "Call from [User]"
-                // For simplicity, let's insert a 'call_log' message.
-                await logCallMessage(idToReject, reason, partnerId);
+            const idToReject = callId || (incomingCall ? incomingCall.id : null);
+            const partnerId = incomingCall ? incomingCall.caller_id : null;
+            const type = incomingCall ? incomingCall.type : 'audio';
+
+            if (idToReject) {
+                await supabase.from('calls').update({ status: reason }).eq('id', idToReject);
+                
+                // Log missed call to chat (only if missed/timeout, or declined)
+                if (partnerId) {
+                    // If I am the receiver rejecting -> It creates a log "Declined" or "Missed"
+                    // Usually "Missed" is logged when timeout occurs.
+                    // "Declined" is when I manually click decline.
+                    await logCallMessage(idToReject, reason, partnerId, type);
+                }
             }
+            setIncomingCall(null);
+        } finally {
+            processingAction.current = false;
         }
-        setIncomingCall(null);
     };
 
     const rejectWithMessage = async () => {
         if (!incomingCall) return;
+        if (processingAction.current) return;
+        processingAction.current = true;
         
-        // 1. Send Message
-        const { error } = await supabase.from('messages').insert({
-            sender_id: currentUser.id,
-            receiver_id: incomingCall.caller_id,
-            content: "I am busy right now, can’t talk. I’ll call you later.",
-            type: 'text'
-        });
-        
-        if (error) console.error("Quick reply error:", error);
+        try {
+            // 1. Send Message
+            const { error } = await supabase.from('messages').insert({
+                sender_id: currentUser.id,
+                receiver_id: incomingCall.caller_id,
+                content: "I am busy right now, can’t talk. I’ll call you later.",
+                message_type: 'text'
+            });
+            
+            if (error) console.error("Quick reply error:", error);
 
-        // 2. Reject Call
-        rejectCall(null, 'rejected'); // Treat as rejected
+            // 2. Navigate to Chat
+            navigate('/chat', { state: { selectedUser: incomingCall.caller } });
+
+            // 3. Reject Call (This will also log the Declined call)
+            // Note: we need to manually call the logic of rejectCall here to avoid double-locking ref
+            if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
+            
+            const idToReject = incomingCall.id;
+            const partnerId = incomingCall.caller_id;
+            const type = incomingCall.type;
+
+            await supabase.from('calls').update({ status: 'declined' }).eq('id', idToReject);
+            await logCallMessage(idToReject, 'declined', partnerId, type);
+            
+            setIncomingCall(null);
+
+        } finally {
+            processingAction.current = false;
+        }
     };
 
-    const endCallSession = async () => {
-        // Log the ended call
-        if (callData && callData.partner) {
-             // We just insert a message into the chat saying "Call ended"
-             await supabase.from('messages').insert({
-                sender_id: currentUser.id,
-                receiver_id: callData.partner.id,
-                content: 'Call ended',
-                message_type: 'call_log',
-                is_read: true
-            });
-        }
+    const endCallSession = async (duration = 0, status = 'ended') => {
+        if (processingAction.current) return;
+        processingAction.current = true;
 
-        setIsCalling(false);
-        setCallData(null);
+        try {
+            // Log the ended call
+            if (callData && callData.partner) {
+                 // Prevent duplicate logs: Only Caller logs the session end
+                 // And only if the call was actually connected/ended (not rejected/missed)
+                 if (!callData.isIncoming && status === 'ended') {
+                     const partnerId = callData.partner.id;
+                     const type = callData.type;
+                     
+                     await logCallMessage('session_end', 'ended', partnerId, type, duration);
+                 }
+            }
+
+            setIsCalling(false);
+            setCallData(null);
+        } finally {
+            processingAction.current = false;
+        }
     };
 
     return (

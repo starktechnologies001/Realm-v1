@@ -620,630 +620,325 @@ export default function Login() {
 
       <style>{`
         :root {
-           --glass-border: rgba(255, 255, 255, 0.12);
-           --glass-bg: rgba(20, 20, 20, 0.7);
-           --brand-gradient: linear-gradient(135deg, #00d4ff 0%, #0084ff 100%);
-           --brand-glow: rgba(0, 132, 255, 0.4);
+           --glass-border: rgba(255, 255, 255, 0.1);
+           --glass-bg: rgba(20, 20, 20, 0.6);
+           --brand-blue: #007aff;
+           --brand-gradient: linear-gradient(135deg, #007aff 0%, #00c6ff 100%);
         }
 
         .login-container {
           min-height: 100vh;
           display: flex;
-          background: linear-gradient(180deg, #000000 0%, #0a0a0a 100%);
-          position: relative;
-          overflow-y: auto;
-          padding: 40px 20px;
+          background-color: #000;
+          /* Subtle ambient background matching screenshot */
+          background-image: 
+              radial-gradient(circle at 50% 0%, rgba(0, 122, 255, 0.15) 0%, transparent 50%);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          padding: 20px;
+          overflow-y: auto; /* Ensure scroll container behavior */
         }
 
-        /* Enhanced Ambient Background Glows */
-        .login-container::before, .login-container::after {
-            content: ''; 
-            position: absolute; 
-            border-radius: 50%; 
-            filter: blur(120px); 
-            z-index: 0;
-            animation: float 8s ease-in-out infinite;
-        }
-        .login-container::before {
-            top: -15%; 
-            right: -15%; 
-            width: 600px; 
-            height: 600px;
-            background: radial-gradient(circle, rgba(0, 212, 255, 0.25), transparent 70%);
-        }
-        .login-container::after {
-            bottom: -15%; 
-            left: -15%; 
-            width: 500px; 
-            height: 500px;
-            background: radial-gradient(circle, rgba(0, 132, 255, 0.2), transparent 70%);
-            animation-delay: -4s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            50% { transform: translate(20px, 20px) scale(1.05); }
-        }
-        
         .login-card {
-          position: relative; 
-          z-index: 1;
-          background: linear-gradient(135deg, rgba(28, 28, 30, 0.85) 0%, rgba(20, 20, 22, 0.9) 100%);
-          border: 1.5px solid rgba(255, 255, 255, 0.15);
-          border-radius: 28px;
-          padding: 40px 36px;
-          width: 90%;
-          max-width: 460px;
-          margin: auto;
-          backdrop-filter: blur(30px) saturate(180%);
-          -webkit-backdrop-filter: blur(30px) saturate(180%);
-          box-shadow: 
-            0 30px 60px -15px rgba(0, 0, 0, 0.7),
-            0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-            0 1px 0 rgba(255, 255, 255, 0.1) inset;
-          animation: slideUp 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+          width: 100%;
+          max-width: 400px;
+          background: #1c1c1e;
+          border-radius: 20px;
+          padding: 40px 30px;
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin: auto; /* Safe centering for scrolling */
         }
 
-        .login-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.5), transparent);
-        }
-
-        .login-card::-webkit-scrollbar { width: 0px; background: transparent; }
-        
         .app-title {
-          font-size: 2.75rem;
-          font-weight: 800;
-          margin-bottom: 6px;
-          background: linear-gradient(135deg, #00d4ff 0%, #0084ff 50%, #00d4ff 100%);
-          background-size: 200% auto;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          text-align: center;
-          letter-spacing: -1.5px;
-          animation: shimmer 3s linear infinite;
-          filter: drop-shadow(0 2px 8px rgba(0, 212, 255, 0.3));
+          font-size: 2.5rem;
+          font-weight: 700;
+          margin: 0;
+          margin-bottom: 5px;
+          color: #0caeff;
+          text-shadow: 0 0 20px rgba(0, 174, 255, 0.5);
+          letter-spacing: -0.5px;
         }
-        
-        @keyframes shimmer {
-            to { background-position: 200% center; }
-        }
-        
+
         .app-subtitle {
-          color: #999;
-          margin-bottom: 24px;
-          font-size: 1.05rem;
-          text-align: center;
-          font-weight: 500;
-          letter-spacing: 0.3px;
+          color: #888;
+          font-size: 1rem;
+          margin: 0 0 30px 0;
+          font-weight: 400;
         }
 
         .auth-toggle {
           display: flex;
-          background: rgba(0, 0, 0, 0.4);
-          padding: 5px;
-          border-radius: 16px;
-          margin-bottom: 28px;
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3) inset;
+          background: #000;
+          padding: 4px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          width: 100%;
+          margin-bottom: 25px;
         }
 
         .toggle-btn {
           flex: 1;
-          padding: 13px;
-          border-radius: 12px;
+          padding: 10px;
           background: transparent;
-          color: #888;
+          border: 1px solid transparent;
+          color: #666;
           font-weight: 600;
+          font-size: 0.95rem;
+          border-radius: 8px;
           cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-          font-size: 0.98rem;
-          border: none;
-          position: relative;
+          transition: all 0.2s ease;
         }
 
         .toggle-btn.active {
-          background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(0, 132, 255, 0.15) 100%);
+          background: #1c1c1e;
           color: white;
-          box-shadow: 
-            0 4px 12px rgba(0, 132, 255, 0.25),
-            0 0 0 1px rgba(0, 212, 255, 0.2) inset;
-        }
-        
-        .error-message {
-          background: linear-gradient(135deg, rgba(255, 69, 58, 0.12) 0%, rgba(255, 69, 58, 0.08) 100%);
-          color: #ff6b6b;
-          padding: 14px;
-          border-radius: 14px;
-          margin-bottom: 24px;
-          font-size: 0.92rem;
-          border: 1px solid rgba(255, 69, 58, 0.25);
-          text-align: center;
-          font-weight: 500;
-          box-shadow: 0 2px 8px rgba(255, 69, 58, 0.15);
+          border-color: #007aff;
+          box-shadow: 0 0 10px rgba(0, 122, 255, 0.3);
         }
 
         .login-form {
-          display: flex; 
-          flex-direction: column; 
-          gap: 20px;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
         }
-        
+
         .input-group {
-            position: relative;
+          width: 100%;
+          position: relative;
         }
-        
+
         .input-field {
           width: 100%;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
-          border: 1.5px solid rgba(255, 255, 255, 0.12);
-          padding: 14px 18px;
-          border-radius: 14px;
+          background: #2c2c2e;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 14px 16px;
+          border-radius: 12px;
           color: white;
-          font-size: 0.98rem;
+          font-size: 1rem;
           outline: none;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.2s;
           box-sizing: border-box;
-          font-weight: 500;
         }
-        
-        .input-field:focus {
-          background: linear-gradient(135deg, rgba(0, 212, 255, 0.08) 0%, rgba(0, 132, 255, 0.05) 100%);
-          border-color: #00d4ff;
-          box-shadow: 
-            0 0 0 4px rgba(0, 212, 255, 0.12),
-            0 2px 12px rgba(0, 212, 255, 0.2);
-          transform: translateY(-1px);
-        }
-        
+
         .input-field::placeholder {
-            color: rgba(255, 255, 255, 0.4);
+          color: #666;
         }
 
-        .glass-select {
-            width: 100%; 
-            padding: 14px 18px; 
-            border-radius: 14px;
-            background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
-            border: 1.5px solid rgba(255,255,255,0.12);
-            color: white; 
-            font-size: 0.98rem; 
-            appearance: none; 
-            outline: none; 
-            cursor: pointer;
-            transition: all 0.3s;
-            font-weight: 500;
-        }
-        
-        .glass-select:focus { 
-            border-color: #00d4ff; 
-            background: linear-gradient(135deg, rgba(0, 212, 255, 0.08) 0%, rgba(0, 132, 255, 0.05) 100%);
-            box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.12);
-        }
-        
-        .signup-fields {
-          display: flex; 
-          flex-direction: column; 
-          gap: 20px;
-          margin-top: 0; 
-          padding-top: 0;
-          border-top: none;
-          animation: slideDown 0.4s ease-out;
-        }
-
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-15px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideUp { 
-            from { opacity: 0; transform: translateY(40px) scale(0.95); } 
-            to { opacity: 1; transform: translateY(0) scale(1); } 
-        }
-
-        .field-section label {
-          display: block; 
-          color: #ddd; 
-          font-size: 0.92rem;
-          margin-bottom: 12px; 
-          font-weight: 600; 
-          padding-left: 4px;
-          letter-spacing: 0.3px;
-        }
-        
-        .sub-label { 
-            font-size: 0.78rem; 
-            opacity: 0.6; 
-            font-weight: 400; 
-        }
-
-        .chip-group { 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 10px; 
-        }
-
-        .chip {
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          color: #ccc; 
-          padding: 10px 18px; 
-          border-radius: 22px;
-          font-size: 0.92rem; 
-          cursor: pointer; 
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          font-weight: 500;
-        }
-
-        .chip:hover { 
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.08) 100%);
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-
-        .chip.selected {
-          background: var(--brand-gradient);
-          color: white; 
-          border-color: transparent;
-          box-shadow: 0 4px 16px rgba(0, 132, 255, 0.35);
-          transform: translateY(-2px);
-        }
-
-        /* Dropdown Styles */
-        .custom-select-wrapper { 
-            position: relative; 
-            width: 100%; 
-        }
-        
-        .select-arrow {
-            position: absolute; 
-            right: 18px; 
-            top: 50%; 
-            transform: translateY(-50%);
-            color: rgba(255,255,255,0.5); 
-            pointer-events: none; 
-            font-size: 0.75rem;
-        }
-        
-        .glass-select option { 
-            background: #1a1a1a; 
-            color: white; 
-        }
-
-        /* Interest Input */
-        .add-interest-row { 
-            margin-top: 12px; 
-            width: 100%; 
-        }
-        
-        .glass-input-small {
-            width: 100%; 
-            padding: 12px 16px; 
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04); 
-            border: 1.5px dashed rgba(255,255,255,0.2);
-            color: white; 
-            font-size: 0.92rem; 
-            outline: none; 
-            transition: all 0.3s;
-            box-sizing: border-box;
-            font-weight: 500;
-        }
-        
-        .glass-input-small:focus { 
-            border-color: #00d4ff; 
-            border-style: solid;
-            background: rgba(0, 212, 255, 0.05);
-            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
-        }
-
-        /* Camera UI */
-        .camera-container {
-            width: 100%; 
-            height: 240px; 
-            background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%);
-            border-radius: 18px; 
-            overflow: hidden; 
-            position: relative;
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            border: 1.5px dashed rgba(255,255,255,0.2);
-            transition: all 0.3s;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.3) inset;
-        }
-        
-        .camera-container:hover { 
-            border-color: #00d4ff;
-            box-shadow: 
-                0 4px 16px rgba(0,0,0,0.3) inset,
-                0 0 0 3px rgba(0, 212, 255, 0.1);
-        }
-
-        .camera-placeholder {
-            width: 100%; 
-            height: 100%; 
-            display: flex; 
-            flex-direction: column;
-            align-items: center; 
-            justify-content: center; 
-            cursor: pointer;
-            color: #888; 
-            font-size: 0.98rem; 
-            gap: 12px;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-        
-        .camera-placeholder:hover { 
-            color: white; 
-            background: rgba(0, 212, 255, 0.05);
-        }
-        
-        .video-wrapper, .captured-preview {
-            position: relative; 
-            width: 100%; 
-            height: 100%;
-        }
-        
-        .camera-preview, .captured-preview img {
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover;
-        }
-        
-        .capture-btn {
-            position: absolute; 
-            bottom: 24px; 
-            left: 50%; 
-            transform: translateX(-50%);
-            width: 68px; 
-            height: 68px; 
-            border-radius: 50%;
-            background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
-            border: 5px solid rgba(0,0,0,0.3);
-            cursor: pointer; 
-            z-index: 10; 
-            transition: all 0.2s;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        }
-        
-        .capture-btn:active { 
-            transform: translateX(-50%) scale(0.92);
-        }
-        
-        .retake-btn {
-            position: absolute; 
-            bottom: 18px; 
-            right: 18px;
-            background: rgba(0,0,0,0.7); 
-            backdrop-filter: blur(8px);
-            color: white; 
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 10px 16px;
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-size: 0.88rem; 
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-        
-        .retake-btn:hover {
-            background: rgba(0,0,0,0.85);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        .input-field:focus {
+          border-color: #007aff;
+          background: #3a3a3c;
         }
 
         .btn-primary {
-          background: var(--brand-gradient);
-          color: white; 
-          border: none; 
-          padding: 15px;
-          border-radius: 14px; 
-          font-weight: 700; 
+          width: 100%;
+          padding: 14px;
+          border-radius: 12px;
+          border: none;
+          background: #0099ff;
+          color: white;
           font-size: 1rem;
-          cursor: pointer; 
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          margin-top: 4px;
-          box-shadow: 
-            0 8px 24px -6px rgba(0, 132, 255, 0.45),
-            0 0 0 1px rgba(0, 212, 255, 0.2) inset;
-          position: relative;
-          overflow: hidden;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-top: 10px;
+          box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+          background: #0088cc;
+          transform: translateY(-1px);
         }
         
-        .btn-primary::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: left 0.5s;
-        }
-        
-        .btn-primary:hover::before {
-            left: 100%;
-        }
-        
-        .btn-primary:hover { 
-            transform: translateY(-3px);
-            box-shadow: 
-                0 12px 32px -6px rgba(0, 132, 255, 0.55),
-                0 0 0 1px rgba(0, 212, 255, 0.3) inset;
-        }
-        
-        .btn-primary:active { 
-            transform: translateY(-1px);
-        }
-        
-        .btn-primary:disabled { 
-            opacity: 0.6; 
-            cursor: not-allowed; 
-            transform: none;
+        .btn-primary:active {
+          transform: scale(0.98);
         }
 
         .auth-separator {
-          display: flex; 
-          align-items: center; 
+          width: 100%;
+          display: flex;
+          align-items: center;
           text-align: center;
-          margin: 20px 0;
-          color: #666; 
+          margin: 25px 0;
+          color: #444;
           font-size: 0.9rem;
         }
-        
-        .auth-separator::before, .auth-separator::after {
-          content: ''; 
-          flex: 1; 
-          border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        
-        .auth-separator span { 
-            padding: 0 18px; 
+
+        .auth-separator::before,
+        .auth-separator::after {
+          content: '';
+          flex: 1;
+          border-bottom: 1px solid #333;
         }
 
-        .login-container .login-card .btn-google {
-          width: 100%; 
-          background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%);
-          color: #000000 !important;
-          border: 1px solid rgba(0,0,0,0.08);
+        .auth-separator span {
+          padding: 0 10px;
+        }
+
+        .btn-google {
+          width: 100%;
           padding: 14px;
-          border-radius: 14px;
-          font-weight: 600; 
-          font-size: 0.98rem;
-          display: flex; 
-          align-items: center; 
+          border-radius: 12px;
+          border: none;
+          background: white;
+          color: #000;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
           justify-content: center;
-          gap: 12px; 
-          cursor: pointer; 
-          transition: all 0.3s;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        .login-container .login-card .btn-google:hover { 
-            background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+          gap: 10px;
+          transition: all 0.2s;
         }
 
-        /* Modal Styles */
+        .btn-google:hover {
+          background: #f0f0f0;
+        }
+
+        .error-message {
+            background: rgba(255, 69, 58, 0.1);
+            color: #ff453a;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+            width: 100%;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 69, 58, 0.2);
+        }
+
+        /* Signup Specifics */
+        .signup-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+        }
+
+        .field-section label {
+            display: block;
+            color: #aaa;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            margin-left: 4px;
+        }
+
+        .custom-select-wrapper {
+            position: relative;
+        }
+
+        .glass-select {
+            width: 100%;
+            background: #2c2c2e;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 14px 16px;
+            border-radius: 12px;
+            appearance: none;
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .glass-select:focus {
+            border-color: #007aff;
+        }
+
+        .select-arrow {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            pointer-events: none;
+            font-size: 0.8rem;
+        }
+
+        .chip-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            background: #3a3a3c;
+            border: none;
+            color: #white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .chip.selected {
+            background: rgba(0, 122, 255, 0.2);
+            color: #007aff;
+            border: 1px solid rgba(0, 122, 255, 0.3);
+        }
+
+        .glass-input-small {
+            flex: 1;
+            background: #2c2c2e;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        /* Modal */
         .modal-backdrop {
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            right: 0; 
-            bottom: 0;
-            background: rgba(0,0,0,0.88); 
-            backdrop-filter: blur(20px);
-            z-index: 1000; 
-            display: flex; 
-            align-items: center; 
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
             justify-content: center;
-            animation: fadeIn 0.3s ease;
+            padding: 20px;
         }
         
         .modal-content {
-            background: linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(20, 20, 22, 0.95) 100%);
-            border: 1.5px solid rgba(255,255,255,0.15);
-            border-radius: 28px; 
-            padding: 36px;
-            width: 90%; 
-            max-width: 420px;
-            box-shadow: 
-                0 30px 70px rgba(0,0,0,0.8),
-                0 0 0 1px rgba(255,255,255,0.05) inset;
-            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            background: #1c1c1e;
+            padding: 30px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 350px;
+            border: 1px solid rgba(255,255,255,0.1);
             text-align: center;
         }
         
-        .modal-content h3 { 
-            margin: 0 0 12px 0; 
-            color: white; 
-            font-size: 1.6rem;
-            font-weight: 700;
-        }
-        
-        .modal-content p { 
-            font-size: 0.98rem; 
-            color: #aaa; 
-            margin-bottom: 28px; 
-            line-height: 1.6; 
-        }
-        
+        .modal-content h3 { margin-top: 0; color: white; }
+        .modal-content p { color: #aaa; font-size: 0.9rem; margin-bottom: 20px; }
         .modal-content input {
-            width: 100%; 
-            padding: 15px 18px; 
-            border-radius: 14px;
-            border: 1.5px solid rgba(255,255,255,0.12);
-            background: rgba(0,0,0,0.3); 
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            background: #2c2c2e;
+            border: 1px solid #333;
             color: white;
-            outline: none; 
-            margin-bottom: 28px; 
-            font-size: 1rem;
-            box-sizing: border-box; 
-            transition: all 0.3s;
-            font-weight: 500;
+            border-radius: 10px;
+            box-sizing: border-box;
         }
         
-        .modal-content input:focus { 
-            border-color: #00d4ff;
-            background: rgba(0, 212, 255, 0.05);
-            box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.12);
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
         }
         
-        .modal-footer { 
-            display: flex; 
-            justify-content: center; 
-            gap: 14px; 
-        }
-        
-        .btn-sec { 
-            background: transparent; 
-            color: #888; 
-            border: none; 
-            cursor: pointer; 
-            padding: 13px 22px; 
-            font-weight: 600; 
-            font-size: 0.98rem;
-            transition: all 0.2s;
-            border-radius: 12px;
-        }
-        
-        .btn-sec:hover { 
-            color: white;
-            background: rgba(255,255,255,0.05);
-        }
-        
-        .btn-pri { 
-            background: var(--brand-gradient);
-            color: white; 
-            border: none; 
-            padding: 13px 26px; 
-            border-radius: 14px; 
-            cursor: pointer; 
-            font-weight: 600; 
-            font-size: 0.98rem;
-            box-shadow: 0 4px 16px rgba(0, 132, 255, 0.35);
-            transition: all 0.3s;
-        }
-        
-        .btn-pri:hover { 
-            transform: translateY(-2px);
-            box-shadow: 0 6px 24px rgba(0, 132, 255, 0.45);
-        }
+        .btn-sec { background: transparent; color: #888; border: none; padding: 10px 15px; cursor: pointer; }
+        .btn-pri { background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
 
-        @keyframes fadeIn { 
-            from { opacity: 0; } 
-            to { opacity: 1; } 
-        }
       `}</style>
+
     </div>
   );
 }

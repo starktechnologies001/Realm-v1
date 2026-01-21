@@ -30,7 +30,31 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
         const initializeCall = async () => {
             try {
-                // Create Agora client
+                const isVideoCall = callData.type === 'video';
+
+                // 1. IMMEDIATE: Initialize Local Tracks first for instant UI feedback
+                if (isVideoCall) {
+                    try {
+                        localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack();
+                        // Force a small delay to ensure track is ready for UI binding
+                        await new Promise(r => setTimeout(r, 100)); 
+                        setLocalTrackReady(true);
+                        console.log('✅ Local video track ready');
+                    } catch (trackErr) {
+                        console.error('Failed to create camera track:', trackErr);
+                        setStatus('⚠️ Camera Access Denied');
+                        // Consider throwing here if video is critical, or fallback to audio
+                    }
+                }
+                
+                try {
+                    localAudioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
+                } catch (micErr) {
+                    console.error('Failed to create mic track:', micErr);
+                    setStatus('⚠️ Mic Access Denied');
+                }
+
+                // 2. Setup Agora Client
                 const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
                 clientRef.current = client;
 
@@ -41,9 +65,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                     if (mediaType === 'video') {
                         setRemoteUsers(prev => {
-                            // Remove existing instance of this user (if they only had audio before)
                             const others = prev.filter(u => u.uid !== user.uid);
-                            // Add the updated user object (now with videoTrack)
                             return [...others, user];
                         });
                     }
@@ -55,7 +77,6 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                 client.on('user-unpublished', (user, mediaType) => {
                     console.log('User unpublished:', user.uid, mediaType);
-                    // Do NOT remove user from remoteUsers, just trigger re-render so UI updates
                     if (mediaType === 'video') {
                          setRemoteUsers(prev => prev.map(u => u.uid === user.uid ? user : u));
                     }
@@ -66,14 +87,13 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
                 });
 
-                // Generate channel name from call participants
+                // 3. Setup Call Record & Signaling
                 const sortedIds = [currentUser.id, callData.partner.id].sort();
                 const channelName = `call_${sortedIds[0].slice(0, 15)}_${sortedIds[1].slice(0, 15)}`;
 
-                // If we are the caller, create/update call record with channel name
                 if (!callData.isIncoming) {
-                    setStatus('Calling...');
-
+                    setStatus('Calling...'); // Explicit feedback
+                    
                     await supabase.from('calls').insert({
                         caller_id: currentUser.id,
                         receiver_id: callData.partner.id,
@@ -83,63 +103,43 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     });
                 }
 
-                // Create local tracks
-                const isVideoCall = callData.type === 'video';
-                
-                if (isVideoCall) {
-                    localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack();
-                    setLocalTrackReady(true);
-                }
-                
-                localAudioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
-
-                // Helper to Join Channel with Retry Logic for UID_CONFLICT
+                // 4. Join Channel
                 const joinWithRetry = async (retries = 3, useSuffix = false) => {
                     try {
                         let joinUid = currentUser.id;
                         if (useSuffix) {
-                            // If conflict persists, append random suffix to bypass ghost session
                             joinUid = `${currentUser.id}-${Math.floor(Math.random() * 10000)}`;
-                            console.warn('Switching to randomized UID:', joinUid);
                         }
-                        
-                        const uid = await client.join(APP_ID, channelName, null, joinUid);
-                        console.log('Joined channel:', channelName, 'with UID:', uid);
-                        return uid;
+                        return await client.join(APP_ID, channelName, null, joinUid);
                     } catch (err) {
-                        if (err.code === 'UID_CONFLICT') {
-                            if (retries > 0) {
-                                console.warn(`UID Conflict. Retrying... (${retries} attempts left)`);
-                                setStatus(`Connection conflict... Retrying (${retries})`);
-                                await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5s
-                                return joinWithRetry(retries - 1, false);
-                            } else if (!useSuffix) {
-                                // If standard retries failed, force suffix strategy
-                                setStatus('Resolving session...');
-                                return joinWithRetry(0, true); 
-                            }
+                        if (err.code === 'UID_CONFLICT' && retries > 0) {
+                            setStatus(`Connection conflict... (${retries})`);
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            return joinWithRetry(retries - 1, false);
+                        } else if (err.code === 'UID_CONFLICT') {
+                            setStatus('Resolving session...');
+                            return joinWithRetry(0, true);
                         }
                         throw err;
                     }
                 };
 
-                // Join channel
                 await joinWithRetry();
 
-                // Publish local tracks
-                const tracksToPublish = [localAudioTrackRef.current];
-                if (isVideoCall && localVideoTrackRef.current) {
-                    tracksToPublish.push(localVideoTrackRef.current);
-                }
+                // 5. Publish Tracks
+                const tracksToPublish = [];
+                if (localAudioTrackRef.current) tracksToPublish.push(localAudioTrackRef.current);
+                if (localVideoTrackRef.current) tracksToPublish.push(localVideoTrackRef.current);
                 
-                await client.publish(tracksToPublish);
-                console.log('Published local tracks');
+                if (tracksToPublish.length > 0) {
+                    await client.publish(tracksToPublish);
+                    console.log('Published local tracks');
+                }
 
                 if (mounted) {
                     setStatus('Connected');
                     callStartTimeRef.current = Date.now();
                     
-                    // Start duration timer
                     durationIntervalRef.current = setInterval(() => {
                         if (callStartTimeRef.current) {
                             const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
@@ -156,9 +156,9 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                         table: 'calls',
                         filter: `channel_name=eq.${channelName}`
                     }, (payload) => {
-                        if (payload.new.status === 'ended' || payload.new.status === 'rejected') {
+                        if (payload.new.status === 'ended' || payload.new.status === 'rejected' || payload.new.status === 'declined') {
                             cleanup();
-                            onEnd();
+                            onEnd(callDuration, payload.new.status);
                         }
                         if (payload.new.status === 'active' && mounted) {
                             setStatus('Connected');
@@ -276,7 +276,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             .update({ status: 'ended' })
             .eq('channel_name', channelName);
         
-        onEnd();
+        onEnd(callDuration, 'ended');
     };
 
     const formatDuration = (seconds) => {
@@ -289,6 +289,16 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     // Check if remote user has active video track
     const hasRemoteVideo = remoteUsers.length > 0 && remoteUsers[0].videoTrack;
 
+    const getAvatarUrl = (u) => {
+        if (!u) return '';
+        if (u.avatar_url) return u.avatar_url;
+        const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+        const g = u.gender?.toLowerCase();
+        if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+        if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+        return `https://avatar.iran.liara.run/public?username=${safeName}`;
+    };
+
     return (
         <div className="call-interface-overlay">
             <span className="status-pill">
@@ -296,34 +306,69 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 {status === 'Connected' ? formatDuration(callDuration) : status}
             </span>
 
-            {/* Remote Video/Avatar */}
-            {isVideoCall && hasRemoteVideo ? (
-                <div ref={remoteVideoRef} className="remote-video-container"></div>
-            ) : (
-                <div className="remote-avatar-container">
-                    <img 
-                        src={(() => {
-                            const u = callData.partner;
-                            if (u.avatar_url) return u.avatar_url;
-                            const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                            const g = u.gender?.toLowerCase();
-                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                        })()}
-                        className="remote-avatar" 
-                        alt="Remote User" 
-                    />
-                    <h2 style={{ color: 'white', marginTop: '24px', fontSize: '1.5rem', fontWeight: '600', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
-                        {callData.partner.full_name || callData.partner.username}
-                        {!hasRemoteVideo && status === 'Connected' && <span style={{display:'block', fontSize:'0.9rem', opacity: 0.7, marginTop:'8px'}}>Camera Off</span>}
-                    </h2>
-                </div>
-            )}
+            {/* Main Content Area */}
+            {isVideoCall ? (
+                <>
+                    {/* Remote Video/Avatar */}
+                    {hasRemoteVideo ? (
+                        <div ref={remoteVideoRef} className="remote-video-container"></div>
+                    ) : (
+                        <div className="remote-avatar-container" style={{ '--bg-image': `url(${getAvatarUrl(callData.partner)})` }}>
+                            <img 
+                                src={getAvatarUrl(callData.partner)} 
+                                className="remote-avatar" 
+                                alt="Remote User"
+                                onError={(e) => {
+                                    const u = callData.partner;
+                                    const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+                                    e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                }}
+                            />
+                            <h2>{callData.partner.username}</h2>
+                            <div className="call-status-text">
+                                {status === 'Connected' ? 'Camera Off' : status}
+                            </div>
+                        </div>
+                    )}
 
-            {/* Local Video - Only show if camera is ON */}
-            {isVideoCall && !cameraOff && (
-                <div ref={localVideoRef} className="local-video"></div>
+                    {/* Local User View (PIP) */}
+                    <div className="local-video">
+                        {!cameraOff ? (
+                            <div ref={localVideoRef} style={{ width: '100%', height: '100%' }}></div>
+                        ) : (
+                            <img 
+                                src={getAvatarUrl(currentUser)}
+                                alt="Me"
+                                className="local-avatar-img"
+                            />
+                        )}
+                    </div>
+                </>
+            ) : (
+                /* Audio Call Layout - Dual Avatars */
+                <div className="audio-dual-layout">
+                    {/* Partner Avatar */}
+                    <div className="audio-avatar-wrapper pulse">
+                        <img 
+                            src={getAvatarUrl(callData.partner)} 
+                            alt={callData.partner.username}
+                            className="audio-avatar"
+                        />
+                        <span className="audio-name">{callData.partner.username}</span>
+                    </div>
+
+                    {/* Local Avatar */}
+                    <div className="audio-avatar-wrapper">
+                         <img 
+                            src={getAvatarUrl(currentUser)} 
+                            alt="Me"
+                            className="audio-avatar local"
+                        />
+                        <span className="audio-name">Me</span>
+                    </div>
+                    
+                    <div className="audio-status">{status}</div>
+                </div>
             )}
 
             {/* Call Controls with SVG Icons */}
@@ -360,102 +405,212 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             </div>
 
             <style>{`
-                /* CALL OVERLAY REDESIGN */
+                /* Call Overlay Premium Design */
                 .call-interface-overlay {
-                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: radial-gradient(circle at center, #1a1a2e 0%, #000 90%);
+                    position: fixed; inset: 0; 
+                    background: #000;
                     z-index: 12000;
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    animation: fadeIn 0.5s ease-out;
+                    display: flex; flex-direction: column;
+                    overflow: hidden;
+                    animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
                 }
-                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
                 
+                @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+                
+                /* Video Layer */
                 .remote-video-container {
-                    width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1;
+                    width: 100%; height: 100%; position: absolute; inset: 0; z-index: 1;
                 }
                 .remote-video-container video {
                     width: 100%; height: 100%; object-fit: cover;
                 }
                 
+                /* Remote Avatar (Audio Call / Connecting) */
                 .remote-avatar-container {
+                    position: absolute; inset: 0; z-index: 2;
                     display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    width: 100%; height: 100%; z-index: 2;
-                    background: radial-gradient(circle, rgba(30,30,40,0.5) 0%, rgba(0,0,0,0.8) 100%);
+                    background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
                 }
+                
+                .remote-avatar-container::before {
+                    content: '';
+                    position: absolute; inset: 0;
+                    background-image: var(--bg-image);
+                    background-size: cover;
+                    background-position: center;
+                    filter: blur(60px) brightness(0.6);
+                    opacity: 0.8;
+                    z-index: -1;
+                    transform: scale(1.2);
+                }
+
                 .remote-avatar {
                     width: 180px; height: 180px; border-radius: 50%;
-                    border: 4px solid rgba(255,255,255,0.1);
-                    box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
-                    object-fit: cover; padding: 4px;
-                    animation: pulseAvatar 3s infinite ease-in-out;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+                    object-fit: cover;
+                    border: 4px solid rgba(255,255,255,0.2);
+                    margin-bottom: 32px;
+                    animation: pulse-avatar 3s ease-in-out infinite;
+                    background: #2c2c2e;
                 }
-                @keyframes pulseAvatar {
-                    0% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.2); }
-                    50% { box-shadow: 0 0 0 20px rgba(0, 240, 255, 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
+                
+                @keyframes pulse-avatar {
+                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255, 0.2); }
+                    50% { transform: scale(1.03); box-shadow: 0 0 0 15px rgba(255,255,255, 0); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255, 0); }
                 }
 
+                .remote-avatar-container h2 {
+                    font-size: 32px; font-weight: 800; color: white;
+                    letter-spacing: -0.5px; margin: 0;
+                    text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                }
+                
+                .call-status-text {
+                    font-size: 16px; color: rgba(255,255,255,0.7);
+                    margin-top: 8px; font-weight: 500;
+                    letter-spacing: 0.5px; text-transform: uppercase;
+                }
+                
+                /* Local Video (PIP) */
                 .local-video {
-                    position: absolute; top: 24px; right: 24px;
-                    width: 140px; height: 200px; 
-                    background: #1e1e1e;
-                    border-radius: 18px; 
-                    border: 1px solid rgba(255,255,255,0.15);
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-                    z-index: 10; overflow: hidden;
-                    transition: all 0.3s ease;
+                    position: absolute; top: 60px; right: 24px;
+                    width: 120px; height: 180px;
+                    background: #1a1a1a;
+                    border-radius: 24px;
+                    overflow: hidden;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+                    z-index: 10;
+                    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    cursor: grab;
                 }
-                .local-video:hover { transform: scale(1.05); border-color: rgba(255,255,255,0.3); }
-                .local-video video { width: 100%; height: 100%; object-fit: cover; }
-                
-                /* Glass Control Bar */
-                .call-controls {
-                    position: absolute; bottom: 40px; 
-                    left: 50%; transform: translateX(-50%);
-                    display: flex; gap: 20px; z-index: 20;
-                    padding: 16px 32px;
-                    background: rgba(20, 20, 20, 0.6);
-                    backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    border-radius: 100px;
-                    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-                }
-                
-                .ctrl-btn {
-                    width: 56px; height: 56px; border-radius: 50%;
-                    border: none; background: rgba(255,255,255,0.1);
-                    color: white; cursor: pointer; 
-                    display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                }
-                .ctrl-btn:hover { background: rgba(255,255,255,0.2); transform: translateY(-4px); }
-                .ctrl-btn:active { transform: translateY(0); }
-                
-                .ctrl-btn.muted, .ctrl-btn.camera-off { 
-                    background: white; color: black;
-                }
-                
-                .ctrl-btn.hangup { 
-                    background: #FF453A; color: white; margin-left: 20px; 
-                    width: 64px; height: 64px; /* Slightly larger */
-                }
-                .ctrl-btn.hangup:hover { background: #FF3B30; box-shadow: 0 8px 20px rgba(255, 69, 58, 0.4); }
+                .local-video:hover { transform: scale(1.05); }
 
+                .local-avatar-img {
+                    width: 100%; height: 100%;
+                    object-fit: cover;
+                    background: #2c2c2e;
+                }
+                
+                /* Status Indicator */
                 .status-pill {
-                    position: absolute; top: 40px; left: 24px; /* Moving to top left like FaceTime */
-                    background: rgba(0,0,0,0.4); backdrop-filter: blur(15px);
-                    color: rgba(255,255,255,0.9); 
-                    padding: 8px 16px; border-radius: 12px; 
-                    font-size: 0.9rem; font-weight: 500; letter-spacing: 0.5px;
-                    z-index: 5; border: 1px solid rgba(255,255,255,0.05);
+                    position: absolute; top: 60px; left: 24px;
+                    background: rgba(255, 255, 255, 0.15);
+                    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+                    padding: 8px 16px; border-radius: 30px;
                     display: flex; align-items: center; gap: 8px;
+                    color: white; font-weight: 600; font-size: 14px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    z-index: 5;
                 }
-                .status-dot {
-                    width: 8px; height: 8px; border-radius: 50%; background: #00ff00;
-                    box-shadow: 0 0 10px #00ff00;
+                
+                .status-dot { width: 8px; height: 8px; background: #34c759; border-radius: 50%; box-shadow: 0 0 8px #34c759; }
+                .status-dot.connecting { background: #ff9f0a; box-shadow: 0 0 8px #ff9f0a; }
+
+                /* Controls Bar */
+                .call-controls {
+                    position: absolute; bottom: 50px; left: 50%;
+                    transform: translateX(-50%);
+                    display: flex; gap: 24px;
+                    padding: 18px 40px;
+                    background: rgba(20, 20, 20, 0.75);
+                    backdrop-filter: blur(24px) saturate(180%);
+                    -webkit-backdrop-filter: blur(24px) saturate(180%);
+                    border-radius: 60px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+                    border: 1px solid rgba(255,255,255,0.12);
+                    z-index: 20;
                 }
-                .status-dot.connecting { background: #ffaa00; box-shadow: 0 0 10px #ffaa00; }
+
+                .ctrl-btn {
+                    width: 60px; height: 60px;
+                    border-radius: 50%; border: none;
+                    background: rgba(255,255,255,0.1);
+                    color: white; cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .ctrl-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
+                .ctrl-btn:active { transform: scale(0.95); }
+                
+                .ctrl-btn svg { width: 28px; height: 28px; stroke-width: 2px; }
+
+                .ctrl-btn.muted, .ctrl-btn.camera-off { 
+                    background: white; color: #1c1c1e;
+                    box-shadow: 0 0 20px rgba(255,255,255,0.4);
+                }
+
+                .ctrl-btn.hangup {
+                    background: #ff3b30; width: 72px; height: 72px; margin: 0 12px;
+                }
+                .ctrl-btn.hangup:hover { background: #ff453a; box-shadow: 0 8px 30px rgba(255, 59, 48, 0.5); transform: scale(1.1); }
+                
+                /* Mobile optimization */
+                @media (max-width: 480px) {
+                    .call-controls { width: 90%; justify-content: space-evenly; padding: 16px; bottom: 40px; }
+                    .ctrl-btn { width: 52px; height: 52px; }
+                    .ctrl-btn.hangup { width: 64px; height: 64px; }
+                    .local-video { width: 90px; height: 135px; top: 20px; right: 20px; }
+                    .status-pill { top: 20px; left: 20px; }
+                    
+                    .audio-dual-layout { flex-direction: column; gap: 40px; }
+                    .audio-avatar { width: 120px; height: 120px; }
+                }
+
+                /* Audio Dual Layout */
+                .audio-dual-layout {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 60px;
+                    background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
+                    position: relative;
+                }
+
+                .audio-avatar-wrapper {
+                    display: flex; flex-direction: column; align-items: center; gap: 16px;
+                    position: relative;
+                }
+
+                .audio-avatar {
+                    width: 150px; height: 150px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                    border: 4px solid rgba(255, 255, 255, 0.1);
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    z-index: 2;
+                }
+                
+                .audio-avatar.local {
+                    border-color: rgba(52, 199, 89, 0.3); /* Green Tint for self */
+                }
+
+                .audio-avatar-wrapper.pulse .audio-avatar {
+                    animation: pulse-ring 3s infinite;
+                }
+
+                .audio-name {
+                    font-size: 1.2rem; font-weight: 700; color: white;
+                    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+                }
+
+                .audio-status {
+                    position: absolute;
+                    bottom: 25%;
+                    color: rgba(255,255,255,0.5);
+                    font-size: 0.9rem;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+
+                @keyframes pulse-ring {
+                    0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.1); }
+                    50% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+                }
             `}</style>
         </div>
     );

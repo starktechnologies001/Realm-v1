@@ -78,7 +78,7 @@ export default function StoryViewer({
 
     // Timer Logic
     useEffect(() => {
-        if (!currentStory || isPaused) return;
+        if (!currentStory || isPaused || showViewersList) return;
 
         const interval = setInterval(() => {
             const elapsed = Date.now() - startTimeRef.current;
@@ -92,7 +92,7 @@ export default function StoryViewer({
         }, 50); // Fluid update
 
         return () => clearInterval(interval);
-    }, [currentStory, currentIndex, isPaused]);
+    }, [currentStory, currentIndex, isPaused, showViewersList]);
 
     const handleNext = () => {
         if (currentIndex < stories.length - 1) {
@@ -309,7 +309,11 @@ export default function StoryViewer({
                 <div className="viewers-modal" onClick={(e) => e.stopPropagation()}>
                     <div className="viewers-header">
                         <h3>Viewed by {viewers.length}</h3>
-                        <button onClick={() => setShowViewersList(false)}>✕</button>
+                        <button onClick={() => {
+                            // Resume correctly
+                            startTimeRef.current = Date.now() - (progress / 100 * STORY_DURATION);
+                            setShowViewersList(false);
+                        }}>✕</button>
                     </div>
                     <div className="viewers-list">
                         {viewers.length === 0 ? (

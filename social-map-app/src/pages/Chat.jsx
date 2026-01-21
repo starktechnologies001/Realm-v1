@@ -74,10 +74,15 @@ export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
     const [selectedStoryUser, setSelectedStoryUser] = useState(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0); // For StoryViewer
-    const [chats, setChats] = useState([]);
+    const [chats, setChats] = useState(() => {
+        const cached = localStorage.getItem('cached_chats_list');
+        return cached ? JSON.parse(cached) : [];
+    });
     const [totalUnreadCount, setTotalUnreadCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => {
+        return !localStorage.getItem('cached_chats_list');
+    });
     const navigate = useNavigate();
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
@@ -159,7 +164,7 @@ export default function Chat() {
                 .select('content, created_at, sender_id, message_type, deleted_for')
                 .or(`and(sender_id.eq.${userId},receiver_id.eq.${partner.id}),and(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
                 .order('created_at', { ascending: false })
-                .limit(10); // Fetch top 10 to find first non-deleted
+                .limit(50); // Fetch top 50 to find first non-deleted (increased from 10)
 
             // Find first message NOT deleted for me
             const lastMessage = recentMessages?.find(msg => {
@@ -188,6 +193,23 @@ export default function Chat() {
                         lastMsgContent = `${senderName} ${lastMessage.content}`;
                     } else {
                         lastMsgContent = lastMessage.content;
+                    }
+                } else if (lastMessage.message_type === 'call_log') {
+                    try {
+                        const callData = JSON.parse(lastMessage.content);
+                        const isMissed = callData.status === 'missed';
+                        const isDeclined = callData.status === 'declined';
+                        const callType = callData.call_type === 'video' ? 'Video' : 'Voice';
+                        
+                        if (isMissed) {
+                            lastMsgContent = `📞 Missed ${callType} call`;
+                        } else if (isDeclined) {
+                            lastMsgContent = `📵 Declined ${callType} call`;
+                        } else {
+                            lastMsgContent = `📞 Call ended • ${lastMessage.sender_id === userId ? 'Outgoing' : 'Incoming'}`;
+                        }
+                    } catch (e) {
+                         lastMsgContent = '📞 Call log';
                     }
                 } else if (lastMessage.message_type === 'image') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📷 Photo' : '📷 Photo';
@@ -239,7 +261,7 @@ export default function Chat() {
 
             return {
                 id: partner.id,
-                name: partner.username || partner.full_name,
+                name: partner.username,
                 avatar: genderAvatar,
                 lastMsg: lastMsgContent,
                 time: lastMsgTime,
@@ -266,9 +288,14 @@ export default function Chat() {
 
     // Sub-function to actually run the fetch
     const loadChats = async (userId) => {
-        setLoading(true);
+        // Only set loading if we don't have data
+        if (chats.length === 0) setLoading(true);
+        
         const results = await fetchChats(userId);
         setChats(results);
+        
+        // Cache the results
+        localStorage.setItem('cached_chats_list', JSON.stringify(results));
         
         // Calculate total unread count
         const total = results.reduce((sum, chat) => sum + (chat.unread || 0), 0);
@@ -294,7 +321,7 @@ export default function Chat() {
                 
                 const newChat = {
                     id: profile.id,
-                    name: profile.username || profile.full_name || 'User',
+                    name: profile.username || 'User',
                     avatar: getAvatarHeadshot(profile.avatar_url), // Use existing util
                     lastMsg: lastMsg,
                     time: time,
@@ -484,12 +511,12 @@ export default function Chat() {
                         if (!data) {
                             setActiveChatUser(null);
                             Toast.show("Friendship ended.");
-                            fetchChats(currentUser.id); // Refresh list
+                             loadChats(currentUser.id); // Refresh list
                             return;
                         }
                      }
                      // Always refresh list on delete to be safe
-                     fetchChats(currentUser.id); 
+                     loadChats(currentUser.id); 
                 }
 
                 // HANDLE NEW FRIEND (INSERT/UPDATE)
@@ -498,7 +525,7 @@ export default function Chat() {
                     if (rec.status === 'accepted') {
                         // Check if it involves me
                         if (rec.requester_id === currentUser.id || rec.receiver_id === currentUser.id) {
-                            fetchChats(currentUser.id); // Refresh list to show new friend
+                            loadChats(currentUser.id); // Refresh list to show new friend
                         }
                     }
                     // Handle Block logic if needed (handled by refresh)
@@ -510,7 +537,7 @@ export default function Chat() {
                                      setActiveChatUser(null);
                                  }
                              }
-                             fetchChats(currentUser.id);
+                             loadChats(currentUser.id);
                         }
                     }
                 }
@@ -532,57 +559,151 @@ export default function Chat() {
 
     if (incomingCall && !incomingCall.answered) {
         return (
+
             <div className="incoming-call-overlay">
                 <div className="call-card">
-                    <img src={getAvatarHeadshot(incomingCall.caller.avatar_url)} className="call-avatar" alt="Caller" />
-                    <h2>{incomingCall.caller.username || incomingCall.caller.full_name}</h2>
-                    <p>Incoming {incomingCall.type} call...</p>
+                    <div className="call-header">
+                        <div className="avatar-wrapper">
+                            <img 
+                                src={getAvatarHeadshot(incomingCall.caller.avatar_url)} 
+                                className="call-avatar" 
+                                alt="Caller"
+                                onError={(e) => {
+                                    const safeName = encodeURIComponent(incomingCall.caller.username || 'User');
+                                    e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                }}
+                            />
+                            <div className="pulse-ring"></div>
+                        </div>
+                        <div className="call-info">
+                            <h2>{incomingCall.caller.username || incomingCall.caller.full_name}</h2>
+                            <p className="call-type">
+                                <span className={`status-dot ${incomingCall.type === 'video' ? 'video-dot' : 'audio-dot'}`}></span>
+                                Incoming {incomingCall.type} Call...
+                            </p>
+                        </div>
+                    </div>
 
                     {!showQuickReplyMenu ? (
                         <div className="call-actions">
-                            <button className="ctrl-btn message-btn" onClick={() => setShowQuickReplyMenu(true)}>💬</button>
-                            <button className="reject-btn" onClick={rejectCall} style={{ background: '#ff4444', color: 'white' }}>✖</button>
-                            <button className="answer-btn" style={{ background: '#00cc66', color: 'white' }} onClick={() => {
-                                answerCall();
-                            }}>📞</button>
+                            <button className="action-btn reject-btn" onClick={rejectCall}>
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+                            </button>
+                            <button className="action-btn message-btn" onClick={() => setShowQuickReplyMenu(true)}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </button>
+                            <button className="action-btn answer-btn" onClick={answerCall}>
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                            </button>
                         </div>
                     ) : (
-                        <div className="quick-replies-list">
-                            <button className="close-replies" onClick={() => setShowQuickReplyMenu(false)}>✕</button>
-                            <h4>Or send a quick message:</h4>
-                            <button onClick={() => sendQuickReply("I am busy right now, can’t talk. I’ll call you later.")}>
-                                I am busy right now, can’t talk. I’ll call you later.
-                            </button>
+                        <div className="quick-replies-list" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+                            <div className="replies-header">
+                                <h4>Send a message</h4>
+                                <button className="close-replies-btn" onClick={() => setShowQuickReplyMenu(false)}>✕</button>
+                            </div>
+                            <button onClick={() => sendQuickReply("Can't talk right now.")}>Can't talk right now</button>
                             <button onClick={() => sendQuickReply("I'll call you back.")}>I'll call you back</button>
-                            <button onClick={() => sendQuickReply("Talk to you later.")}>Talk to you later</button>
+                            <button onClick={() => sendQuickReply("Text me instead?")}>Text me instead?</button>
                         </div>
                     )}
                 </div>
                 <style>{`
-                    .message-btn { background: #333; box-shadow: 0 0 10px rgba(255,255,255,0.1); font-size: 1.2rem; }
+                    .incoming-call-overlay {
+                        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+                        z-index: 10000; width: 92%; max-width: 380px;
+                    }
+                    .call-card {
+                        background: rgba(22, 22, 24, 0.85); /* Darker, more premium */
+                        backdrop-filter: blur(24px) saturate(180%);
+                        -webkit-backdrop-filter: blur(24px) saturate(180%);
+                        border-radius: 32px; /* Softer corners */
+                        padding: 24px;
+                        box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.12);
+                        color: white;
+                        display: flex; flex-direction: column; gap: 24px;
+                        animation: slideDown 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+                    }
+                    .call-header {
+                        display: flex; align-items: center; gap: 18px;
+                    }
+                    
+                    .avatar-wrapper { position: relative; }
+                    .call-avatar {
+                        width: 64px; height: 64px; border-radius: 50%;
+                        object-fit: cover; border: 2px solid rgba(255,255,255,0.15);
+                        background: #333;
+                        display: block;
+                        position: relative; z-index: 2;
+                    }
+                    .pulse-ring {
+                        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                        width: 100%; height: 100%; border-radius: 50%;
+                        border: 2px solid rgba(52, 199, 89, 0.5);
+                        z-index: 1;
+                        animation: pulse-ring 2s infinite;
+                    }
+                    @keyframes pulse-ring {
+                        0% { width: 100%; height: 100%; opacity: 1; border-width: 2px; }
+                        100% { width: 160%; height: 160%; opacity: 0; border-width: 0px; }
+                    }
+
+                    .call-info h2 {
+                        margin: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px;
+                        color: #fff;
+                    }
+                    .call-type {
+                        margin: 6px 0 0 0; font-size: 0.85rem; color: #8e8e93;
+                        text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+                        display: flex; align-items: center; gap: 6px;
+                    }
+                    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+                    .audio-dot { background: #34c759; box-shadow: 0 0 6px #34c759; }
+                    .video-dot { background: #007aff; box-shadow: 0 0 6px #007aff; }
+
+                    .call-actions {
+                        display: flex; justify-content: space-between; align-items: center;
+                        padding: 0 8px;
+                    }
+                    .action-btn {
+                        width: 60px; height: 60px; border-radius: 50%; border: none;
+                        display: flex; align-items: center; justify-content: center;
+                        cursor: pointer; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    }
+                    .action-btn:active { transform: scale(0.9); }
+                    .action-btn:hover { transform: scale(1.05); }
+
+                    .reject-btn { background: #ff3b30; color: white; box-shadow: 0 8px 20px rgba(255, 59, 48, 0.3); }
+                    .message-btn { background: rgba(255,255,255,0.12); color: white; }
+                    .answer-btn { background: #34c759; color: white; box-shadow: 0 8px 20px rgba(52, 199, 89, 0.3); }
+
                     .quick-replies-list {
-                        display: flex; flex-direction: column; gap: 8px; margin-top: 20px;
-                        background: #25252b; padding: 15px; border-radius: 12px;
-                        position: relative; animation: slideUp 0.2s;
+                        display: flex; flex-direction: column; gap: 8px;
+                        background: rgba(0,0,0,0.3); padding: 12px; border-radius: 18px;
                     }
-                    .quick-replies-list h4 { margin: 0 0 10px 0; font-size: 0.9rem; color: #aaa; }
+                    .replies-header {
+                        display: flex; justify-content: space-between; align-items: center;
+                        margin-bottom: 8px; padding: 0 4px;
+                    }
+                    .replies-header h4 { margin: 0; font-size: 0.8rem; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; }
+                    .close-replies-btn {
+                        background: none; border: none; color: #8e8e93; font-size: 1.1rem; padding: 4px; cursor: pointer;
+                    }
                     .quick-replies-list button {
-                        background: rgba(255,255,255,0.1); border: none; padding: 10px;
-                        color: white; border-radius: 8px; cursor: pointer; text-align: left;
-                        font-size: 0.9rem; transition: background 0.2s;
+                        background: rgba(255,255,255,0.08); border: none; padding: 14px 16px;
+                        color: white; border-radius: 14px; cursor: pointer; text-align: left;
+                        font-size: 0.95rem; transition: background 0.2s; font-weight: 500;
                     }
-                    .quick-replies-list button:hover { background: rgba(0, 240, 255, 0.2); }
-                    .close-replies {
-                        position: absolute; top: 10px; right: 10px;
-                        background: none !important; color: #aaa !important; width: auto !important; padding: 0 !important;
-                    }
-                    @keyframes slideUp {
-                        from { opacity: 0; transform: translateY(10px); }
-                        to { opacity: 1; transform: translateY(0); }
+                    .quick-replies-list button:hover { background: rgba(255,255,255,0.15); }
+
+                    @keyframes slideDown {
+                        from { opacity: 0; transform: translate(-50%, -20px) scale(0.95); }
+                        to { opacity: 1; transform: translate(-50%, 0) scale(1); }
                     }
                 `}</style>
             </div>
         );
+
     }
 
     // If incoming call is answered, show overlay
@@ -596,26 +717,28 @@ export default function Chat() {
                 onBack={() => {
                     setActiveChatUser(null);
                     // Refresh chat list to show latent changes if any
-                    fetchChats(currentUser.id);
+                    loadChats(currentUser.id);
                 }}
             />
         );
     }
 
     // Mark messages as read when opening a chat
+    // Mark messages as read when opening a chat
     const markMessagesAsRead = async (senderId, receiverId) => {
+        // Optimistic Update: Update local UI immediately
+        setChats(prev => prev.map(chat => 
+            chat.id === senderId ? { ...chat, unread: 0 } : chat
+        ));
+
+        // Update Database in background
         await supabase
             .from('messages')
             .update({ is_read: true })
             .eq('sender_id', senderId)
             .eq('receiver_id', receiverId)
             .eq('is_read', false)
-            .neq('message_type', 'system'); // Don't mark system messages as read
-        
-        // Update local chat list to reflect read status
-        setChats(prev => prev.map(chat => 
-            chat.id === senderId ? { ...chat, unread: 0 } : chat
-        ));
+            .neq('message_type', 'system');
     };
 
     const handleSelectChat = async (chat) => {
@@ -773,9 +896,9 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                                         {chat.lastMsg}
                                     </p>
                                     {chat.unread > 0 && (
-                                        <div style={{ position: 'relative' }}>
-                                            <Badge count={chat.unread} size="small" />
-                                        </div>
+                                        <span className="unread-badge">
+                                            {chat.unread > 99 ? '99+' : chat.unread}
+                                        </span>
                                     )}
                                 </div>
                             </div>
@@ -1020,17 +1143,20 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 }
 
                 .unread-badge {
-                    background-color: var(--accent-blue);
+                    background: linear-gradient(135deg, #ff453a 0%, #ff3b30 100%);
                     color: white;
-                    font-size: 14px;
-                    font-weight: 600;
-                    min-width: 20px;
-                    height: 20px;
-                    border-radius: 10px;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    min-width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     padding: 0 6px;
+                    margin-left: 8px; /* Spacing from preview text */
+                    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+                    flex-shrink: 0;
                 }
 
                 .mute-icon {
@@ -1246,7 +1372,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
 
     // Chat Theme State (Visual themes)
-    const [chatTheme, setChatTheme] = useState(localStorage.getItem('visual_chat_theme') || 'clean_slate');
+    // Chat Theme State (Visual themes) - Initialize from partner-specific cache if available
+    const [chatTheme, setChatTheme] = useState(() => {
+        const partnerCache = localStorage.getItem(`chat_theme_partner_${targetUser?.id}`);
+        return partnerCache && CHAT_THEMES[partnerCache] ? partnerCache : (localStorage.getItem('visual_chat_theme') || 'clean_slate');
+    });
     const [showChatThemeSelector, setShowChatThemeSelector] = useState(false);
 
     // Wallpaper State
@@ -1260,59 +1390,26 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         console.log('Target User ID:', targetUser.id);
         
         try {
-            // Fetch all messages for this conversation
-            const { data: messagesToUpdate, error: fetchError } = await supabase
-                .from('messages')
-                .select('id, deleted_for')
-                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
-            
-            if (fetchError) throw fetchError;
-            
-            if (!messagesToUpdate || messagesToUpdate.length === 0) {
-                console.log('No messages found in this conversation');
-                setMessages([]);
-                showToast('No messages to delete');
-                return;
-            }
-            
-            console.log(`Found ${messagesToUpdate.length} total messages`);
-            
-            // Filter out messages already deleted by current user
-            const messagesToMark = messagesToUpdate.filter(msg => {
-                const deletedFor = msg.deleted_for || [];
-                return !deletedFor.includes(currentUser.id);
-            });
-            
-            console.log(`${messagesToMark.length} messages to mark as deleted`);
-            
-            if (messagesToMark.length === 0) {
-                console.log('All messages already deleted');
-                setMessages([]);
-                showToast('Chat already deleted');
-                return;
-            }
-            
-            // Update each message to add current user to deleted_for array
-            for (const msg of messagesToMark) {
-                const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
-                
-                await supabase
-                    .from('messages')
-                    .update({ deleted_for: updatedDeletedFor })
-                    .eq('id', msg.id);
-            }
-            
-            console.log(`✅ Marked ${messagesToMark.length} messages as deleted`);
-            
-            // Clear local messages state
-            setMessages([]);
-            showToast(`Chat deleted for you ✅`);
-            
-            // Return to chat list
-            setTimeout(() => {
-                onBack(); // Navigate back to chat list
-            }, 500);
-        } catch (error) {
+        console.log('🗑️ Delete Chat - Calling RPC...');
+        
+        const { error } = await supabase.rpc('delete_chat_for_user', {
+            p_user_id: currentUser.id,
+            p_partner_id: targetUser.id
+        });
+
+        if (error) throw error;
+        
+        console.log('✅ Chat deleted via RPC');
+        
+        // Clear local messages state
+        setMessages([]);
+        showToast('Deleted successfully ✅');
+        
+        // Return to chat list
+        // setTimeout(() => {
+        //     onBack(); // Navigate back to chat list
+        // }, 300); // Reduce delay for snappier feel
+    } catch (error) {
             console.error('❌ Error deleting chat:', error);
             console.error('Error details:', JSON.stringify(error, null, 2));
             showToast('Failed to delete chat ❌');
@@ -1331,12 +1428,28 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .single();
 
-            if (friendship?.chat_theme && CHAT_THEMES[friendship.chat_theme]) {
-                setChatTheme(friendship.chat_theme);
-                localStorage.setItem(`chat_theme_${friendship.id}`, friendship.chat_theme);
+            console.log('🔍 [ThemeFetch] Fetched friendship for theme:', { 
+                id: friendship?.id, 
+                theme: friendship?.chat_theme, 
+                users: [currentUser.id, targetUser.id] 
+            });
+
+            if (friendship) {
+                if (friendship.chat_theme && CHAT_THEMES[friendship.chat_theme]) {
+                    console.log('✅ [ThemeFetch] Applying DB theme:', friendship.chat_theme);
+                    setChatTheme(friendship.chat_theme);
+                    localStorage.setItem(`chat_theme_${friendship.id}`, friendship.chat_theme);
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, friendship.chat_theme);
+                } else {
+                     console.log('ℹ️ [ThemeFetch] Friendship exists but no theme set. applying default.');
+                     const defaultTheme = 'clean_slate';
+                     setChatTheme(defaultTheme);
+                     // Optional update cache to match truth
+                     localStorage.setItem(`chat_theme_partner_${targetUser.id}`, defaultTheme);
+                }
             } else {
-                 const defaultTheme = 'clean_slate';
-                 setChatTheme(defaultTheme);
+                console.log('⚠️ [ThemeFetch] No friendship found (non-friend chat?). Keeping local cached theme.');
+                // Do NOT reset to default. Keep whatever useState loaded from cache.
             }
         };
         fetchChatTheme();
@@ -1366,7 +1479,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     console.log('✅ Applying theme:', payload.new.chat_theme);
                     setChatTheme(payload.new.chat_theme);
                     setChatBackground(null); // Clear custom background when theme changes
+                    setChatBackground(null); // Clear custom background when theme changes
                     localStorage.setItem(`chat_theme_${payload.new.id}`, payload.new.chat_theme);
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, payload.new.chat_theme);
                     showToast(`Theme updated to ${CHAT_THEMES[payload.new.chat_theme].name}`);
                 }
             })
@@ -1394,14 +1509,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .single();
 
-            if (friendshipError) {
+            console.log('🔍 [ThemeUpdate] Searching for friendship results:', { friendship, friendshipError });
+
+            if (friendshipError && friendshipError.code !== 'PGRST116') {
                 console.error('❌ Error finding friendship:', friendshipError);
                 throw friendshipError;
             }
 
             if (friendship) {
-                console.log('✅ Found friendship:', friendship.id);
+                console.log('✅ [ThemeUpdate] Found friendship:', friendship.id, 'Saving theme:', newTheme);
                 localStorage.setItem(`chat_theme_${friendship.id}`, newTheme);
+                localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newTheme);
                 
                 // 2. Update Shared Theme
                 const { error: updateError } = await supabase
@@ -1410,11 +1528,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     .eq('id', friendship.id);
 
                 if (updateError) {
-                    console.error('❌ Error updating theme:', updateError);
+                    console.error('❌ Error updating theme in DB:', updateError);
                     throw updateError;
                 }
                 
-                console.log('✅ Theme updated in database');
+                console.log('✅ [ThemeUpdate] Theme updated in database successfully');
 
                 // 3. Send System Message
                 const { error: messageError } = await supabase.from('messages').insert([{
@@ -1440,15 +1558,35 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         showToast(`Theme changed to ${themeName} ${CHAT_THEMES[newTheme].emoji}`);
     };
 
-    // Fetch Wallpaper - DISABLED: Personal wallpapers conflict with shared themes
-    // Shared themes (per-chat) should take priority over personal wallpapers
-    // useEffect(() => {
-    //     const fetchWallpaper = async () => {
-    //         const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
-    //         if (data?.chat_background) setChatBackground(data.chat_background);
-    //     };
-    //     fetchWallpaper();
-    // }, [currentUser.id]);
+    // Fetch Wallpaper & Subscribe to Real-time Profile Updates
+    useEffect(() => {
+        if (!currentUser?.id) return;
+
+        // 1. Initial Fetch
+        const fetchWallpaper = async () => {
+            const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+            if (data?.chat_background) setChatBackground(data.chat_background);
+        };
+        fetchWallpaper();
+
+        // 2. Real-time Subscription
+        const profileChannel = supabase.channel(`profile_changes_${currentUser.id}`)
+            .on(
+                'postgres_changes', 
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` },
+                (payload) => {
+                    console.log('🎨 [Chat] Profile updated:', payload.new);
+                    if (payload.new.chat_background !== undefined) {
+                        setChatBackground(payload.new.chat_background);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(profileChannel);
+        };
+    }, [currentUser?.id]);
 
     const handleWallpaperChange = async (bg) => {
         setChatBackground(bg);
@@ -1660,11 +1798,28 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     });
 
                     setMessages(prev => {
-                        // Only update if count is different or last message is different
-                        // Simple heuristic to avoid aggressive re-renders
-                        if (prev.length !== filteredData.length) return filteredData;
-                        if (prev.length > 0 && filteredData.length > 0 && prev[prev.length - 1].id !== filteredData[filteredData.length - 1].id) return filteredData;
-                        return prev;
+                        const optimisticMessages = prev.filter(m => m.tempId);
+                        
+                        // Deduplicate: Don't show optimistic message if it's already in fetched data
+                        const safeOptimistic = optimisticMessages.filter(oMsg => {
+                            const match = filteredData.find(fMsg => 
+                                fMsg.sender_id === oMsg.sender_id &&
+                                fMsg.content === oMsg.content &&
+                                // Check if created within last 10 seconds to ensure it's the same message
+                                Math.abs(new Date(fMsg.created_at).getTime() - new Date(oMsg.created_at).getTime()) < 10000
+                            );
+                            return !match;
+                        });
+
+                        const combined = [...filteredData, ...safeOptimistic];
+
+                        // Simple check to avoid re-renders if data is effectively unchanged
+                        if (prev.length === combined.length && 
+                            prev.every((p, i) => p.id === combined[i].id && p.tempId === combined[i].tempId)) {
+                            return prev;
+                        }
+                        
+                        return combined;
                     });
                      // Mark UNREAD messages from this user as READ (excluding system messages)
                     const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
@@ -1979,7 +2134,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     };
 
     // Format last seen status
-    const getLastSeenStatus = (lastActive) => {
+    const getLastSeenStatus = (lastActive, partnerShowLastSeen = true, myShowLastSeen = true) => {
+        // Privacy Check: If either party hides status, show nothing/offline (Empty string renders as standard 'Offline' in UI)
+        if (partnerShowLastSeen === false || myShowLastSeen === false) return '';
+        
         if (!lastActive) return 'Offline';
         
         const now = new Date();
@@ -2306,7 +2464,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         {/* Title and Description */}
                         <h3 className="delete-title">Delete Chat?</h3>
                         <p className="delete-description">
-                            All messages with <strong>{partner?.full_name || partner?.username || 'this user'}</strong> will be permanently deleted. This action cannot be undone.
+                            All messages with <strong>{partner?.username || 'this user'}</strong> will be permanently deleted. This action cannot be undone.
                         </p>
 
                         {/* Action Buttons */}
@@ -2452,31 +2610,30 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 className={`chat-messages ${getThemeClass()}`}
                 data-theme={chatTheme}
                 data-pattern={CHAT_THEMES[chatTheme]?.backgroundPattern || 'none'}
+                onClick={() => {
+                    // Click background to clear selection if in selection mode
+                    if (isSelectionMode) {
+                        clearSelection();
+                    }
+                }}
                 style={{ 
-                    backgroundColor: (!chatBackground?.includes('url') && !chatBackground?.includes('http')) 
-                        ? (chatBackground || CHAT_THEMES[chatTheme]?.backgroundColor) 
-                        : undefined,
-                    backgroundImage: (chatBackground?.includes('url') || chatBackground?.includes('http')) 
-                        ? (chatBackground.includes('url') ? chatBackground : `url(${chatBackground})`) 
-                        : undefined,
-                    backgroundSize: (chatBackground?.includes('url') || chatBackground?.includes('http')) ? 'cover' : undefined,
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat'
+                    // Background handled by parent container via CSS variable
+                    position: 'relative',
+                    zIndex: 1
                 }}
             >
                 {messages.length === 0 && (
-                    <div className="empty-chat-state" style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '100%',
-                        color: 'var(--text-secondary)',
-                        opacity: 0.7
-                    }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '10px' }}>👋</div>
-                        <h3 style={{ fontWeight: 500 }}>Tap to chat</h3>
-                        <p style={{ fontSize: '0.9rem' }}>Start a conversation with {partner.full_name || partner.username}</p>
+                    <div className="empty-chat-state">
+                        <div className="empty-chat-icon">
+                            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                            </svg>
+                        </div>
+                        <h3>No messages yet</h3>
+                        <p>Start a conversation with <strong>{partner.username}</strong></p>
+                        <button className="tap-to-chat-btn" onClick={() => document.querySelector('.msg-input')?.focus()}>
+                            Tap to chat
+                        </button>
                     </div>
                 )}
                 {messages.map((msg, i) => {
@@ -2502,37 +2659,60 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         let senderName;
                         const msgSenderId = String(msg.sender_id);
                         const currentUserId = String(currentUser.id);
-                        const targetUserId = String(targetUser.id);
+                        // Use partner state if available (for real-time updates), fallback to targetUser
+                        const targetUserId = String(partner?.id || targetUser.id);
                         
-                        if (msgSenderId === currentUserId) {
+                        // Debug log for system naming issues
+                        if (msg.content.includes('changed the theme')) {
+                            console.log('🔍 [SysMsgRender] Rendering theme msg:', {
+                                msgId: msg.id,
+                                msgSenderId: msgSenderId,
+                                currentUserId: currentUserId,
+                                targetUserId: targetUserId,
+                                partnerName: partner?.username,
+                                targetName: targetUser.username
+                            });
+                        }
+
+                        if (String(msg.sender_id) === String(currentUser.id)) {
                             senderName = 'You';
-                        } else if (msgSenderId === targetUserId) {
-                            // Use targetUser directly (not partner state which might be stale)
-                            senderName = targetUser.username || targetUser.full_name || 'Friend';
                         } else {
-                            senderName = 'Someone';
+                            // In 1:1 chat, if it's not me, it's the partner
+                            const p = partner || targetUser;
+                            senderName = p.username || p.full_name || 'Friend';
                         }
                             
-                        const content = msg.content.includes('changed the theme') 
-                            ? `${senderName} ${msg.content}`
-                            : msg.content;
-
+                        const isThemeMsg = msg.content.includes('changed the theme');
+                        
                         return (
                             <React.Fragment key={`system-${msg.id || i}`}>
                                 {dateHeader}
                                 <div className="msg-system" style={{
-                                    display: 'flex', justifyContent: 'center', margin: '15px 0', opacity: 0.85
+                                    display: 'flex', justifyContent: 'center', margin: '12px 0', opacity: 0.85, width: '100%'
                                 }}>
                                     <span style={{
-                                        background: 'rgba(120, 120, 120, 0.2)',
-                                        color: 'var(--text-secondary)',
-                                        padding: '4px 12px',
-                                        borderRadius: '12px',
-                                        fontSize: '0.8rem',
-                                        backdropFilter: 'blur(4px)',
-                                        border: '1px solid rgba(255,255,255,0.05)'
+                                        background: 'rgba(0, 0, 0, 0.2)',
+                                        color: '#ffffff',
+                                        padding: '6px 14px',
+                                        borderRadius: '100px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '400',
+                                        backdropFilter: 'blur(8px)',
+                                        WebkitBackdropFilter: 'blur(8px)',
+                                        maxWidth: '90%',
+                                        textAlign: 'center',
+                                        display: 'inline-block', // Block logic for text wrap
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                        lineHeight: '1.4'
                                     }}>
-                                        {content}
+                                        {isThemeMsg ? (
+                                            <>
+                                                <span style={{ fontWeight: 600, opacity: 1 }}>{senderName}</span>
+                                                <span style={{ opacity: 0.9 }}> {msg.content}</span>
+                                            </>
+                                        ) : (
+                                            msg.content
+                                        )}
                                     </span>
                                 </div>
                             </React.Fragment>
@@ -2551,14 +2731,15 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                         const getCallIcon = () => {
                             if (callData.status === 'missed') return '📵';
-                            if (callData.status === 'declined') return '🚫';
+                            if (callData.status === 'missed') return '📵';
+                            if (callData.status === 'declined' || callData.status === 'rejected') return '🚫';
                             return callData.call_type === 'video' ? '🎥' : '📞';
                         };
 
                         const getCallText = () => {
                             const prefix = isMe ? 'Outgoing' : 'Incoming';
                             if (callData.status === 'missed') return 'Missed call';
-                            if (callData.status === 'declined') {
+                            if (callData.status === 'declined' || callData.status === 'rejected') {
                                 return callData.declined_reason 
                                     ? `Declined: "${callData.declined_reason}"`
                                     : 'Declined call';
@@ -2709,10 +2890,42 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 onTouchStart={handleTouchStart}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
+                                onMouseDown={(e) => {
+                                    if (isSelectionMode) return;
+                                    // Start long press timer for mouse
+                                    touchStartX = e.clientX;
+                                    touchMoved = false;
+                                    longPressTimer = setTimeout(() => {
+                                        if (!touchMoved) {
+                                            touchMoved = true; 
+                                            setIsSelectionMode(true);
+                                            toggleSelection(msg.id);
+                                        }
+                                    }, 500);
+                                }}
+                                onMouseUp={() => {
+                                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+                                    touchStartX = null;
+                                }}
+                                onMouseLeave={() => {
+                                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+                                    touchStartX = null;
+                                }}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    // Right click triggers selection mode immediately
+                                    if (!isSelectionMode) {
+                                        setIsSelectionMode(true);
+                                        toggleSelection(msg.id);
+                                    }
+                                }}
                                 onClickCapture={handleBubbleClick}
                                 style={{
                                     transform: isSelected ? 'scale(0.98)' : 'scale(1)',
-                                    transition: 'all 0.2s ease'
+                                    transition: 'all 0.2s ease',
+                                    cursor: isSelectionMode ? 'pointer' : 'default',
+                                    userSelect: 'none', // Prevent text selection during hold
+                                    WebkitUserSelect: 'none'
                                 }}
                             >
                                 {/* Selection Overlay/Checkbox */}
@@ -2971,10 +3184,12 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: radial-gradient(ellipse at top, #1a1a2e 0%, #000 90%);
+                    background: var(--theme-bg);
                     z-index: 10000;
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
+                    overflow: hidden;
+                    height: 100vh;
                 }
                 
                 .ambient-glow-chat {
@@ -3042,7 +3257,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .icon-btn:hover { background: rgba(255,255,255,0.1); color: white; }
                 
                 /* Chat Area */
-                .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+                .chat-messages { 
+                    flex: 1; 
+                    padding: 20px; 
+                    overflow-y: auto; 
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 6px; 
+                    min-height: 0; 
+                    scroll-behavior: smooth;
+                    overscroll-behavior-y: contain;
+                }
                 
                 .msg-bubble { 
                     max-width: 75%; padding: 12px 16px; border-radius: 20px; 
@@ -3930,6 +4155,145 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     backdrop-filter: blur(4px);
                     border: 1px solid rgba(255, 255, 255, 0.05);
                 }
+
+                .empty-chat-state {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    color: rgba(255,255,255,0.5);
+                    padding: 40px;
+                    text-align: center;
+                }
+                .empty-chat-icon {
+                    width: 100px;
+                    height: 100px;
+                    background: rgba(255,255,255,0.03);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 20px;
+                    color: var(--theme-accent, #00C6FF);
+                    border: 1px solid rgba(255,255,255,0.05);
+                }
+                .empty-chat-state h3 {
+                    font-size: 1.5rem;
+                    color: white;
+                    margin: 0 0 8px 0;
+                    font-weight: 600;
+                }
+                .empty-chat-state p {
+                    font-size: 1rem;
+                    margin: 0 0 24px 0;
+                    max-width: 250px;
+                    line-height: 1.5;
+                }
+                .tap-to-chat-btn {
+                    padding: 12px 28px;
+                    background: rgba(255,255,255,0.1);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 99px;
+                    color: white;
+                    font-weight: 600;
+                    font-size: 1rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .tap-to-chat-btn:hover {
+                    background: var(--theme-accent, #00C6FF);
+                    border-color: transparent;
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                }
+                /* Reply Preview Styling */
+                .reply-preview {
+                    position: absolute;
+                    bottom: 100%;
+                    left: 10px;
+                    right: 10px;
+                    background: rgba(30, 30, 35, 0.95);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-top-left-radius: 16px;
+                    border-top-right-radius: 16px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-bottom: none;
+                    padding: 12px 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    animation: slideUpReply 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.2);
+                    z-index: 10;
+                    margin-bottom: 0px; /* Connects physically to the input bar */
+                }
+
+                @keyframes slideUpReply {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+
+                .reply-preview-content {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    overflow: hidden;
+                    border-left: 3px solid #00f0ff;
+                    padding-left: 10px;
+                }
+
+                .reply-preview-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .reply-icon {
+                    font-size: 0.8rem;
+                    color: #00f0ff;
+                }
+
+                .reply-to-name {
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    color: #00f0ff;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .reply-preview-text {
+                    font-size: 0.85rem;
+                    color: rgba(255, 255, 255, 0.8);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .reply-preview-close {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.1);
+                    border: none;
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    margin-left: 10px;
+                    transition: all 0.2s;
+                }
+
+                .reply-preview-close:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                    transform: scale(1.1);
+                }
+
             `}</style>
 
             {/* Attachment System Components */}

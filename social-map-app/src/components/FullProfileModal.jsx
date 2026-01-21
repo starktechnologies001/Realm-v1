@@ -109,7 +109,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                             <div className={`fp-status ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         <h2>{user.name}</h2>
-                        <span className="fp-username">@{user.username || user.name.toLowerCase().replace(/\s/g, '')}</span>
+
                         {user.status && <div className="fp-status-tag">{user.status}</div>}
                     </div>
 

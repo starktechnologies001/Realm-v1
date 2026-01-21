@@ -229,7 +229,7 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                             </div>
                         </div>
                         <div className="status-info">
-                            <h3>{group.user.full_name || group.user.username}</h3>
+                            <h3>{group.user.username}</h3>
                             <p>{new Date(group.latest).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                     </div>

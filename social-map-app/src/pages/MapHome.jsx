@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import UserProfileCard from '../components/UserProfileCard';
+import MapProfileCard from '../components/MapProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
@@ -13,6 +13,7 @@ import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from
 import { useLocationContext } from '../context/LocationContext';
 import LocationPermissionModal from '../components/LocationPermissionModal';
 import LimitedModeScreen from '../components/LimitedModeScreen';
+import StoryViewer from '../components/StoryViewer';
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -90,6 +91,7 @@ export default function MapHome() {
     // Global Permission Context
     const { permissionStatus, setPermission, resetPermission } = useLocationContext();
     const watchIdRef = useRef(null);
+    const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
     // Initialize state synchronously to prevent flash
     const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -364,11 +366,11 @@ export default function MapHome() {
                 blockedIdsRef.current = allBlockedIds; // Update Ref for real-time subscriptions
 
                 // Run queries in parallel for faster loading
-                const [profilesResult, friendshipResult] = await Promise.all([
+                const [profilesResult, friendshipResult, storiesResult, viewsResult] = await Promise.all([
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, last_active, avatar_url, hide_status, show_last_seen')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen')
                         .neq('id', currentUser.id)
                         .eq('is_ghost_mode', false)
                         .not('latitude', 'is', null)
@@ -378,7 +380,19 @@ export default function MapHome() {
                    supabase
                         .from('friendships')
                         .select('id, requester_id, receiver_id, status')
-                        .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                        .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`),
+
+                    // Fetch Active Stories (Last 24h)
+                    supabase
+                        .from('stories')
+                        .select('id, user_id')
+                        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+                    
+                    // Fetch my story views (to distinguish Seen/Unseen)
+                    supabase
+                        .from('story_views')
+                        .select('story_id')
+                        .eq('viewer_id', currentUser.id)
                 ]);
 
                 // Populate friendships map
@@ -402,11 +416,34 @@ export default function MapHome() {
                          }
                     });
                 }
-                if (profilesResult.error) {
-                    console.error('Error fetching users:', profilesResult.error);
-                    return;
-                }
+                
+                // Process Stories & Views
+                const usersWithStories = new Set();
+                const usersWithUnseenStories = new Set();
+                
+                const myViewedStoryIds = new Set(
+                    viewsResult.data ? viewsResult.data.map(v => v.story_id) : []
+                );
 
+                if (storiesResult.data) {
+                    // Group stories by user
+                    const storiesByUser = {};
+                    storiesResult.data.forEach(s => {
+                        if (!storiesByUser[s.user_id]) storiesByUser[s.user_id] = [];
+                        storiesByUser[s.user_id].push(s);
+                        usersWithStories.add(s.user_id);
+                    });
+
+                    // Check for unseen
+                    Object.keys(storiesByUser).forEach(userId => {
+                        const userStories = storiesByUser[userId];
+                        const hasUnseen = userStories.some(s => !myViewedStoryIds.has(s.id));
+                        if (hasUnseen) {
+                            usersWithUnseenStories.add(userId);
+                        }
+                    });
+                }
+                
                 // Filter and map users (exclude blocked users)
                 const validUsers = profilesResult.data
                     .filter(u => !allBlockedIds.has(u.id))
@@ -427,7 +464,7 @@ export default function MapHome() {
 
                         return {
                             id: u.id,
-                            name: u.username || u.full_name || 'User',
+                            name: u.username || 'User',
                             lat: renderLat,
                             lng: renderLng,
                             avatar: u.avatar_url || fallbackAvatar, // Use real avatar if exists
@@ -440,7 +477,9 @@ export default function MapHome() {
                             isLocationOn: true,
                             isLocationShared: true,
                             friendshipStatus: fData?.status || null, 
-                            friendshipId: fData?.id || null 
+                            friendshipId: fData?.id || null,
+                            hasStory: usersWithStories.has(u.id),
+                            hasUnseenStory: usersWithUnseenStories.has(u.id)
                         };
                     });
 
@@ -490,7 +529,7 @@ export default function MapHome() {
 
                         const newUserObj = {
                             id: updatedUser.id,
-                            name: updatedUser.username || updatedUser.full_name || 'User',
+                            name: updatedUser.username || 'User',
                             lat: renderLat,
                             lng: renderLng,
                             avatar: mapAvatar,
@@ -546,7 +585,7 @@ export default function MapHome() {
 
                     const newUserObj = {
                         id: newUser.id,
-                        name: newUser.username || newUser.full_name || 'User',
+                        name: newUser.username || 'User',
                         lat: renderLat,
                         lng: renderLng,
                         avatar: unescape(newUser.avatar_url) || fallbackAvatar, // Use real avatar if exists (defensive unescape just in case)
@@ -576,6 +615,67 @@ export default function MapHome() {
             supabase.removeChannel(channel);
         };
     }, [location, currentUser]);
+
+    // --- Real-time Location Tracking & DB Update ---
+    useEffect(() => {
+        if (!currentUser?.id || permissionStatus !== 'granted') return;
+
+        const updateLocationInDB = async (lat, lng) => {
+            try {
+                // Update local state first for immediate UI feedbac
+                const updatedUser = { ...currentUser, latitude: lat, longitude: lng };
+                // Only update local storage/state if significantly moved? 
+                // Actually, let's keep local state fresh so the user's own marker moves immediately
+                // setCurrentUser(updatedUser); // CAREFUL: This might cause re-renders loop if not memoized dep
+
+                // Update Supabase (Throttled by nature of how often we call this)
+                // We'll use a timestamp check to avoid spamming DB
+                const lastUpdate = localStorage.getItem('last_loc_update');
+                const now = Date.now();
+                if (lastUpdate && now - parseInt(lastUpdate) < 5000) {
+                     return; // Skip if updated < 5s ago
+                }
+
+                await supabase.from('profiles').update({
+                    latitude: lat,
+                    longitude: lng,
+                    last_active: new Date().toISOString()
+                }).eq('id', currentUser.id);
+                
+                localStorage.setItem('last_loc_update', now.toString());
+                console.log("📍 Location updated in DB:", lat, lng);
+
+            } catch (err) {
+                console.error("Failed to update location in DB", err);
+            }
+        };
+
+        const success = (pos) => {
+            const { latitude, longitude } = pos.coords;
+            setLocation({ lat: latitude, lng: longitude });
+            localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
+            
+            // Push to DB
+            updateLocationInDB(latitude, longitude);
+        };
+
+        const error = (err) => {
+            console.warn('ERROR(' + err.code + '): ' + err.message);
+        };
+
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        };
+
+        const id = navigator.geolocation.watchPosition(success, error, options);
+        watchIdRef.current = id;
+
+        return () => {
+            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+        };
+    }, [currentUser?.id, permissionStatus]); 
 
     // Preload avatar images to eliminate lag
     useEffect(() => {
@@ -869,6 +969,34 @@ export default function MapHome() {
         }
     };
 
+    const handleDeleteThought = async () => {
+        if (!currentUser) return;
+        
+        try {
+            // Optimistic update
+            const updatedUser = { ...currentUser, thought: null, thoughtTime: null };
+            setCurrentUser(updatedUser);
+            setMyThought(''); // Clear input
+            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+            setShowThoughtInput(false);
+
+            // DB Update
+            const { error } = await supabase
+                .from('profiles')
+                .update({ 
+                    status_message: null,
+                    status_updated_at: null
+                })
+                .eq('id', currentUser.id);
+
+            if (error) throw error;
+            showToast('Thought removed');
+        } catch (err) {
+            console.error("Error deleting thought:", err);
+            showToast("Failed to remove thought");
+        }
+    };
+
     const handlePostThought = async (e) => {
         e.preventDefault();
         if (!currentUser) return;
@@ -885,7 +1013,8 @@ export default function MapHome() {
                 .from('profiles')
                 .update({ 
                     status_message: myThought,
-                    last_active: new Date().toISOString()
+                    last_active: new Date().toISOString(),
+                    status_updated_at: new Date().toISOString()
                 })
                 .eq('id', currentUser.id);
 
@@ -1158,6 +1287,34 @@ export default function MapHome() {
         else if (action === 'call-audio' || action === 'call-video') {
             showToast("Calls coming soon! 📞");
         }
+        else if (action === 'view-story') {
+             // Fetch active stories for this user
+             const fetchStories = async () => {
+                 try {
+                     const { data, error } = await supabase
+                        .from('stories')
+                        .select('*')
+                        .eq('user_id', targetUser.id)
+                        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+                        .order('created_at', { ascending: true });
+
+                     if (error) throw error;
+
+                     if (data && data.length > 0) {
+                         setViewingStoryUser({
+                             user: targetUser,
+                             stories: data
+                         });
+                     } else {
+                         showToast("No active stories");
+                     }
+                 } catch (err) {
+                     console.error("Error fetching stories:", err);
+                     showToast("Failed to load stories");
+                 }
+             };
+             fetchStories();
+        }
     };
 
     const handleReport = async (reason) => {
@@ -1193,7 +1350,6 @@ export default function MapHome() {
             ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800;">${name}</div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600;">
-                    ${status ? `<span style="margin-right:4px;">${status}</span>` : ''} 
                     ${thought}
                  </div>
                </div>`
@@ -1463,7 +1619,7 @@ export default function MapHome() {
                 })}
             </MapContainer>
 
-            <UserProfileCard
+            <MapProfileCard
                 user={selectedUser}
                 currentUser={currentUser}
                 onClose={() => setSelectedUser(null)}
@@ -1575,6 +1731,15 @@ export default function MapHome() {
                         </button>
                     </div>
                 </div>
+            )}
+
+            {/* Story Viewer Overlay */}
+            {viewingStoryUser && (
+                <StoryViewer 
+                    userStories={viewingStoryUser} 
+                    currentUser={currentUser}
+                    onClose={() => setViewingStoryUser(null)}
+                />
             )}
 
             <style>{`
@@ -1723,10 +1888,27 @@ export default function MapHome() {
                             />
                             <div className="thought-actions">
                                 <button type="button" onClick={() => setShowThoughtInput(false)}>Cancel</button>
+                                {currentUser?.thought && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleDeleteThought}
+                                        style={{ 
+                                            background: 'rgba(255, 59, 48, 0.1)', 
+                                            color: '#ff3b30', 
+                                            border: '1px solid rgba(255, 59, 48, 0.2)',
+                                            padding: '8px 12px',
+                                            fontSize: '1.2rem',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                                        }}
+                                        title="Delete Thought"
+                                    >
+                                        🗑️
+                                    </button>
+                                )}
                                 <button type="submit" className="primary">Post</button>
                             </div>
                         </form>
-                        <p className="hint">Disappears in 1 hour</p>
+                        <p className="hint">Disappears in 2 hours</p>
                     </div>
                 </div>
             )}
