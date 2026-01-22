@@ -3,6 +3,7 @@ import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import { useCall } from '../context/CallContext';
 import { supabase } from '../supabaseClient';
 import MapProfileCard from '../components/MapProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
@@ -90,6 +91,7 @@ export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
     const { permissionStatus, setPermission, resetPermission } = useLocationContext();
+    const { startCall } = useCall();
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
@@ -455,9 +457,8 @@ export default function MapHome() {
                         else if (u.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                         else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
 
-                        // Micro-jitter for initial load
-                        const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
-                        const renderLng = u.longitude + (Math.random() - 0.5) * 0.0002;
+                        const renderLat = u.latitude;
+                        const renderLng = u.longitude;
 
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
@@ -523,9 +524,9 @@ export default function MapHome() {
                             else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
                         }
 
-                        // Jitter coordinates slightly
-                        const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
-                        const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
+                        // Real Lat/Lng
+                        const renderLat = updatedUser.latitude;
+                        const renderLng = updatedUser.longitude;
 
                         const newUserObj = {
                             id: updatedUser.id,
@@ -580,8 +581,8 @@ export default function MapHome() {
                         else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
                     }
                     
-                    const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
-                    const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
+                    const renderLat = newUser.latitude;
+                    const renderLng = newUser.longitude;
 
                     const newUserObj = {
                         id: newUser.id,
@@ -632,8 +633,8 @@ export default function MapHome() {
                 // We'll use a timestamp check to avoid spamming DB
                 const lastUpdate = localStorage.getItem('last_loc_update');
                 const now = Date.now();
-                if (lastUpdate && now - parseInt(lastUpdate) < 5000) {
-                     return; // Skip if updated < 5s ago
+                if (lastUpdate && now - parseInt(lastUpdate) < 1000) {
+                     return; // Update every 1s
                 }
 
                 await supabase.from('profiles').update({
@@ -810,25 +811,15 @@ export default function MapHome() {
                 { enableHighAccuracy: true }
             );
 
-            // Watcher
-            watchIdRef.current = navigator.geolocation.watchPosition(
-                async (position) => {
+            // Watcher REMOVED - Using global watch in previous Effect to avoid duplication
+            // Just update local state for initial load if needed
+             navigator.geolocation.getCurrentPosition(
+                (position) => {
                     const { latitude, longitude } = position.coords;
                     setLocation({ lat: latitude, lng: longitude });
-                     // Throttle DB updates (15s)
-                    const now = Date.now();
-                    const lastUpdate = window.lastLocationUpdate || 0;
-                    if (parsedUser.id && (now - lastUpdate > 15000)) {
-                        window.lastLocationUpdate = now;
-                        await supabase.from('profiles').update({
-                            latitude: latitude,
-                            longitude: longitude,
-                            last_active: new Date().toISOString()
-                        }).eq('id', parsedUser.id);
-                    }
+                    setLoading(false);
                 },
                 (error) => {
-                     // Fallback
                      if (!location) {
                          setLocation({ lat: 37.7749, lng: -122.4194 }); // SF Default
                          setLoading(false);
@@ -1285,7 +1276,10 @@ export default function MapHome() {
             setSelectedUser(null); // Close small card
         }
         else if (action === 'call-audio' || action === 'call-video') {
-            showToast("Calls coming soon! 📞");
+            const type = action === 'call-audio' ? 'audio' : 'video';
+            startCall(targetUser, type);
+            // Optionally close the card
+            // setSelectedUser(null); 
         }
         else if (action === 'view-story') {
              // Fetch active stories for this user

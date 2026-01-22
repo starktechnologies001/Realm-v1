@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
+import { calculateDistance, formatDistance } from '../utils/distanceUtils';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser }) {
@@ -27,7 +28,6 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
     const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
 
-    // Calculate time since active
     const getLastActive = (dateStr) => {
         if (!dateStr) return 'Offline';
         const diff = Date.now() - new Date(dateStr).getTime();
@@ -44,6 +44,15 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
         if (hours < 24) return `${hours}h ago`;
         return 'Offline';
     };
+
+    // Calculate Distance
+    const distanceMeters = calculateDistance(
+        currentUser?.latitude, 
+        currentUser?.longitude, 
+        user.lat || user.latitude, 
+        user.lng || user.longitude
+    );
+    const distanceStr = formatDistance(distanceMeters);
 
     return (
         <AnimatePresence>
@@ -201,13 +210,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                             <span className="label">Block</span>
                         </button>
 
-                         <button 
-                            className="action-btn secondary-action danger"
-                            onClick={() => onAction('report', user)}
+                         <div 
+                            className="action-btn secondary-action"
+                            style={{ cursor: 'default', opacity: 0.8 }}
                         >
-                            <span className="icon">⚠️</span>
-                            <span className="label">Report</span>
-                        </button>
+                            <span className="icon">📍</span>
+                            <span className="label">{distanceStr || 'N/A'}</span>
+                        </div>
                     </div>
 
                 </motion.div>

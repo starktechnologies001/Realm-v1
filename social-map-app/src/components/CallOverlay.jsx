@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import { supabase } from '../supabaseClient';
+import { getAvatar2D } from '../utils/avatarUtils';
 
 export default function CallOverlay({ callData, currentUser, onEnd }) {
     const [status, setStatus] = useState('Connecting...');
@@ -290,8 +291,19 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     const hasRemoteVideo = remoteUsers.length > 0 && remoteUsers[0].videoTrack;
 
     const getAvatarUrl = (u) => {
-        if (!u) return '';
+        if (!u) {
+            console.warn('CallOverlay: getAvatarUrl called with null user');
+            // Return a safe fallback immediately
+            return `https://avatar.iran.liara.run/public?username=Unknown`;
+        }
+        
+        // Handle 3D avatars (GLB) -> 2D PNG
+        if (u.avatar_url && u.avatar_url.includes('.glb')) {
+            return getAvatar2D(u.avatar_url);
+        }
+
         if (u.avatar_url) return u.avatar_url;
+
         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
         const g = u.gender?.toLowerCase();
         if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
@@ -345,29 +357,54 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     </div>
                 </>
             ) : (
-                /* Audio Call Layout - Dual Avatars */
-                <div className="audio-dual-layout">
-                    {/* Partner Avatar */}
-                    <div className="audio-avatar-wrapper pulse">
-                        <img 
-                            src={getAvatarUrl(callData.partner)} 
-                            alt={callData.partner.username}
-                            className="audio-avatar"
-                        />
-                        <span className="audio-name">{callData.partner.username}</span>
-                    </div>
+                /* Audio Call Layout - Caller (Top-Right) / Receiver (Center) */
+                <div className="audio-layout-container">
+                    {(() => {
+                        const isIncoming = callData.isIncoming;
+                        // Caller is the one who initiated.
+                        // If incoming: Partner is Caller (if checking incoming call UI), but here we want to establish roles.
+                        // For the CallOverlay, `callData` usually has `isIncoming`.
+                        
+                        // We must be defensive if either is missing
+                        const safeCaller = isIncoming ? (callData.partner || { username: 'Unknown' }) : (currentUser || { username: 'Me' });
+                        const safeReceiver = isIncoming ? (currentUser || { username: 'Me' }) : (callData.partner || { username: 'Unknown' });
 
-                    {/* Local Avatar */}
-                    <div className="audio-avatar-wrapper">
-                         <img 
-                            src={getAvatarUrl(currentUser)} 
-                            alt="Me"
-                            className="audio-avatar local"
-                        />
-                        <span className="audio-name">Me</span>
-                    </div>
-                    
-                    <div className="audio-status">{status}</div>
+                        console.log('CallOverlay Debug:', {
+                            isIncoming,
+                            callerName: safeCaller.username,
+                            receiverName: safeReceiver.username,
+                            callerAvatar: safeCaller.avatar_url,
+                            receiverAvatar: safeReceiver.avatar_url
+                        });
+
+                        return (
+                            <>
+                                {/* Receiver - BIG CENTER */}
+                                <div className="audio-avatar-wrapper receiver pulse">
+                                    <img 
+                                        src={getAvatarUrl(safeReceiver)} 
+                                        alt={safeReceiver.username}
+                                        className="audio-avatar big"
+                                    />
+                                    <span className="audio-name">{safeReceiver.username}</span>
+                                    <div className="role-label" style={{ opacity: 0.5, fontSize: '0.8rem', marginTop: '4px' }}>Receiver</div>
+                                </div>
+
+                                {/* Caller - SMALL TOP RIGHT */}
+                                <div className="audio-caller-pip">
+                                    <img 
+                                        src={getAvatarUrl(safeCaller)} 
+                                        alt={safeCaller.username}
+                                        className="audio-avatar small"
+                                    />
+                                    <span className="audio-name-small">{safeCaller.username}</span>
+                                    <div className="role-label" style={{ opacity: 0.5, fontSize: '0.6rem' }}>Caller</div>
+                                </div>
+                                
+                                <div className="audio-status">{status}</div>
+                            </>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -559,42 +596,59 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     .audio-avatar { width: 120px; height: 120px; }
                 }
 
-                /* Audio Dual Layout */
-                .audio-dual-layout {
-                    flex: 1;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 60px;
-                    background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
-                    position: relative;
+                /* Audio Layout Container */
+                .audio-layout-container {
+                     flex: 1;
+                     display: flex;
+                     align-items: center;
+                     justify-content: center;
+                     background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
+                     position: relative;
+                     width: 100%; height: 100%;
                 }
 
-                .audio-avatar-wrapper {
-                    display: flex; flex-direction: column; align-items: center; gap: 16px;
-                    position: relative;
+                /* Receiver - BIG CENTER */
+                .audio-avatar-wrapper.receiver {
+                     display: flex; flex-direction: column; align-items: center; gap: 16px;
+                     position: relative;
+                     z-index: 1;
+                }
+                .audio-avatar.big {
+                     width: 200px; height: 200px;
+                     border-radius: 50%;
+                     object-fit: cover;
+                     border: 4px solid rgba(255, 255, 255, 0.15);
+                     box-shadow: 0 10px 60px rgba(0,0,0,0.6);
                 }
 
-                .audio-avatar {
-                    width: 150px; height: 150px;
+                /* Caller - SMALL TOP RIGHT (PIP) */
+                .audio-caller-pip {
+                    position: absolute; top: 60px; right: 24px;
+                    width: 100px;
+                    display: flex; flex-direction: column; align-items: center; gap: 4px;
+                    z-index: 10;
+                    background: rgba(0,0,0,0.4);
+                    padding: 8px; border-radius: 20px;
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    transition: transform 0.2s;
+                }
+                .audio-caller-pip:hover { transform: scale(1.05); }
+
+                .audio-avatar.small {
+                    width: 60px; height: 60px;
                     border-radius: 50%;
                     object-fit: cover;
-                    border: 4px solid rgba(255, 255, 255, 0.1);
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-                    z-index: 2;
+                    border: 2px solid rgba(255,255,255,0.3);
                 }
-                
-                .audio-avatar.local {
-                    border-color: rgba(52, 199, 89, 0.3); /* Green Tint for self */
-                }
-
-                .audio-avatar-wrapper.pulse .audio-avatar {
-                    animation: pulse-ring 3s infinite;
+                .audio-name-small {
+                    font-size: 0.8rem; font-weight: 600; color: white;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
                 }
 
                 .audio-name {
-                    font-size: 1.2rem; font-weight: 700; color: white;
-                    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+                    font-size: 1.6rem; font-weight: 800; color: white;
+                    text-shadow: 0 4px 12px rgba(0,0,0,0.5);
                 }
 
                 .audio-status {

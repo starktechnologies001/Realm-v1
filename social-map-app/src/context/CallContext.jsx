@@ -156,7 +156,7 @@ export const CallProvider = ({ children }) => {
         if (error) console.error("Error logging call message:", error);
     };
 
-    const rejectCall = async (callId = null, reason = 'rejected') => {
+    const rejectCall = async (callId = null, reason = 'declined') => {
         if (processingAction.current) return;
         processingAction.current = true;
 
