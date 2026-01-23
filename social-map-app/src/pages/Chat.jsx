@@ -554,157 +554,8 @@ export default function Chat() {
 
     // --- Render Logic ---
 
-    // 1. Missed Call Popup
-    // The missedCall state is now managed by the CallContext and rendered by a global CallUI component.
+    // 1. Missed Call Popup - Handled globally by CallContext now.
 
-    if (incomingCall && !incomingCall.answered) {
-        return (
-
-            <div className="incoming-call-overlay">
-                <div className="call-card">
-                    <div className="call-header">
-                        <div className="avatar-wrapper">
-                            <img 
-                                src={getAvatarHeadshot(incomingCall.caller.avatar_url)} 
-                                className="call-avatar" 
-                                alt="Caller"
-                                onError={(e) => {
-                                    const safeName = encodeURIComponent(incomingCall.caller.username || 'User');
-                                    e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                }}
-                            />
-                            <div className="pulse-ring"></div>
-                        </div>
-                        <div className="call-info">
-                            <h2>{incomingCall.caller.username || incomingCall.caller.full_name}</h2>
-                            <p className="call-type">
-                                <span className={`status-dot ${incomingCall.type === 'video' ? 'video-dot' : 'audio-dot'}`}></span>
-                                Incoming {incomingCall.type} Call...
-                            </p>
-                        </div>
-                    </div>
-
-                    {!showQuickReplyMenu ? (
-                        <div className="call-actions">
-                            <button className="action-btn reject-btn" onClick={rejectCall}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
-                            </button>
-                            <button className="action-btn message-btn" onClick={() => setShowQuickReplyMenu(true)}>
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            </button>
-                            <button className="action-btn answer-btn" onClick={answerCall}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="quick-replies-list" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-                            <div className="replies-header">
-                                <h4>Send a message</h4>
-                                <button className="close-replies-btn" onClick={() => setShowQuickReplyMenu(false)}>✕</button>
-                            </div>
-                            <button onClick={() => sendQuickReply("Can't talk right now.")}>Can't talk right now</button>
-                            <button onClick={() => sendQuickReply("I'll call you back.")}>I'll call you back</button>
-                            <button onClick={() => sendQuickReply("Text me instead?")}>Text me instead?</button>
-                        </div>
-                    )}
-                </div>
-                <style>{`
-                    .incoming-call-overlay {
-                        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                        z-index: 10000; width: 92%; max-width: 380px;
-                    }
-                    .call-card {
-                        background: rgba(22, 22, 24, 0.85); /* Darker, more premium */
-                        backdrop-filter: blur(24px) saturate(180%);
-                        -webkit-backdrop-filter: blur(24px) saturate(180%);
-                        border-radius: 32px; /* Softer corners */
-                        padding: 24px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.12);
-                        color: white;
-                        display: flex; flex-direction: column; gap: 24px;
-                        animation: slideDown 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-                    }
-                    .call-header {
-                        display: flex; align-items: center; gap: 18px;
-                    }
-                    
-                    .avatar-wrapper { position: relative; }
-                    .call-avatar {
-                        width: 64px; height: 64px; border-radius: 50%;
-                        object-fit: cover; border: 2px solid rgba(255,255,255,0.15);
-                        background: #333;
-                        display: block;
-                        position: relative; z-index: 2;
-                    }
-                    .pulse-ring {
-                        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                        width: 100%; height: 100%; border-radius: 50%;
-                        border: 2px solid rgba(52, 199, 89, 0.5);
-                        z-index: 1;
-                        animation: pulse-ring 2s infinite;
-                    }
-                    @keyframes pulse-ring {
-                        0% { width: 100%; height: 100%; opacity: 1; border-width: 2px; }
-                        100% { width: 160%; height: 160%; opacity: 0; border-width: 0px; }
-                    }
-
-                    .call-info h2 {
-                        margin: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px;
-                        color: #fff;
-                    }
-                    .call-type {
-                        margin: 6px 0 0 0; font-size: 0.85rem; color: #8e8e93;
-                        text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
-                        display: flex; align-items: center; gap: 6px;
-                    }
-                    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
-                    .audio-dot { background: #34c759; box-shadow: 0 0 6px #34c759; }
-                    .video-dot { background: #007aff; box-shadow: 0 0 6px #007aff; }
-
-                    .call-actions {
-                        display: flex; justify-content: space-between; align-items: center;
-                        padding: 0 8px;
-                    }
-                    .action-btn {
-                        width: 60px; height: 60px; border-radius: 50%; border: none;
-                        display: flex; align-items: center; justify-content: center;
-                        cursor: pointer; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-                    }
-                    .action-btn:active { transform: scale(0.9); }
-                    .action-btn:hover { transform: scale(1.05); }
-
-                    .reject-btn { background: #ff3b30; color: white; box-shadow: 0 8px 20px rgba(255, 59, 48, 0.3); }
-                    .message-btn { background: rgba(255,255,255,0.12); color: white; }
-                    .answer-btn { background: #34c759; color: white; box-shadow: 0 8px 20px rgba(52, 199, 89, 0.3); }
-
-                    .quick-replies-list {
-                        display: flex; flex-direction: column; gap: 8px;
-                        background: rgba(0,0,0,0.3); padding: 12px; border-radius: 18px;
-                    }
-                    .replies-header {
-                        display: flex; justify-content: space-between; align-items: center;
-                        margin-bottom: 8px; padding: 0 4px;
-                    }
-                    .replies-header h4 { margin: 0; font-size: 0.8rem; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; }
-                    .close-replies-btn {
-                        background: none; border: none; color: #8e8e93; font-size: 1.1rem; padding: 4px; cursor: pointer;
-                    }
-                    .quick-replies-list button {
-                        background: rgba(255,255,255,0.08); border: none; padding: 14px 16px;
-                        color: white; border-radius: 14px; cursor: pointer; text-align: left;
-                        font-size: 0.95rem; transition: background 0.2s; font-weight: 500;
-                    }
-                    .quick-replies-list button:hover { background: rgba(255,255,255,0.15); }
-
-                    @keyframes slideDown {
-                        from { opacity: 0; transform: translate(-50%, -20px) scale(0.95); }
-                        to { opacity: 1; transform: translate(-50%, 0) scale(1); }
-                    }
-                `}</style>
-            </div>
-        );
-
-    }
 
     // If incoming call is answered, show overlay
     // CallOverlay is now handled by the global CallUI component in CallContext
@@ -1238,6 +1089,12 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     }, [targetUser.id]);
 
     const [messages, setMessages] = useState([]);
+    const messagesActionRef = useRef(messages); // Renamed to avoid collision if messagesRef is used for DOM elements loops (though here it was used for scroll-to map)
+    // Actually, looking at code, 'messageRefs' is used for DOM. 'messagesEndRef' is for scroll. 
+    // I will use 'messagesStateRef' to be safe.
+    const messagesStateRef = useRef(messages);
+    useEffect(() => { messagesStateRef.current = messages; }, [messages]);
+
     const [input, setInput] = useState('');
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -1276,6 +1133,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     // Message refs for scroll-to functionality
     const messageRefs = useRef({});
+    const messageInputRef = useRef(null);
+    // Swipe gesture state persistence
+    const swipeRefs = useRef({});
     const [highlightedMessageId, setHighlightedMessageId] = useState(null);
 
     // Scroll to message function
@@ -1731,14 +1591,45 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 table: 'messages'
             }, async (payload) => {
                 // Client-side Filter:
-                // 1. Must be sent to me (receiver = currentUser)
-                // 2. Must be from the partner (sender = targetUser)
                 if (String(payload.new.receiver_id) === String(currentUser.id) && 
                     String(payload.new.sender_id) === String(targetUser.id)) {
+                    
+                    // Supabase realtime doesn't return joined data, so we must manually fetch or find reply_to context
+                    let replyToData = null;
+                    
+                    if (payload.new.reply_to_message_id) {
+                         // 1. Try finding in local state ref (fastest & synchronous)
+                         const found = messagesStateRef.current.find(m => m.id === payload.new.reply_to_message_id);
+                         if (found) {
+                             replyToData = {
+                                 id: found.id,
+                                 sender_id: found.sender_id,
+                                 content: found.content,
+                                 message_type: found.message_type,
+                                 image_url: found.image_url
+                             };
+                         }
+
+                         // 2. If not found locally, fetch single
+                         if (!replyToData) {
+                             const { data: fetchedReply } = await supabase
+                                 .from('messages')
+                                 .select('id, sender_id, content, message_type, image_url')
+                                 .eq('id', payload.new.reply_to_message_id)
+                                 .single();
+                             if (fetchedReply) replyToData = fetchedReply;
+                         }
+                    }
+
+                    const newMessage = { ...payload.new, reply_to: replyToData };
+
                     setMessages(prev => {
                         // Replace optimistic message if exists
                         const withoutOptimistic = prev.filter(m => !m.tempId);
-                        return [...withoutOptimistic, payload.new];
+                        // Check if already applied (duplicate event protection)
+                        if (withoutOptimistic.some(m => m.id === newMessage.id)) return prev;
+                        
+                        return [...withoutOptimistic, newMessage];
                     });
                     
                     // Don't mark as read here - let the polling mechanism handle it
@@ -1786,7 +1677,22 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             const fetchLatest = async () => {
                  const { data, error } = await supabase
                     .from('messages')
-                    .select('*')
+                    .select(`
+                        *,
+                        attachments:message_attachments(*),
+                        reply_to:reply_to_message_id(
+                            id,
+                            sender_id,
+                            content,
+                            message_type,
+                            image_url
+                        ),
+                        reply_to_story:reply_to_story_id(
+                            id,
+                            media_url,
+                            caption
+                        )
+                    `)
                     .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                     .order('created_at', { ascending: true });
 
@@ -2790,95 +2696,194 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         }
                     }
 
-                    // Swipe-to-reply and long-press gesture handling (using refs to avoid hook violations)
-                    let swipeX = 0;
-                    let touchStartX = null;
-                    let longPressTimer = null;
-                    let touchMoved = false;
+                    // Persistent swipe handling using refs
+                    const msgKey = msg.id || msg.tempId || `msg-${i}`;
                     const isSelected = selectedMessages.has(msg.id);
-                    
                     const handleTouchStart = (e) => {
-                        touchStartX = e.touches[0].clientX;
-                        touchMoved = false;
-                        
+                        const touchX = e.touches[0].clientX;
+                        const touchY = e.touches[0].clientY;
+                        swipeRefs.current[msgKey] = { 
+                            startX: touchX, 
+                            startY: touchY,
+                            currentX: 0,
+                            touchMoved: false,
+                            longPressTimer: null
+                        };
+
                         // Only start long press timer if NOT in selection mode
                         if (!isSelectionMode) {
-                            longPressTimer = setTimeout(() => {
-                                if (!touchMoved) {
+                            swipeRefs.current[msgKey].longPressTimer = setTimeout(() => {
+                                const state = swipeRefs.current[msgKey];
+                                if (state && !state.touchMoved) {
                                     // Long press detected - enter selection mode
                                     if (navigator.vibrate) navigator.vibrate(50);
-                                    touchMoved = true; // Mark as handled to prevent click
+                                    state.touchMoved = true; 
                                     setIsSelectionMode(true);
-                                    // Add to selection (using a function reference since we're in a loop)
                                     toggleSelection(msg.id);
                                 }
-                            }, 600); // Reduced to 600ms for better responsiveness
+                            }, 600);
                         }
                     };
                     
                     const handleTouchMove = (e) => {
-                        if (!touchStartX) return;
+                        const state = swipeRefs.current[msgKey];
+                        if (!state || !state.startX) return;
                         
                         const currentX = e.touches[0].clientX;
-                        const diff = currentX - touchStartX;
+                        const currentY = e.touches[0].clientY;
+                        const diffX = currentX - state.startX;
+                        const diffY = currentY - (state.startY || 0);
 
-                        // Ignore micro-movements (jitter) to allow taps
-                        if (Math.abs(diff) < 5) return;
+                        // Vertical Scroll Detection: Allow slight diagonal (1.5x tolerance)
+                        if (Math.abs(diffY) > Math.abs(diffX) * 1.5) return;
 
-                        touchMoved = true;
+                        // Ignore micro-movements
+                        if (Math.abs(diffX) < 5) return;
+
+                        state.touchMoved = true;
                         
-                        // Cancel long press if moved significantly
-                        if (longPressTimer) {
-                            clearTimeout(longPressTimer);
-                            longPressTimer = null;
+                        // Cancel long press
+                        if (state.longPressTimer) {
+                            clearTimeout(state.longPressTimer);
+                            state.longPressTimer = null;
                         }
                         
-                        // Disable swipe gesture during selection mode
+                        // Disable swipe during selection
                         if (isSelectionMode) return;
                         
-                        // Only allow right swipe (positive diff) and limit to 80px
-                        if (diff > 0 && diff <= 80) {
-                            swipeX = diff;
-                            // Update the element's transform directly
-                            e.currentTarget.style.transform = `translateX(${swipeX}px)`;
+                        // Right swipe logic
+                        if (diffX > 0) {
+                            state.currentX = diffX; // Track full distance
+                            const translateX = Math.min(diffX, 80); // Cap visual movement
+                            e.currentTarget.style.transform = `translateX(${translateX}px)`;
                         }
                     };
                     
                     const handleTouchEnd = (e) => {
-                        // Clear long-press timer
-                        if (longPressTimer) {
-                            clearTimeout(longPressTimer);
-                            longPressTimer = null;
-                        }
-                        
-                        if (swipeX > 50 && !touchMoved && !isSelectionMode) {
-                            setReplyToMessage(msg);
+                        const state = swipeRefs.current[msgKey];
+                        if (state) {
+                            // Clear timer
+                            if (state.longPressTimer) {
+                                clearTimeout(state.longPressTimer);
+                            }
+
+                            // Trigger reply if swiped enough
+                            if (state.currentX > 50 && !isSelectionMode) {
+                                setReplyToMessage(msg);
+                            }
+                            
+                            // Reset state
+                            swipeRefs.current[msgKey] = null;
                         }
                         
                         // Reset transform
                         e.currentTarget.style.transform = 'translateX(0)';
                         e.currentTarget.style.transition = 'transform 0.2s';
+                    };
+
+                    // Mouse Handlers (Mirroring Touch)
+                    const handleMouseDown = (e) => {
+                        if (e.button !== 0) return; // Only left click
+                        const x = e.clientX;
+                        const y = e.clientY;
+                        swipeRefs.current[msgKey] = { 
+                            startX: x, 
+                            startY: y,
+                            currentX: 0,
+                            touchMoved: false,
+                            longPressTimer: null
+                        };
+
+                        if (!isSelectionMode) {
+                            swipeRefs.current[msgKey].longPressTimer = setTimeout(() => {
+                                const state = swipeRefs.current[msgKey];
+                                if (state && !state.touchMoved) {
+                                    if (navigator.vibrate) navigator.vibrate(50);
+                                    state.touchMoved = true; 
+                                    setIsSelectionMode(true);
+                                    toggleSelection(msg.id);
+                                }
+                            }, 600);
+                        }
+                    };
+
+                    const handleMouseMove = (e) => {
+                        const state = swipeRefs.current[msgKey];
+                        if (!state || !state.startX) return; // Only if mouse down
                         
-                        swipeX = 0;
-                        touchStartX = null;
-                        // touchMoved will be reset on next touchStart
+                        // Check if primary button is still held (handles drag release outside)
+                        if ((e.buttons & 1) === 0) {
+                             handleMouseUp(e);
+                             return;
+                        }
+
+                        const currentX = e.clientX;
+                        const currentY = e.clientY;
+                        const diffX = currentX - state.startX;
+                        const diffY = currentY - (state.startY || 0);
+                        
+                        // Vertical Scroll Detection
+                        if (Math.abs(diffY) > Math.abs(diffX) * 1.5) return;
+
+                        if (Math.abs(diffX) < 5) return;
+
+                        state.touchMoved = true;
+                        
+                        if (state.longPressTimer) {
+                            clearTimeout(state.longPressTimer);
+                            state.longPressTimer = null;
+                        }
+                        
+                        if (isSelectionMode) return;
+                        
+                        if (isSelectionMode) return;
+                        
+                        if (diffX > 0) {
+                            state.currentX = diffX; // Track full distance
+                            const translateX = Math.min(diffX, 80); // Cap visual movement
+                            e.currentTarget.style.transform = `translateX(${translateX}px)`;
+                        }
+                    };
+
+                    const handleMouseUp = (e) => {
+                         const state = swipeRefs.current[msgKey];
+                         let wasDragging = false;
+                         if (state) {
+                             if (state.longPressTimer) clearTimeout(state.longPressTimer);
+                             
+                             if (state.touchMoved) wasDragging = true;
+
+                             if (state.currentX > 50 && !isSelectionMode) {
+                                 setReplyToMessage(msg);
+                             }
+                             swipeRefs.current[msgKey] = null;
+                         }
+                         e.currentTarget.style.transform = 'translateX(0)';
+                         e.currentTarget.style.transition = 'transform 0.2s';
+                         
+                         // Mark for Click Handler
+                         if (wasDragging) {
+                             e.currentTarget.setAttribute('data-dragged', 'true');
+                             setTimeout(() => e.target.removeAttribute('data-dragged'), 50); 
+                         } else {
+                             e.currentTarget.removeAttribute('data-dragged');
+                         }
                     };
 
                     const handleBubbleClick = (e) => {
-                         // Prevent click if we moved (swipe) or long-pressed
-                         if (touchMoved) {
+                         // Check persistent state using msgKey
+                         const state = swipeRefs.current[msgKey]; 
+                         if (e.currentTarget.getAttribute('data-dragged')) {
                              e.stopPropagation();
+                             e.preventDefault();
                              return;
                          }
-
-                         // If in selection mode, toggle selection
                          if (isSelectionMode) {
                              e.preventDefault();
                              e.stopPropagation();
                              toggleSelection(msg.id);
                              return;
                          }
-                         // Normal click behavior (e.g. image view) will propagate if not handled here
                     };
 
                     return (
@@ -2890,27 +2895,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 onTouchStart={handleTouchStart}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
-                                onMouseDown={(e) => {
-                                    if (isSelectionMode) return;
-                                    // Start long press timer for mouse
-                                    touchStartX = e.clientX;
-                                    touchMoved = false;
-                                    longPressTimer = setTimeout(() => {
-                                        if (!touchMoved) {
-                                            touchMoved = true; 
-                                            setIsSelectionMode(true);
-                                            toggleSelection(msg.id);
-                                        }
-                                    }, 500);
-                                }}
-                                onMouseUp={() => {
-                                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                                    touchStartX = null;
-                                }}
-                                onMouseLeave={() => {
-                                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                                    touchStartX = null;
-                                }}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     // Right click triggers selection mode immediately
@@ -2925,7 +2913,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                     transition: 'all 0.2s ease',
                                     cursor: isSelectionMode ? 'pointer' : 'default',
                                     userSelect: 'none', // Prevent text selection during hold
-                                    WebkitUserSelect: 'none'
+                                    WebkitUserSelect: 'none',
+                                    touchAction: 'pan-y' // Allow vertical scroll, handle horizontal in JS
                                 }}
                             >
                                 {/* Selection Overlay/Checkbox */}
@@ -3025,8 +3014,14 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                                 {replyToMessage.message_type === 'image' ? '📷 Photo' : replyToMessage.content}
                             </div>
                         </div>
-                        <button className="reply-preview-close" onClick={() => setReplyToMessage(null)}>
-                            ✕
+                        <button className="reply-preview-close" onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setReplyToMessage(null);
+                            // Refocus input to keep keyboard open
+                            setTimeout(() => messageInputRef.current?.focus(), 10);
+                        }}>
+                             ✕
                         </button>
                     </div>
                 )}
@@ -3094,6 +3089,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     </button>
 
                     <input
+                        ref={messageInputRef}
                         className="msg-input"
                         value={input}
                         onChange={e => setInput(e.target.value)}
@@ -3462,6 +3458,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     background: rgba(10, 10, 10, 0.6);
                     backdrop-filter: blur(10px);
                     transition: background 0.3s ease;
+                    position: relative;
+                    z-index: 10;
                 }
                 
                 /* Light theme override for input area */

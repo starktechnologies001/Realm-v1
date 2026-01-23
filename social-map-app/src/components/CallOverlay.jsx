@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import { supabase } from '../supabaseClient';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 
 export default function CallOverlay({ callData, currentUser, onEnd }) {
     const [status, setStatus] = useState('Connecting...');
@@ -18,6 +18,20 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     const localVideoTrackRef = useRef(null);
     const callStartTimeRef = useRef(null);
     const durationIntervalRef = useRef(null);
+
+    // Play Local Video Track when ready and camera is on
+    useEffect(() => {
+        if (localTrackReady && localVideoTrackRef.current && localVideoRef.current && !cameraOff) {
+            localVideoTrackRef.current.play(localVideoRef.current);
+        }
+    }, [localTrackReady, cameraOff]);
+
+    // Play Remote Video Track when available
+    useEffect(() => {
+        if (remoteUsers.length > 0 && remoteUsers[0].videoTrack && remoteVideoRef.current) {
+            remoteUsers[0].videoTrack.play(remoteVideoRef.current);
+        }
+    }, [remoteUsers]);
 
     useEffect(() => {
         let mounted = true;
@@ -105,27 +119,9 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 }
 
                 // 4. Join Channel
-                const joinWithRetry = async (retries = 3, useSuffix = false) => {
-                    try {
-                        let joinUid = currentUser.id;
-                        if (useSuffix) {
-                            joinUid = `${currentUser.id}-${Math.floor(Math.random() * 10000)}`;
-                        }
-                        return await client.join(APP_ID, channelName, null, joinUid);
-                    } catch (err) {
-                        if (err.code === 'UID_CONFLICT' && retries > 0) {
-                            setStatus(`Connection conflict... (${retries})`);
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            return joinWithRetry(retries - 1, false);
-                        } else if (err.code === 'UID_CONFLICT') {
-                            setStatus('Resolving session...');
-                            return joinWithRetry(0, true);
-                        }
-                        throw err;
-                    }
-                };
-
-                await joinWithRetry();
+                // Use a unique UID to prevent collision with ghost sessions from previous tabs
+                const uniqueUid = `${currentUser.id}-${Date.now().toString().slice(-6)}`;
+                await client.join(APP_ID, channelName, null, uniqueUid);
 
                 // 5. Publish Tracks
                 const tracksToPublish = [];
@@ -137,16 +133,32 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     console.log('Published local tracks');
                 }
 
-                if (mounted) {
-                    setStatus('Connected');
+                const startTimer = () => {
+                    if (durationIntervalRef.current) return;
+                    console.log('⏱️ Starting Call Timer');
                     callStartTimeRef.current = Date.now();
-                    
                     durationIntervalRef.current = setInterval(() => {
                         if (callStartTimeRef.current) {
                             const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
                             setCallDuration(elapsed);
                         }
                     }, 1000);
+                };
+
+                if (mounted) {
+                    if (callData.isIncoming) {
+                         // Receiver: Connected immediately upon opening this overlay
+                         setStatus('Connected');
+                         startTimer();
+                    } else {
+                         // Caller: Wait for answer
+                         setStatus('Ringing...'); 
+                    }
+                }
+
+                // 6. Play Local Video if ready
+                if (localVideoTrackRef.current && localVideoRef.current && !cameraOff) {
+                    localVideoTrackRef.current.play(localVideoRef.current);
                 }
 
                 // Listen for call status changes
@@ -159,13 +171,13 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     }, (payload) => {
                         if (payload.new.status === 'ended' || payload.new.status === 'rejected' || payload.new.status === 'declined') {
                             cleanup();
-                            onEnd(callDuration, payload.new.status);
+                            // Calculate final duration dynamically to avoid stale closure state
+                            const finalDuration = callStartTimeRef.current ? Math.floor((Date.now() - callStartTimeRef.current) / 1000) : 0;
+                            onEnd(finalDuration, payload.new.status);
                         }
                         if (payload.new.status === 'active' && mounted) {
                             setStatus('Connected');
-                            if (!callStartTimeRef.current) {
-                                callStartTimeRef.current = Date.now();
-                            }
+                            startTimer();
                         }
                         if (payload.new.status === 'ringing' && mounted) {
                             setStatus('Ringing...');
@@ -193,26 +205,42 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
         };
 
         const cleanup = async () => {
+            if (!mounted) return; // Prevent double cleanup if possible, though refs protect us
             mounted = false;
             
             // Stop duration timer
             if (durationIntervalRef.current) {
                 clearInterval(durationIntervalRef.current);
+                durationIntervalRef.current = null;
             }
 
-            // Close local tracks
-            if (localAudioTrackRef.current) {
-                localAudioTrackRef.current.close();
-            }
-            if (localVideoTrackRef.current) {
-                localVideoTrackRef.current.close();
+            // Close local tracks - CRITICAL for simple hardware release
+            try {
+                if (localAudioTrackRef.current) {
+                    localAudioTrackRef.current.stop();
+                    localAudioTrackRef.current.close();
+                    localAudioTrackRef.current = null;
+                }
+                if (localVideoTrackRef.current) {
+                    localVideoTrackRef.current.stop();
+                    localVideoTrackRef.current.close();
+                    localVideoTrackRef.current = null;
+                }
+            } catch (err) {
+                console.error('Error closing local tracks:', err);
             }
 
             // Leave channel
             if (clientRef.current) {
-                await clientRef.current.leave();
-                console.log('Left channel');
+                try {
+                    await clientRef.current.leave();
+                } catch (e) {
+                    console.log('Already left channel or error leaving:', e);
+                }
+                clientRef.current = null;
             }
+            
+            console.log('✅ Call Cleanup Complete: Hardware released.');
         };
 
         initializeCall();
@@ -290,27 +318,6 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     // Check if remote user has active video track
     const hasRemoteVideo = remoteUsers.length > 0 && remoteUsers[0].videoTrack;
 
-    const getAvatarUrl = (u) => {
-        if (!u) {
-            console.warn('CallOverlay: getAvatarUrl called with null user');
-            // Return a safe fallback immediately
-            return `https://avatar.iran.liara.run/public?username=Unknown`;
-        }
-        
-        // Handle 3D avatars (GLB) -> 2D PNG
-        if (u.avatar_url && u.avatar_url.includes('.glb')) {
-            return getAvatar2D(u.avatar_url);
-        }
-
-        if (u.avatar_url) return u.avatar_url;
-
-        const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-        const g = u.gender?.toLowerCase();
-        if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-        if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-        return `https://avatar.iran.liara.run/public?username=${safeName}`;
-    };
-
     return (
         <div className="call-interface-overlay">
             <span className="status-pill">
@@ -323,18 +330,26 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 <>
                     {/* Remote Video/Avatar */}
                     {hasRemoteVideo ? (
-                        <div ref={remoteVideoRef} className="remote-video-container"></div>
+                        <div className="remote-video-wrapper">
+                            <div ref={remoteVideoRef} className="remote-video-container"></div>
+                            {/* Overlay for Remote User Identity in Video */}
+                            <div className="video-identity-overlay">
+                                <img 
+                                    src={getAvatar2D(callData.partner.avatar_url, callData.partner.username)} 
+                                    className="small-avatar"
+                                    onError={(e) => handleAvatarError(e, callData.partner.username)}
+                                    alt=""
+                                />
+                                <span>{callData.partner.username}</span>
+                            </div>
+                        </div>
                     ) : (
-                        <div className="remote-avatar-container" style={{ '--bg-image': `url(${getAvatarUrl(callData.partner)})` }}>
+                        <div className="remote-avatar-container" style={{ '--bg-image': `url(${getAvatar2D(callData.partner.avatar_url, callData.partner.username)})` }}>
                             <img 
-                                src={getAvatarUrl(callData.partner)} 
+                                src={getAvatar2D(callData.partner.avatar_url, callData.partner.username)} 
                                 className="remote-avatar" 
                                 alt="Remote User"
-                                onError={(e) => {
-                                    const u = callData.partner;
-                                    const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                                    e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                }}
+                                onError={(e) => handleAvatarError(e, callData.partner.username)}
                             />
                             <h2>{callData.partner.username}</h2>
                             <div className="call-status-text">
@@ -349,62 +364,40 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                             <div ref={localVideoRef} style={{ width: '100%', height: '100%' }}></div>
                         ) : (
                             <img 
-                                src={getAvatarUrl(currentUser)}
+                                src={getAvatar2D(currentUser.avatar_url, currentUser.username)}
                                 alt="Me"
                                 className="local-avatar-img"
+                                onError={(e) => handleAvatarError(e, currentUser.username)}
                             />
                         )}
                     </div>
                 </>
             ) : (
-                /* Audio Call Layout - Caller (Top-Right) / Receiver (Center) */
-                <div className="audio-layout-container">
-                    {(() => {
-                        const isIncoming = callData.isIncoming;
-                        // Caller is the one who initiated.
-                        // If incoming: Partner is Caller (if checking incoming call UI), but here we want to establish roles.
-                        // For the CallOverlay, `callData` usually has `isIncoming`.
-                        
-                        // We must be defensive if either is missing
-                        const safeCaller = isIncoming ? (callData.partner || { username: 'Unknown' }) : (currentUser || { username: 'Me' });
-                        const safeReceiver = isIncoming ? (currentUser || { username: 'Me' }) : (callData.partner || { username: 'Unknown' });
+                /* Audio Call Layout - Dual Avatars */
+                <div className="audio-dual-layout">
+                    {/* Partner Avatar */}
+                    <div className="audio-avatar-wrapper pulse">
+                        <img 
+                            src={getAvatar2D(callData.partner.avatar_url, callData.partner.username)} 
+                            alt={callData.partner.username}
+                            className="audio-avatar"
+                            onError={(e) => handleAvatarError(e, callData.partner.username)}
+                        />
+                        <span className="audio-name">{callData.partner.username}</span>
+                    </div>
 
-                        console.log('CallOverlay Debug:', {
-                            isIncoming,
-                            callerName: safeCaller.username,
-                            receiverName: safeReceiver.username,
-                            callerAvatar: safeCaller.avatar_url,
-                            receiverAvatar: safeReceiver.avatar_url
-                        });
-
-                        return (
-                            <>
-                                {/* Receiver - BIG CENTER */}
-                                <div className="audio-avatar-wrapper receiver pulse">
-                                    <img 
-                                        src={getAvatarUrl(safeReceiver)} 
-                                        alt={safeReceiver.username}
-                                        className="audio-avatar big"
-                                    />
-                                    <span className="audio-name">{safeReceiver.username}</span>
-                                    <div className="role-label" style={{ opacity: 0.5, fontSize: '0.8rem', marginTop: '4px' }}>Receiver</div>
-                                </div>
-
-                                {/* Caller - SMALL TOP RIGHT */}
-                                <div className="audio-caller-pip">
-                                    <img 
-                                        src={getAvatarUrl(safeCaller)} 
-                                        alt={safeCaller.username}
-                                        className="audio-avatar small"
-                                    />
-                                    <span className="audio-name-small">{safeCaller.username}</span>
-                                    <div className="role-label" style={{ opacity: 0.5, fontSize: '0.6rem' }}>Caller</div>
-                                </div>
-                                
-                                <div className="audio-status">{status}</div>
-                            </>
-                        );
-                    })()}
+                    {/* Local Avatar */}
+                    <div className="audio-avatar-wrapper">
+                         <img 
+                            src={getAvatar2D(currentUser.avatar_url, currentUser.username)} 
+                            alt="Me"
+                            className="audio-avatar local"
+                            onError={(e) => handleAvatarError(e, currentUser.username)}
+                        />
+                        <span className="audio-name">Me</span>
+                    </div>
+                    
+                    <div className="audio-status">{status}</div>
                 </div>
             )}
 
@@ -596,59 +589,42 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     .audio-avatar { width: 120px; height: 120px; }
                 }
 
-                /* Audio Layout Container */
-                .audio-layout-container {
-                     flex: 1;
-                     display: flex;
-                     align-items: center;
-                     justify-content: center;
-                     background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
-                     position: relative;
-                     width: 100%; height: 100%;
+                /* Audio Dual Layout */
+                .audio-dual-layout {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 60px;
+                    background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
+                    position: relative;
                 }
 
-                /* Receiver - BIG CENTER */
-                .audio-avatar-wrapper.receiver {
-                     display: flex; flex-direction: column; align-items: center; gap: 16px;
-                     position: relative;
-                     z-index: 1;
-                }
-                .audio-avatar.big {
-                     width: 200px; height: 200px;
-                     border-radius: 50%;
-                     object-fit: cover;
-                     border: 4px solid rgba(255, 255, 255, 0.15);
-                     box-shadow: 0 10px 60px rgba(0,0,0,0.6);
+                .audio-avatar-wrapper {
+                    display: flex; flex-direction: column; align-items: center; gap: 16px;
+                    position: relative;
                 }
 
-                /* Caller - SMALL TOP RIGHT (PIP) */
-                .audio-caller-pip {
-                    position: absolute; top: 60px; right: 24px;
-                    width: 100px;
-                    display: flex; flex-direction: column; align-items: center; gap: 4px;
-                    z-index: 10;
-                    background: rgba(0,0,0,0.4);
-                    padding: 8px; border-radius: 20px;
-                    backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    transition: transform 0.2s;
-                }
-                .audio-caller-pip:hover { transform: scale(1.05); }
-
-                .audio-avatar.small {
-                    width: 60px; height: 60px;
+                .audio-avatar {
+                    width: 150px; height: 150px;
                     border-radius: 50%;
                     object-fit: cover;
-                    border: 2px solid rgba(255,255,255,0.3);
+                    border: 4px solid rgba(255, 255, 255, 0.1);
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    z-index: 2;
                 }
-                .audio-name-small {
-                    font-size: 0.8rem; font-weight: 600; color: white;
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+                
+                .audio-avatar.local {
+                    border-color: rgba(52, 199, 89, 0.3); /* Green Tint for self */
+                }
+
+                .audio-avatar-wrapper.pulse .audio-avatar {
+                    animation: pulse-ring 3s infinite;
                 }
 
                 .audio-name {
-                    font-size: 1.6rem; font-weight: 800; color: white;
-                    text-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    font-size: 1.2rem; font-weight: 700; color: white;
+                    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
                 }
 
                 .audio-status {

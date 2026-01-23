@@ -22,16 +22,30 @@ export const CallProvider = ({ children }) => {
 
     // Fetch Current User on Mount
     useEffect(() => {
-        const fetchUser = async () => {
+        const fetchUser = async (userId) => {
+            if (!userId) {
+                setCurrentUser(null);
+                return;
+            }
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
+            
+            if (profile) setCurrentUser(profile);
+        };
+
+        const getSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
-                setCurrentUser(session.user);
+                fetchUser(session.user.id);
             }
         };
-        fetchUser();
+        getSession();
 
         const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (session?.user) setCurrentUser(session.user);
+            if (session?.user) fetchUser(session.user.id);
             else setCurrentUser(null);
         });
 
@@ -46,18 +60,18 @@ export const CallProvider = ({ children }) => {
 
         const channel = supabase.channel('global_calls_system')
             .on('postgres_changes', { 
-                event: 'INSERT', 
+                event: '*', // Listen to INSERT and UPDATE
                 schema: 'public', 
-                table: 'calls', 
- 
-                filter: `receiver_id=eq.${currentUser.id}` 
+                table: 'calls'
+                // REMOVED FILTER to ensure we catch the event. We filter manually below.
             }, async (payload) => {
                 console.log('🔔 [CallContext] REALTIME EVENT RECEIVED:', payload);
-                // Check status is pending
-                if (payload.new.status === 'pending') {
+                
+                // CASE 1: New Incoming Call
+                // Manual Filter: strictly check receiver_id
+                if (payload.eventType === 'INSERT' && payload.new.status === 'pending' && payload.new.receiver_id === currentUser.id) {
                     // Check if we are already busy
                     if (isCalling || incomingCall) {
-                        // Auto-reject with busy status if already on a call
                         console.log("User is busy, auto-rejecting call:", payload.new.id);
                         await supabase.from('calls').update({ status: 'busy' }).eq('id', payload.new.id);
                         return;
@@ -81,12 +95,25 @@ export const CallProvider = ({ children }) => {
                         // Notify sender that we received the signal (Update status to ringing)
                         await supabase.from('calls').update({ status: 'ringing' }).eq('id', payload.new.id);
 
-                        // Start Auto-Decline Timer (30s timeout for "No Answer")
+                        // Start Auto-Decline Timer
                         const timer = setTimeout(() => {
                             rejectCall(callInfo.id, 'missed');
                         }, 30000);
                         setAutoDeclineTimer(timer);
                     }
+                }
+
+                // CASE 2: Call Cancelled/Ended remotely while ringing
+                if (payload.eventType === 'UPDATE') {
+                   // If the updated call is the one currently ringing
+                   if (incomingCall && payload.new.id === incomingCall.id) {
+                       const newStatus = payload.new.status;
+                       if (['ended', 'cancelled', 'missed', 'rejected'].includes(newStatus)) {
+                           console.log(`🔕 Call ${newStatus} remotely. Dismissing popup.`);
+                           if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
+                           setIncomingCall(null);
+                       }
+                   }
                 }
             })
             .subscribe((status, err) => {
@@ -156,7 +183,7 @@ export const CallProvider = ({ children }) => {
         if (error) console.error("Error logging call message:", error);
     };
 
-    const rejectCall = async (callId = null, reason = 'declined') => {
+    const rejectCall = async (callId = null, reason = 'rejected') => {
         if (processingAction.current) return;
         processingAction.current = true;
 

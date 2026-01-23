@@ -3,7 +3,6 @@ import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
-import { useCall } from '../context/CallContext';
 import { supabase } from '../supabaseClient';
 import MapProfileCard from '../components/MapProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
@@ -79,9 +78,15 @@ const generateMockUsers = (centerLat, centerLng) => {
 
 function RecenterAutomatically({ lat, lng }) {
     const map = useMap();
+    const hasCentered = useRef(false);
+
     useEffect(() => {
-        map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+        if (!hasCentered.current && lat && lng) {
+            map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+            hasCentered.current = true;
+        }
     }, [lat, lng, map]);
+
     return null;
 }
 
@@ -91,7 +96,6 @@ export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
     const { permissionStatus, setPermission, resetPermission } = useLocationContext();
-    const { startCall } = useCall();
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
@@ -457,8 +461,9 @@ export default function MapHome() {
                         else if (u.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
                         else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
 
-                        const renderLat = u.latitude;
-                        const renderLng = u.longitude;
+                        // Micro-jitter for initial load
+                        const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
+                        const renderLng = u.longitude + (Math.random() - 0.5) * 0.0002;
 
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
@@ -524,9 +529,9 @@ export default function MapHome() {
                             else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
                         }
 
-                        // Real Lat/Lng
-                        const renderLat = updatedUser.latitude;
-                        const renderLng = updatedUser.longitude;
+                        // Jitter coordinates slightly
+                        const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
+                        const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
 
                         const newUserObj = {
                             id: updatedUser.id,
@@ -581,8 +586,8 @@ export default function MapHome() {
                         else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
                     }
                     
-                    const renderLat = newUser.latitude;
-                    const renderLng = newUser.longitude;
+                    const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
+                    const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
 
                     const newUserObj = {
                         id: newUser.id,
@@ -633,8 +638,8 @@ export default function MapHome() {
                 // We'll use a timestamp check to avoid spamming DB
                 const lastUpdate = localStorage.getItem('last_loc_update');
                 const now = Date.now();
-                if (lastUpdate && now - parseInt(lastUpdate) < 1000) {
-                     return; // Update every 1s
+                if (lastUpdate && now - parseInt(lastUpdate) < 5000) {
+                     return; // Skip if updated < 5s ago
                 }
 
                 await supabase.from('profiles').update({
@@ -811,15 +816,25 @@ export default function MapHome() {
                 { enableHighAccuracy: true }
             );
 
-            // Watcher REMOVED - Using global watch in previous Effect to avoid duplication
-            // Just update local state for initial load if needed
-             navigator.geolocation.getCurrentPosition(
-                (position) => {
+            // Watcher
+            watchIdRef.current = navigator.geolocation.watchPosition(
+                async (position) => {
                     const { latitude, longitude } = position.coords;
                     setLocation({ lat: latitude, lng: longitude });
-                    setLoading(false);
+                     // Throttle DB updates (15s)
+                    const now = Date.now();
+                    const lastUpdate = window.lastLocationUpdate || 0;
+                    if (parsedUser.id && (now - lastUpdate > 15000)) {
+                        window.lastLocationUpdate = now;
+                        await supabase.from('profiles').update({
+                            latitude: latitude,
+                            longitude: longitude,
+                            last_active: new Date().toISOString()
+                        }).eq('id', parsedUser.id);
+                    }
                 },
                 (error) => {
+                     // Fallback
                      if (!location) {
                          setLocation({ lat: 37.7749, lng: -122.4194 }); // SF Default
                          setLoading(false);
@@ -1276,10 +1291,7 @@ export default function MapHome() {
             setSelectedUser(null); // Close small card
         }
         else if (action === 'call-audio' || action === 'call-video') {
-            const type = action === 'call-audio' ? 'audio' : 'video';
-            startCall(targetUser, type);
-            // Optionally close the card
-            // setSelectedUser(null); 
+            showToast("Calls coming soon! 📞");
         }
         else if (action === 'view-story') {
              // Fetch active stories for this user
@@ -1554,21 +1566,50 @@ export default function MapHome() {
                 {/* Current User Marker (Memoized above) */}
                 {currentUserMarker}
 
-                {nearbyUsers.map(u => {
-                    // Check thought expiration (2 hours)
-                    let displayThought = u.thought;
-                    if (u.status_updated_at) {
-                        const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
-                        if (diffHours > 2) displayThought = null;
-                    }
+                {(() => {
+                    // Process users to handle overlap (Spiderfy / Separation)
+                    const processedUsers = nearbyUsers.map((u, i, all) => {
+                        // Simple Collision Detection
+                        // Group users that are within threshold (approx 3-4 meters)
+                        const THRESHOLD = 0.00004; 
+                        const collidingUsers = all.filter(other => 
+                            Math.abs(other.lat - u.lat) < THRESHOLD && 
+                            Math.abs(other.lng - u.lng) < THRESHOLD
+                        );
 
-                    return (
-                        <Marker
-                            key={`${u.id}-${u.avatar}`}
-                            position={[u.lat, u.lng]}
-                            icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
-                        eventHandlers={{
-                            click: async () => {
+                        if (collidingUsers.length <= 1) return u; // No collision
+
+                        // Calculate index in this specific group
+                        // Sort by ID to ensure consistent ordering (so they don't jump around)
+                        collidingUsers.sort((a,b) => a.id.localeCompare(b.id));
+                        const indexInGroup = collidingUsers.findIndex(cu => cu.id === u.id);
+
+                        // Apply Offset (Circle formation)
+                        const angle = (indexInGroup / collidingUsers.length) * 2 * Math.PI;
+                        const radius = 0.00015; // Separation radius (approx 15-20 meters visually)
+
+                        return {
+                            ...u,
+                            lat: u.lat + (Math.cos(angle) * radius),
+                            lng: u.lng + (Math.sin(angle) * radius)
+                        };
+                    });
+
+                    return processedUsers.map(u => {
+                        // Check thought expiration (2 hours)
+                        let displayThought = u.thought;
+                        if (u.status_updated_at) {
+                            const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
+                            if (diffHours > 2) displayThought = null;
+                        }
+
+                        return (
+                            <Marker
+                                key={`${u.id}-${u.avatar}`}
+                                position={[u.lat, u.lng]}
+                                icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
+                                eventHandlers={{
+                                    click: async () => {
 
                                 // Fetch friendship status synchronously to update UI instantly
                                 let status = null;
@@ -1610,7 +1651,8 @@ export default function MapHome() {
                         }}
                     />
                     );
-                })}
+                });
+            })()}
             </MapContainer>
 
             <MapProfileCard
