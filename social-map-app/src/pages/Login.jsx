@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { generateRandomRPMAvatar } from '../utils/avatarUtils';
 
@@ -28,7 +28,11 @@ export default function Login() {
   const [gender, setGender] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
 
-  const [isSignUp, setIsSignUp] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Derive mode from URL
+  const isSignUp = location.pathname === '/signup';
+
   const [error, setError] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
@@ -67,7 +71,7 @@ export default function Login() {
 
   // ... (rest of code) ...
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+
 
   const toggleInterest = (interest) => {
     if (selectedInterests.includes(interest)) {
@@ -249,13 +253,13 @@ export default function Login() {
         <div className="auth-toggle">
           <button
             className={`toggle-btn ${!isSignUp ? 'active' : ''}`}
-            onClick={() => { setIsSignUp(false); setError(''); }}
+            onClick={() => { navigate('/login'); setError(''); }}
           >
             Log In
           </button>
           <button
             className={`toggle-btn ${isSignUp ? 'active' : ''}`}
-            onClick={() => { setIsSignUp(true); setError(''); }}
+            onClick={() => { navigate('/signup'); setError(''); }}
           >
             Signup
           </button>
