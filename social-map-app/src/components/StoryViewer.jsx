@@ -24,6 +24,10 @@ export default function StoryViewer({
     const currentStory = stories[currentIndex];
     const user = userStories?.user || {};
     const isOwner = currentUser?.id && user?.id && currentUser.id === user.id;
+    
+    // Handle property mismatches (MapHome uses 'name'/'avatar', DB uses 'username'/'avatar_url')
+    const displayUsername = user.username || user.name || 'User';
+    const displayAvatar = user.avatar_url || user.avatar;
 
     if (!userStories || !userStories.user) {
         console.error('StoryViewer: Missing user data', userStories);
@@ -224,9 +228,9 @@ export default function StoryViewer({
                     paddingTop: '60px' // Avoid notch overlap
                 }}>
                     <div className="user-info">
-                        <img src={getAvatarHeadshot(user.avatar_url, user.username)} alt="Avatar" />
+                        <img src={getAvatarHeadshot(displayAvatar, displayUsername)} alt="Avatar" />
                         <div className="meta">
-                            <span className="username" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{user.username || 'User'}</span>
+                            <span className="username" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{displayUsername}</span>
                             <span className="timestamp" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
                                 {new Date(currentStory.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>

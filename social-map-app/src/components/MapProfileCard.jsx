@@ -83,7 +83,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                 src={displayAvatar} 
                                 alt={user.name} 
                                 className="avatar-large"
-                                style={{ filter: canViewDetails ? 'none' : 'blur(5px)' }}
+                                style={{ filter: 'none' }}
                             />
                             <div className={`status-dot ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
@@ -124,7 +124,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                         </div>
                     </div>
 
-                    {user.thought && (
+                    {canViewDetails && user.thought && (
                         <div className="thought-bubble-large">
                             {user.thought}
                         </div>
@@ -191,16 +191,14 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                             </>
                         )}
 
-                        {/* View Profile Button - Now Second */}
-                        {canViewDetails && (
-                            <button 
-                                className="action-btn"
-                                onClick={() => onAction('view-profile', user)}
-                            >
-                                <span className="icon">👤</span>
-                                <span className="label">Profile</span>
-                            </button>
-                        )}
+                        {/* View Profile Button - Always visible now */}
+                        <button 
+                            className="action-btn"
+                            onClick={() => onAction('view-profile', user)}
+                        >
+                            <span className="icon">👤</span>
+                            <span className="label">Profile</span>
+                        </button>
                         
                          <button 
                             className="action-btn secondary-action danger"

@@ -83,47 +83,21 @@ button {
   flex-direction: column;
 }
 
-/* Dark Mode - Universal UI Element Styles */
-html[data-theme="dark"] button:not([style*="color"]),
-html[data-theme="dark"] .btn,
+/* Proper Dark Mode Defaults */
 html[data-theme="dark"] input,
 html[data-theme="dark"] textarea,
 html[data-theme="dark"] select {
-  color: var(--text-primary) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border);
 }
 
-html[data-theme="dark"] svg:not([fill]),
-html[data-theme="dark"] .icon {
-  color: var(--text-primary) !important;
-  stroke: var(--text-primary) !important;
+html[data-theme="dark"] button {
+  color: var(--text-primary);
 }
 
-html[data-theme="dark"] .modal,
-html[data-theme="dark"] .popup,
-html[data-theme="dark"] .dropdown,
-html[data-theme="dark"] .menu {
-  background: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-}
+/* Dark Mode - Universal UI Element Styles */
 
-html[data-theme="dark"] input::placeholder,
-html[data-theme="dark"] textarea::placeholder {
-  color: var(--text-secondary) !important;
-}
-
-html[data-theme="dark"] h1,
-html[data-theme="dark"] h2,
-html[data-theme="dark"] h3,
-html[data-theme="dark"] h4,
-html[data-theme="dark"] h5,
-html[data-theme="dark"] h6,
-html[data-theme="dark"] p,
-html[data-theme="dark"] span:not(.tag):not(.badge):not(.msg-text),
-html[data-theme="dark"] div:not([class*="bg-"]):not([class*="background"]):not(.msg-bubble):not(.msg-text) {
-  color: var(--text-primary) !important;
-}
 
 /* System theme dark mode */
 @media (prefers-color-scheme: dark) {

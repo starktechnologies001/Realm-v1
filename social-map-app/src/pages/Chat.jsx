@@ -9,6 +9,7 @@ import { getBlockedUserIds } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
 import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
+import MessageBubble from '../components/MessageBubble';
 import { uploadToStorage, validateFile } from '../utils/fileUpload';
 import EmojiPicker from 'emoji-picker-react';
 import { usePresence } from '../hooks/usePresence';
@@ -147,10 +148,14 @@ export default function Chat() {
         }
 
         // 3. Fetch Profiles for ALL these partners (excluding blocked)
+        const validPartnerIds = Array.from(partnerIds).filter(id => id); // Filter out null/undefined/empty string
+        
+        if (validPartnerIds.length === 0) return [];
+
         const { data: profiles } = await supabase
             .from('profiles')
             .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen')
-            .in('id', Array.from(partnerIds));
+            .in('id', validPartnerIds);
 
         if (!profiles) {
             return [];
@@ -645,28 +650,8 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 <div className="header-top">
                     <h1>Chats</h1>
                     <div className="header-actions">
-                         {/* Connection Status Indicator */}
-                         {connectionStatus && (
-                            <div 
-                                title={`Realtime Status: ${connectionStatus}`}
-                                style={{
-                                    width: 10,
-                                    height: 10,
-                                    borderRadius: '50%',
-                                    backgroundColor: connectionStatus === 'connected' ? '#4caf50' : connectionStatus === 'disconnected' ? '#f44336' : '#ff9800',
-                                    marginRight: 10,
-                                    border: '1.5px solid rgba(0,0,0,0.1)',
-                                    display: 'inline-block'
-                                }}
-                            />
-                        )}
-                    <button className="settings-btn" onClick={() => {}}>
-                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                    </button>
-                </div>
+                        {/* Status and Settings removed as per user request */}
+                    </div>
             </div>
                 
                 {/* Tabs */}
@@ -1099,6 +1084,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
     const messagesEndRef = useRef(null);
+    const isInitialLoad = useRef(true);
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
 
@@ -1237,6 +1223,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         const partnerCache = localStorage.getItem(`chat_theme_partner_${targetUser?.id}`);
         return partnerCache && CHAT_THEMES[partnerCache] ? partnerCache : (localStorage.getItem('visual_chat_theme') || 'clean_slate');
     });
+    
+    // Ref to track active theme inside closures (subscriptions)
+    const activeThemeRef = useRef(chatTheme);
+    useEffect(() => { activeThemeRef.current = chatTheme; }, [chatTheme]);
+
     const [showChatThemeSelector, setShowChatThemeSelector] = useState(false);
 
     // Wallpaper State
@@ -1276,79 +1267,55 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
-    // Fetch Chat Theme from Database (Shared Friendship Theme)
+    // Subscribe to shared_themes changes for real-time theme sync
     useEffect(() => {
         if (!currentUser?.id || !targetUser?.id) return;
-        
-        const fetchChatTheme = async () => {
-            // Find the friendship ID first
-            const { data: friendship } = await supabase
-                .from('friendships')
-                .select('id, chat_theme')
-                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
-                .single();
 
-            console.log('🔍 [ThemeFetch] Fetched friendship for theme:', { 
-                id: friendship?.id, 
-                theme: friendship?.chat_theme, 
-                users: [currentUser.id, targetUser.id] 
-            });
-
-            if (friendship) {
-                if (friendship.chat_theme && CHAT_THEMES[friendship.chat_theme]) {
-                    console.log('✅ [ThemeFetch] Applying DB theme:', friendship.chat_theme);
-                    setChatTheme(friendship.chat_theme);
-                    localStorage.setItem(`chat_theme_${friendship.id}`, friendship.chat_theme);
-                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, friendship.chat_theme);
-                } else {
-                     console.log('ℹ️ [ThemeFetch] Friendship exists but no theme set. applying default.');
-                     const defaultTheme = 'clean_slate';
-                     setChatTheme(defaultTheme);
-                     // Optional update cache to match truth
-                     localStorage.setItem(`chat_theme_partner_${targetUser.id}`, defaultTheme);
-                }
-            } else {
-                console.log('⚠️ [ThemeFetch] No friendship found (non-friend chat?). Keeping local cached theme.');
-                // Do NOT reset to default. Keep whatever useState loaded from cache.
-            }
-        };
-        fetchChatTheme();
-
-        // Subscribe to friendship changes for real-time theme sync
-        // Note: Supabase subscriptions don't support complex OR filters with AND conditions
-        // So we subscribe to all friendship updates and filter in the callback
         const channel = supabase
-            .channel(`friendship_theme_${currentUser.id}_${targetUser.id}`)
+            .channel(`theme_sync_${currentUser.id}_${targetUser.id}`)
             .on('postgres_changes', { 
                 event: 'UPDATE', 
                 schema: 'public', 
-                table: 'friendships'
+                table: 'shared_themes' 
             }, (payload) => {
-                console.log('📡 Received friendship update:', payload);
+                console.log('📡 Received theme update:', payload);
                 
-                // Check if this update is for the current friendship
-                const isRelevant = (
-                    (payload.new.requester_id === currentUser.id && payload.new.receiver_id === targetUser.id) ||
-                    (payload.new.requester_id === targetUser.id && payload.new.receiver_id === currentUser.id)
-                );
+                const newData = payload.new;
+                // Check if this update involves the current user pair
+                // The table uses user_1 and user_2 (sorted), so checking containment is enough
+                const ids = [newData.user_1, newData.user_2];
+                const isRelevant = ids.includes(currentUser.id) && ids.includes(targetUser.id);
                 
-                console.log('🔍 Is relevant?', isRelevant, 'Current users:', currentUser.id, targetUser.id);
-                console.log('🔍 Payload users:', payload.new.requester_id, payload.new.receiver_id);
-                
-                if (isRelevant && payload.new.chat_theme && CHAT_THEMES[payload.new.chat_theme]) {
-                    console.log('✅ Applying theme:', payload.new.chat_theme);
-                    setChatTheme(payload.new.chat_theme);
-                    setChatBackground(null); // Clear custom background when theme changes
-                    setChatBackground(null); // Clear custom background when theme changes
-                    localStorage.setItem(`chat_theme_${payload.new.id}`, payload.new.chat_theme);
-                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, payload.new.chat_theme);
-                    showToast(`Theme updated to ${CHAT_THEMES[payload.new.chat_theme].name}`);
+                if (isRelevant && newData.theme) {
+                    console.log('✅ Applying shared theme:', newData.theme);
+                    setChatTheme(newData.theme);
+                    setChatBackground(null); // Clear custom background
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.theme);
+                    
+                    if (CHAT_THEMES[newData.theme]) {
+                         showToast(`Theme updated to ${CHAT_THEMES[newData.theme].name}`);
+                    }
                 }
+            })
+            // ALSO Listen to INSERTs (first time theme is set)
+            .on('postgres_changes', { 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'shared_themes' 
+            }, (payload) => {
+                 const newData = payload.new;
+                 const ids = [newData.user_1, newData.user_2];
+                 const isRelevant = ids.includes(currentUser.id) && ids.includes(targetUser.id);
+                 if (isRelevant && newData.theme) {
+                    setChatTheme(newData.theme);
+                    setChatBackground(null);
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.theme);
+                 }
             })
             .subscribe();
 
         return () => {
-            supabase.removeChannel(channel);
+             supabase.removeChannel(channel);
         };
     }, [currentUser?.id, targetUser?.id]);
 
@@ -1359,55 +1326,40 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         setShowChatThemeSelector(false);
         const themeName = CHAT_THEMES[newTheme].name;
         
-        console.log('🎨 Changing theme to:', newTheme, 'for users:', currentUser.id, targetUser.id);
+
+        
+        // Optimistic UI Update: Apply immediately
+        setChatTheme(newTheme);
+        setChatBackground(null); // Clear custom wallpaper so theme shows
         
         try {
-            // 1. Find friendship ID
-            const { data: friendship, error: friendshipError } = await supabase
-                .from('friendships')
-                .select('id')
-                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
-                .single();
 
-            console.log('🔍 [ThemeUpdate] Searching for friendship results:', { friendship, friendshipError });
+            
+            const { data, error } = await supabase.rpc('update_chat_theme', {
+                p_partner_id: targetUser.id,
+                p_theme: newTheme
+            });
 
-            if (friendshipError && friendshipError.code !== 'PGRST116') {
-                console.error('❌ Error finding friendship:', friendshipError);
-                throw friendshipError;
+            if (error) {
+                console.error('❌ Error updating theme via RPC:', error);
+                throw error;
             }
 
-            if (friendship) {
-                console.log('✅ [ThemeUpdate] Found friendship:', friendship.id, 'Saving theme:', newTheme);
-                localStorage.setItem(`chat_theme_${friendship.id}`, newTheme);
-                localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newTheme);
-                
-                // 2. Update Shared Theme
-                const { error: updateError } = await supabase
-                    .from('friendships')
-                    .update({ chat_theme: newTheme })
-                    .eq('id', friendship.id);
 
-                if (updateError) {
-                    console.error('❌ Error updating theme in DB:', updateError);
-                    throw updateError;
-                }
-                
-                console.log('✅ [ThemeUpdate] Theme updated in database successfully');
 
-                // 3. Send System Message
-                const { error: messageError } = await supabase.from('messages').insert([{
-                    sender_id: currentUser.id,
-                    receiver_id: targetUser.id,
-                    content: `changed the theme to ${themeName}`,
-                    message_type: 'system',
-                    created_at: new Date().toISOString()
-                }]);
-                
-                if (messageError) {
-                    console.error('❌ Error inserting system message:', messageError);
-                } else {
-                    console.log('✅ System message inserted');
-                }
+            // 3. Send System Message
+            const { error: messageError } = await supabase.from('messages').insert([{
+                sender_id: currentUser.id,
+                receiver_id: targetUser.id,
+                content: `changed the theme to ${themeName}`,
+                message_type: 'system',
+                created_at: new Date().toISOString()
+            }]);
+            
+            if (messageError) {
+                console.error('❌ Error inserting system message:', messageError);
+            } else {
+                console.log('✅ System message inserted');
             }
         } catch (error) {
             console.error('❌ Error updating theme:', error);
@@ -1423,11 +1375,38 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         if (!currentUser?.id) return;
 
         // 1. Initial Fetch
-        const fetchWallpaper = async () => {
-            const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
-            if (data?.chat_background) setChatBackground(data.chat_background);
+        const fetchInitialState = async () => {
+            // 1. Fetch Shared Theme first (Priority)
+            let activeTheme = chatTheme;
+            const { data: rpcResult, error: themeError } = await supabase.rpc('get_chat_theme_v3', {
+                p_partner_id: targetUser.id
+            });
+
+            if (themeError) {
+                console.error("❌ [Chat] Error fetching theme via RPC:", themeError);
+            } else {
+                const themeData = rpcResult?.theme;
+                if (themeData && CHAT_THEMES[themeData]) {
+
+                     setChatTheme(themeData);
+                     activeTheme = themeData;
+                     localStorage.setItem(`chat_theme_partner_${targetUser.id}`, themeData);
+                }
+            }
+
+            // 2. Fetch Profile Wallpaper
+            const { data: profile } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+            
+            // Logic: Only apply global wallpaper if the current theme is Default ('clean_slate')
+            // This ensures specific themes override the global wallpaper
+            if (activeTheme === 'clean_slate' && profile?.chat_background) {
+                setChatBackground(profile.chat_background);
+            } else if (activeTheme !== 'clean_slate') {
+                // If using a specific theme, ensure wallpaper is cleared
+                setChatBackground(null);
+            }
         };
-        fetchWallpaper();
+        fetchInitialState();
 
         // 2. Real-time Subscription
         const profileChannel = supabase.channel(`profile_changes_${currentUser.id}`)
@@ -1435,18 +1414,53 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 'postgres_changes', 
                 { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` },
                 (payload) => {
-                    console.log('🎨 [Chat] Profile updated:', payload.new);
+
                     if (payload.new.chat_background !== undefined) {
-                        setChatBackground(payload.new.chat_background);
+                        // Priority Check: Only apply global wallpaper if current theme is default ('clean_slate')
+                        if (activeThemeRef.current === 'clean_slate') {
+                            setChatBackground(payload.new.chat_background);
+                        } else {
+
+                        }
                     }
                 }
             )
             .subscribe();
 
+        // 3. Real-time Subscription for Shared Theme (Friendships)
+        // We rely on RLS to only send us updates for friendships we are part of.
+        // We filter client-side to ensure we only react to the meaningful update.
+        const friendshipChannel = supabase.channel(`friendship_theme_${currentUser.id}_${targetUser.id}`)
+            .on(
+                'postgres_changes',
+                { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'friendships'
+                },
+                (payload) => {
+                    const newData = payload.new;
+                    // Check if this update involves the current user and valid theme
+                    const isRelevant = (newData.requester_id === currentUser.id || newData.receiver_id === currentUser.id) && 
+                                     (newData.requester_id === targetUser.id || newData.receiver_id === targetUser.id);
+                    
+                    if (isRelevant && newData.chat_theme) {
+
+                        setChatTheme(newData.chat_theme);
+                        localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.chat_theme);
+                        setChatBackground(null);
+                    }
+                }
+            )
+            .subscribe((status) => {
+                 console.log(`Friendship theme subscription status: ${status}`);
+            });
+
         return () => {
             supabase.removeChannel(profileChannel);
+            supabase.removeChannel(friendshipChannel);
         };
-    }, [currentUser?.id]);
+    }, [currentUser?.id, targetUser?.id]);
 
     const handleWallpaperChange = async (bg) => {
         setChatBackground(bg);
@@ -1513,11 +1527,42 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
-    const handleThemeChange = (newTheme) => {
-        setTheme(newTheme);
-        localStorage.setItem('chat_theme', newTheme);
+    const handleThemeChange = async (newTheme) => {
+        // Update correct visual theme state
+        setChatTheme(newTheme);
+        // Update partner-specific cache to match initialization logic
+        localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newTheme);
         setShowThemeMenu(false);
-        showToast(`Theme changed to ${newTheme} 🎨`);
+
+        // Persist to database (Shared Theme)
+        try {
+
+
+            if (!targetUser.id) {
+                 throw new Error("Partner ID is missing!");
+            }
+
+            const { data, error } = await supabase.rpc('update_chat_theme', {
+                p_partner_id: targetUser.id,
+                p_theme: newTheme
+            });
+            
+
+
+            if (error) throw error;
+            
+            // Check for logical error from RPC
+            if (data && !data.success) {
+                console.error('RPC Logical Error:', data.error);
+                throw new Error(data.error || 'Failed to update theme');
+            }
+
+            // System message is handled by RPC, so we just show a local toast
+            showToast(`Theme changed to ${newTheme} 🎨`);
+        } catch (err) {
+            console.error('Failed to update shared theme:', err);
+            showToast(`Failed: ${err.message || "Sync error"} ❌`);
+        }
     };
 
     // Mute Calls State
@@ -1647,8 +1692,25 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 schema: 'public',
                 table: 'messages'
             }, (payload) => {
-                // Filter: check if it concerns a message I sent
-                if (String(payload.new.sender_id) !== String(currentUser.id)) return;
+                console.log('💬 [Chat] UPDATE event received:', payload.new.id, payload.new.message_type);
+                
+                // Filter: check if it concerns this chat
+                const isMySentMessage = String(payload.new.sender_id) === String(currentUser.id);
+                const isCallLogInThisChat = payload.new.message_type === 'call_log' && (
+                    (String(payload.new.sender_id) === String(currentUser.id) && String(payload.new.receiver_id) === String(targetUser.id)) ||
+                    (String(payload.new.sender_id) === String(targetUser.id) && String(payload.new.receiver_id) === String(currentUser.id))
+                );
+
+                console.log('💬 [Chat] isMySentMessage:', isMySentMessage, 'isCallLogInThisChat:', isCallLogInThisChat);
+
+                // Only process if it's my sent message OR a call log in this chat
+                if (!isMySentMessage && !isCallLogInThisChat) {
+                    console.log('💬 [Chat] UPDATE ignored - not relevant to this chat');
+                    return;
+                }
+
+                console.log('💬 [Chat] Processing UPDATE for message:', payload.new.id);
+                console.log('💬 [Chat] Updated content:', payload.new.content);
 
                 // Update message status in UI
                 const updatedMessage = payload.new;
@@ -1657,10 +1719,12 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 setMessages(prev => {
                     if (isDeletedForMe) {
+                        console.log('💬 [Chat] Removing deleted message:', updatedMessage.id);
                         // Remove message if it's now deleted for me
                         return prev.filter(m => m.id !== updatedMessage.id);
                     }
                     // Otherwise update it
+                    console.log('💬 [Chat] Updating message in state:', updatedMessage.id);
                     return prev.map(m => m.id === updatedMessage.id ? updatedMessage : m);
                 });
             })
@@ -1697,6 +1761,18 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     .order('created_at', { ascending: true });
 
                 if (data) {
+                    // Debug: Log the most recent call_log message
+                    const callLogs = data.filter(m => m.message_type === 'call_log');
+                    if (callLogs.length > 0) {
+                        const mostRecent = callLogs[callLogs.length - 1];
+                        console.log('🔄 [Polling] Most recent call log:', {
+                            id: mostRecent.id,
+                            content: mostRecent.content,
+                            content_parsed: typeof mostRecent.content === 'string' ? JSON.parse(mostRecent.content) : mostRecent.content,
+                            created_at: mostRecent.created_at
+                        });
+                    }
+                    
                     // Filter out messages deleted by current user
                     const filteredData = data.filter(msg => {
                         const deletedFor = msg.deleted_for || [];
@@ -1719,12 +1795,30 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                         const combined = [...filteredData, ...safeOptimistic];
 
-                        // Simple check to avoid re-renders if data is effectively unchanged
+                        // Debug: Check if call logs are in the combined data
+                        const callLogsInCombined = combined.filter(m => m.message_type === 'call_log');
+                        if (callLogsInCombined.length > 0) {
+                            const mostRecentInState = callLogsInCombined[callLogsInCombined.length - 1];
+                            console.log('🔄 [Polling] Setting state with call log:', {
+                                id: mostRecentInState.id,
+                                content: mostRecentInState.content
+                            });
+                        }
+
+                        // Improved check: Also compare content to detect updates to existing messages
                         if (prev.length === combined.length && 
-                            prev.every((p, i) => p.id === combined[i].id && p.tempId === combined[i].tempId)) {
+                            prev.every((p, i) => {
+                                const c = combined[i];
+                                return p.id === c.id && 
+                                       p.tempId === c.tempId && 
+                                       p.content === c.content &&
+                                       p.is_read === c.is_read;
+                            })) {
+                            console.log('🔄 [Polling] State unchanged, skipping update');
                             return prev;
                         }
                         
+                        console.log('🔄 [Polling] Updating state with', combined.length, 'messages');
                         return combined;
                     });
                      // Mark UNREAD messages from this user as READ (excluding system messages)
@@ -1741,7 +1835,14 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     }, [currentUser.id, targetUser.id]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (messages.length > 0) {
+            const behavior = isInitialLoad.current ? "auto" : "smooth";
+            messagesEndRef.current?.scrollIntoView({ behavior });
+            
+            if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+            }
+        }
     }, [messages]);
 
     const sendMessage = async (type = 'text', content = null, imageUrl = null) => {
@@ -2009,13 +2110,47 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             return;
         }
         if (action === 'block') {
-            // Update friendship status
-            await supabase.from('friendships')
-                .update({ status: 'blocked' })
-                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+            try {
+                // Determine if friendship exists (bidirectional check)
+                const { data: existingFriendship, error: fetchError } = await supabase
+                    .from('friendships')
+                    .select('id')
+                    .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                    .maybeSingle();
 
-            showToast(`🚫 Blocked ${targetUser.name}`);
-            setTimeout(onBack, 1000);
+                if (fetchError) throw fetchError;
+
+                if (existingFriendship) {
+                    // Update existing to blocked
+                    const { error: updateError } = await supabase
+                        .from('friendships')
+                        .update({ status: 'blocked', requester_id: currentUser.id, receiver_id: targetUser.id }) // Ensure blocker becomes requester? Or just status. Let's just update status.
+                        // Actually, for blocking, usually the one who blocks becomes the 'requester' of the block theoretically, 
+                        // but sticking to simple status update first. 
+                        // If we want to strictly enforce "who blocked who", we might need a separate 'blocked_by' column or rely on requester_id.
+                        // For now, let's just set status='blocked'.
+                         .eq('id', existingFriendship.id);
+
+                    if (updateError) throw updateError;
+                } else {
+                    // Create new blocked record
+                    const { error: insertError } = await supabase
+                        .from('friendships')
+                        .insert({
+                            requester_id: currentUser.id,
+                            receiver_id: targetUser.id,
+                            status: 'blocked'
+                        });
+
+                    if (insertError) throw insertError;
+                }
+
+                showToast(`🚫 Blocked ${targetUser.name || targetUser.username || 'User'}`);
+                setTimeout(onBack, 1000);
+            } catch (err) {
+                console.error('Error blocking user:', err);
+                showToast(`❌ Failed to block user`);
+            }
         }
         else if (action === 'unfriend') {
             await supabase.from('friendships')
@@ -2097,18 +2232,27 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
 
     return (
-        <div className="chat-room-container" data-theme-type={currentTheme.type}>
+        <div 
+            className="chat-room-container" 
+            data-theme-type={currentTheme.type}
+            style={{
+                // Direct application for reliability
+                background: chatBackground || currentTheme.backgroundColor,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                
+                // CSS Variables for children
+                '--theme-bg': chatBackground || currentTheme.backgroundColor,
+                '--theme-bubble-sent': currentTheme.bubbleSent,
+                '--theme-bubble-received': currentTheme.bubbleReceived,
+                '--theme-text-color': currentTheme.textColor,
+                '--theme-accent': currentTheme.accentColor,
+                '--theme-font-color': currentTheme.fontColor,
+                '--theme-icon-color': currentTheme.iconColor
+            }}
+        >
             <style>{`
-                .chat-room-container {
-                    --theme-bg: ${chatBackground || currentTheme.backgroundColor};
-                    --theme-bubble-sent: ${currentTheme.bubbleSent};
-                    --theme-bubble-received: ${currentTheme.bubbleReceived};
-                    --theme-text-color: ${currentTheme.textColor};
-                    --theme-accent: ${currentTheme.accentColor};
-                    --theme-font-color: ${currentTheme.fontColor};
-                    --theme-icon-color: ${currentTheme.iconColor};
-                }
-
                 /* Selection Mode Styles */
                 .chat-room-header.selection-mode { 
                     background: rgba(30, 30, 35, 0.95) !important; 
@@ -2201,6 +2345,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             `}</style>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
+
+
+            
             <div className="ambient-glow-chat"></div>
 
             <div className={`chat-room-header glass-header ${isSelectionMode ? 'selection-mode' : ''}`}>
@@ -2271,59 +2418,65 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         <div style={{ position: 'relative' }}>
                             <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
                             {showMenu && (
-                                <div className="dropdown-menu">
-                                    
-                                    <button onClick={() => handleMenuAction('mute')}>
-                                        <span className="icon">
-                                            {isChatMuted() ? (
-                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
-                                            ) : (
-                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                            )}
-                                        </span>
-                                        {isChatMuted() ? 'Unmute Notifications' : 'Notifications'}
-                                    </button>
+                                <>
+                                    <div 
+                                        style={{ position: 'fixed', inset: 0, zIndex: 99 }} 
+                                        onClick={() => setShowMenu(false)}
+                                    />
+                                    <div className="dropdown-menu" style={{ zIndex: 100 }}>
+                                        
+                                        <button onClick={() => handleMenuAction('mute')}>
+                                            <span className="icon">
+                                                {isChatMuted() ? (
+                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
+                                                ) : (
+                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                )}
+                                            </span>
+                                            {isChatMuted() ? 'Unmute' : 'Mute'}
+                                        </button>
 
-                                    <button onClick={() => {
-                                        setShowChatThemeSelector(true);
-                                        setShowMenu(false);
-                                    }}>
-                                        <span className="icon">
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                                        </span>
-                                        Theme
-                                    </button>
+                                        <button onClick={() => {
+                                            setShowChatThemeSelector(true);
+                                            setShowMenu(false);
+                                        }}>
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                            </span>
+                                            Theme
+                                        </button>
 
-                                    <div className="divider"></div>
+                                        <div className="divider"></div>
 
-                                    <button onClick={() => {
-                                        setShowDeleteConfirm(true);
-                                        setShowMenu(false);
-                                    }} className="danger">
-                                        <span className="icon">
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                                        </span>
-                                        Delete Chat
-                                    </button>
+                                        <button onClick={() => {
+                                            setShowDeleteConfirm(true);
+                                            setShowMenu(false);
+                                        }} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                            </span>
+                                            Delete Chat
+                                        </button>
 
-                                    <button onClick={() => {
-                                        const reason = prompt("Reason for reporting:");
-                                        if (reason) showToast("Report submitted successfully ✅");
-                                        setShowMenu(false);
-                                    }} className="danger">
-                                        <span className="icon">
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                        </span>
-                                        Report
-                                    </button>
+                                        <button onClick={() => {
+                                            const reason = prompt("Reason for reporting:");
+                                            if (reason) showToast("Report submitted successfully ✅");
+                                            setShowMenu(false);
+                                        }} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                            </span>
+                                            Report
+                                        </button>
 
-                                    <button onClick={() => handleMenuAction('block')} className="danger">
-                                        <span className="icon">
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-                                        </span>
-                                        Block
-                                    </button>
-                                </div>
+                                        <button onClick={() => handleMenuAction('block')} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                                            </span>
+                                            Block
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -2636,27 +2789,40 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         }
 
                         const getCallIcon = () => {
-                            if (callData.status === 'missed') return '📵';
-                            if (callData.status === 'missed') return '📵';
-                            if (callData.status === 'declined' || callData.status === 'rejected') return '🚫';
+                            // User prefers Type-based icons (🎥/📞) even for missed/declined
                             return callData.call_type === 'video' ? '🎥' : '📞';
                         };
 
                         const getCallText = () => {
                             const prefix = isMe ? 'Outgoing' : 'Incoming';
-                            if (callData.status === 'missed') return 'Missed call';
-                            if (callData.status === 'declined' || callData.status === 'rejected') {
-                                return callData.declined_reason 
-                                    ? `Declined: "${callData.declined_reason}"`
-                                    : 'Declined call';
+                            const typeLabel = callData.call_type === 'video' ? 'Video' : 'Audio';
+                            const base = `${prefix} ${typeLabel} Call`;
+
+                            if (callData.status === 'missed') {
+                                // If I am the caller, it means they didn't answer -> "Not Answered"
+                                // If I am the receiver, I missed it -> "Missed"
+                                return isMe ? `${base} • Not Answered` : `${base} • Missed`;
                             }
+                            
+                            if (callData.status === 'declined' || callData.status === 'rejected' || callData.status === 'busy') {
+                                return `${base} • Declined`;
+                            }
+                            
                             if (callData.status === 'ended') {
                                 const duration = callData.duration || 0;
                                 const mins = Math.floor(duration / 60);
                                 const secs = duration % 60;
-                                return `${prefix} ${callData.call_type} call (${mins}:${secs.toString().padStart(2, '0')})`;
+                                const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                                return `${base} • ${timeStr}`;
                             }
-                            return `${prefix} ${callData.call_type} call`;
+                            
+                            // Active/Ringing
+                            if (callData.status === 'ringing' || callData.status === 'calling') {
+                                return `${base} • ${callData.status === 'calling' ? 'Calling...' : 'Ringing...'}`;
+                            }
+                            
+                            // Fallback
+                            return base;
                         };
 
                         return (
@@ -2677,319 +2843,23 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     const imageUrl = msg.image_url || msg.media_url;
 
                     // Determine message status with proper tick indicators
-                    let statusIcon = '';
-                    let statusColor = '#999'; // Default gray
-                    
-                    if (isMe) {
-                        if (msg.sending) {
-                            statusIcon = '🕐'; // Sending (clock)
-                            statusColor = '#999';
-                        } else if (msg.is_read) {
-                            statusIcon = '✓✓'; // Read (double tick)
-                            statusColor = '#FFD700'; // Yellow/gold for read
-                        } else if (msg.delivered_at) {
-                            statusIcon = '✓✓'; // Delivered (double tick) - recipient is online
-                            statusColor = '#999'; // Gray for delivered
-                        } else {
-                            statusIcon = '✓'; // Sent but not delivered (single tick) - recipient offline
-                            statusColor = '#999'; // Gray for sent
-                        }
-                    }
-
-                    // Persistent swipe handling using refs
-                    const msgKey = msg.id || msg.tempId || `msg-${i}`;
                     const isSelected = selectedMessages.has(msg.id);
-                    const handleTouchStart = (e) => {
-                        const touchX = e.touches[0].clientX;
-                        const touchY = e.touches[0].clientY;
-                        swipeRefs.current[msgKey] = { 
-                            startX: touchX, 
-                            startY: touchY,
-                            currentX: 0,
-                            touchMoved: false,
-                            longPressTimer: null
-                        };
-
-                        // Only start long press timer if NOT in selection mode
-                        if (!isSelectionMode) {
-                            swipeRefs.current[msgKey].longPressTimer = setTimeout(() => {
-                                const state = swipeRefs.current[msgKey];
-                                if (state && !state.touchMoved) {
-                                    // Long press detected - enter selection mode
-                                    if (navigator.vibrate) navigator.vibrate(50);
-                                    state.touchMoved = true; 
-                                    setIsSelectionMode(true);
-                                    toggleSelection(msg.id);
-                                }
-                            }, 600);
-                        }
-                    };
-                    
-                    const handleTouchMove = (e) => {
-                        const state = swipeRefs.current[msgKey];
-                        if (!state || !state.startX) return;
-                        
-                        const currentX = e.touches[0].clientX;
-                        const currentY = e.touches[0].clientY;
-                        const diffX = currentX - state.startX;
-                        const diffY = currentY - (state.startY || 0);
-
-                        // Vertical Scroll Detection: Allow slight diagonal (1.5x tolerance)
-                        if (Math.abs(diffY) > Math.abs(diffX) * 1.5) return;
-
-                        // Ignore micro-movements
-                        if (Math.abs(diffX) < 5) return;
-
-                        state.touchMoved = true;
-                        
-                        // Cancel long press
-                        if (state.longPressTimer) {
-                            clearTimeout(state.longPressTimer);
-                            state.longPressTimer = null;
-                        }
-                        
-                        // Disable swipe during selection
-                        if (isSelectionMode) return;
-                        
-                        // Right swipe logic
-                        if (diffX > 0) {
-                            state.currentX = diffX; // Track full distance
-                            const translateX = Math.min(diffX, 80); // Cap visual movement
-                            e.currentTarget.style.transform = `translateX(${translateX}px)`;
-                        }
-                    };
-                    
-                    const handleTouchEnd = (e) => {
-                        const state = swipeRefs.current[msgKey];
-                        if (state) {
-                            // Clear timer
-                            if (state.longPressTimer) {
-                                clearTimeout(state.longPressTimer);
-                            }
-
-                            // Trigger reply if swiped enough
-                            if (state.currentX > 50 && !isSelectionMode) {
-                                setReplyToMessage(msg);
-                            }
-                            
-                            // Reset state
-                            swipeRefs.current[msgKey] = null;
-                        }
-                        
-                        // Reset transform
-                        e.currentTarget.style.transform = 'translateX(0)';
-                        e.currentTarget.style.transition = 'transform 0.2s';
-                    };
-
-                    // Mouse Handlers (Mirroring Touch)
-                    const handleMouseDown = (e) => {
-                        if (e.button !== 0) return; // Only left click
-                        const x = e.clientX;
-                        const y = e.clientY;
-                        swipeRefs.current[msgKey] = { 
-                            startX: x, 
-                            startY: y,
-                            currentX: 0,
-                            touchMoved: false,
-                            longPressTimer: null
-                        };
-
-                        if (!isSelectionMode) {
-                            swipeRefs.current[msgKey].longPressTimer = setTimeout(() => {
-                                const state = swipeRefs.current[msgKey];
-                                if (state && !state.touchMoved) {
-                                    if (navigator.vibrate) navigator.vibrate(50);
-                                    state.touchMoved = true; 
-                                    setIsSelectionMode(true);
-                                    toggleSelection(msg.id);
-                                }
-                            }, 600);
-                        }
-                    };
-
-                    const handleMouseMove = (e) => {
-                        const state = swipeRefs.current[msgKey];
-                        if (!state || !state.startX) return; // Only if mouse down
-                        
-                        // Check if primary button is still held (handles drag release outside)
-                        if ((e.buttons & 1) === 0) {
-                             handleMouseUp(e);
-                             return;
-                        }
-
-                        const currentX = e.clientX;
-                        const currentY = e.clientY;
-                        const diffX = currentX - state.startX;
-                        const diffY = currentY - (state.startY || 0);
-                        
-                        // Vertical Scroll Detection
-                        if (Math.abs(diffY) > Math.abs(diffX) * 1.5) return;
-
-                        if (Math.abs(diffX) < 5) return;
-
-                        state.touchMoved = true;
-                        
-                        if (state.longPressTimer) {
-                            clearTimeout(state.longPressTimer);
-                            state.longPressTimer = null;
-                        }
-                        
-                        if (isSelectionMode) return;
-                        
-                        if (isSelectionMode) return;
-                        
-                        if (diffX > 0) {
-                            state.currentX = diffX; // Track full distance
-                            const translateX = Math.min(diffX, 80); // Cap visual movement
-                            e.currentTarget.style.transform = `translateX(${translateX}px)`;
-                        }
-                    };
-
-                    const handleMouseUp = (e) => {
-                         const state = swipeRefs.current[msgKey];
-                         let wasDragging = false;
-                         if (state) {
-                             if (state.longPressTimer) clearTimeout(state.longPressTimer);
-                             
-                             if (state.touchMoved) wasDragging = true;
-
-                             if (state.currentX > 50 && !isSelectionMode) {
-                                 setReplyToMessage(msg);
-                             }
-                             swipeRefs.current[msgKey] = null;
-                         }
-                         e.currentTarget.style.transform = 'translateX(0)';
-                         e.currentTarget.style.transition = 'transform 0.2s';
-                         
-                         // Mark for Click Handler
-                         if (wasDragging) {
-                             e.currentTarget.setAttribute('data-dragged', 'true');
-                             setTimeout(() => e.target.removeAttribute('data-dragged'), 50); 
-                         } else {
-                             e.currentTarget.removeAttribute('data-dragged');
-                         }
-                    };
-
-                    const handleBubbleClick = (e) => {
-                         // Check persistent state using msgKey
-                         const state = swipeRefs.current[msgKey]; 
-                         if (e.currentTarget.getAttribute('data-dragged')) {
-                             e.stopPropagation();
-                             e.preventDefault();
-                             return;
-                         }
-                         if (isSelectionMode) {
-                             e.preventDefault();
-                             e.stopPropagation();
-                             toggleSelection(msg.id);
-                             return;
-                         }
-                    };
 
                     return (
                         <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
-                            {dateHeader}
-                            <div 
-                                ref={el => messageRefs.current[msg.id] = el}
-                                className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${highlightedMessageId === msg.id ? 'message-highlight' : ''}`}
-                                onTouchStart={handleTouchStart}
-                                onTouchMove={handleTouchMove}
-                                onTouchEnd={handleTouchEnd}
-                                onMouseDown={handleMouseDown}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleMouseUp}
-                                onMouseLeave={handleMouseUp}
-                                onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    // Right click triggers selection mode immediately
-                                    if (!isSelectionMode) {
-                                        setIsSelectionMode(true);
-                                        toggleSelection(msg.id);
-                                    }
-                                }}
-                                onClickCapture={handleBubbleClick}
-                                style={{
-                                    transform: isSelected ? 'scale(0.98)' : 'scale(1)',
-                                    transition: 'all 0.2s ease',
-                                    cursor: isSelectionMode ? 'pointer' : 'default',
-                                    userSelect: 'none', // Prevent text selection during hold
-                                    WebkitUserSelect: 'none',
-                                    touchAction: 'pan-y' // Allow vertical scroll, handle horizontal in JS
-                                }}
-                            >
-                                {/* Selection Overlay/Checkbox */}
-                                {isSelectionMode && (
-                                    <div className="selection-overlay">
-                                        <div className={`selection-checkbox ${isSelected ? 'checked' : ''}`}>
-                                            {isSelected && <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Story Reply Preview */}
-                                {msg.reply_to_story && (
-                                    <div className="quoted-story clickable" style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '4px 8px 4px 4px', marginBottom: '4px', background: 'rgba(100,100,100,0.2)',
-                                        borderRadius: '8px', borderLeft: '3px solid #f09433', overflow: 'hidden'
-                                    }}>
-                                        <div style={{ width: '32px', height: '42px', flexShrink: 0 }}>
-                                            <img 
-                                                src={msg.reply_to_story.media_url} 
-                                                alt="Story"
-                                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} 
-                                            />
-                                        </div>
-                                        <div style={{ fontSize: '12px', opacity: 0.9, display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ fontWeight: 600 }}>Replied to story</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Quoted Message (Reply Preview) */}
-                                {msg.reply_to && (
-                                    <div 
-                                        className="quoted-message clickable" 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            scrollToMessage(msg.reply_to.id);
-                                        }}
-                                    >
-                                        <div className="quoted-message-header">
-                                            {msg.reply_to.sender_id === currentUser.id ? 'You' : (partner.username || partner.full_name)}
-                                        </div>
-                                        <div className="quoted-message-content">
-                                            {msg.reply_to.message_type === 'image' ? '📷 Photo' : 
-                                             msg.reply_to.content?.length > 50 ? msg.reply_to.content.substring(0, 50) + '...' : msg.reply_to.content}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {isImage ? (
-                                    <img 
-                                        src={imageUrl} 
-                                        alt="Sent" 
-                                        className="sent-image" 
-                                        onClick={() => setViewingImage(imageUrl)}
-                                        style={{ cursor: 'pointer' }}
-                                    />
-                                ) : (
-                                    <div className="msg-content-wrapper">
-                                        <span className="msg-text">{msg.content}</span>
-                                        <span className="msg-time">{formatTime(msg.created_at)}</span>
-                                        {isMe && <span className="msg-status" style={{ color: statusColor }}>{statusIcon}</span>}
-                                    </div>
-                                )}
-                                
-                                {/* Render attachments if present */}
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                    <div className="message-attachments">
-                                        {msg.attachments.map((attachment, idx) => (
-                                            <MessageAttachment key={idx} attachment={attachment} />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            <MessageBubble
+                                msg={msg}
+                                userId={currentUser.id}
+                                partner={partner || targetUser}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={isSelected}
+                                isHighlighted={highlightedMessageId === msg.id}
+                                dateHeader={dateHeader}
+                                onSwipeReply={(m) => setReplyToMessage(m)}
+                                onToggleSelection={toggleSelection}
+                                onViewImage={(url) => setViewingImage(url)}
+                                onScrollToMessage={scrollToMessage}
+                            />
                         </React.Fragment>
                     );
                 })}
@@ -3181,6 +3051,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                     background: var(--theme-bg);
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
                     z-index: 10000;
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
@@ -3634,7 +3507,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 }
                 
                 /* Light Theme */
-                .light-theme { background: #f0f2f5; }
+                .light-theme { background: transparent; }
                 .light-theme .glass-header { background: rgba(255,255,255,0.85); border-bottom-color: rgba(0,0,0,0.1); }
                 .light-theme .header-text h3 { color: #000; }
                 .light-theme .back-btn, .light-theme .icon-btn { color: #333; }
@@ -4292,6 +4165,29 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     transform: scale(1.1);
                 }
 
+            
+                /* Menu Overlay for closing on click-outside */
+                .menu-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 9; /* Below header (10), above content (0) */
+                    background: transparent;
+                }
+
+                .dropdown-menu {
+                    position: absolute;
+                    top: 100%; right: 0;
+                    background: rgba(30, 30, 30, 0.95);
+                    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 16px;
+                    padding: 8px;
+                    min-width: 220px;
+                    display: flex; flex-direction: column; gap: 4px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    z-index: 1010; /* Above overlay */
+                }
             `}</style>
 
             {/* Attachment System Components */}
@@ -4303,13 +4199,18 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 onSelectDocument={handleSelectDocument}
             />
 
-            <AttachmentPreview
+             <AttachmentPreview
                 files={selectedFiles}
                 onRemove={handleRemoveFile}
                 onSend={handleSendAttachments}
                 onCancel={handleCancelAttachments}
                 uploadProgress={uploadProgress}
             />
+
+            {/* Global Menu Overlay for Click-Outside */}
+            {showMenu && (
+                <div className="menu-overlay" onClick={() => setShowMenu(false)} />
+            )}
         </div>
     );
 }

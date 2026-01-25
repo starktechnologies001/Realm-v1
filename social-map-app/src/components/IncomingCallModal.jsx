@@ -4,6 +4,13 @@ import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 
 export default function IncomingCallModal({ incomingCall, onAnswer, onReject, onRejectWithMessage }) {
     const [ringtoneAudio, setRingtoneAudio] = useState(null);
+    const [showQuickReplies, setShowQuickReplies] = useState(false);
+
+    const quickReplyMessages = [
+        "I am busy right now, call you later",
+        "I am outside",
+        "Can't talk right now, I'll call you back"
+    ];
 
     useEffect(() => {
         // Play ringtone
@@ -27,6 +34,55 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
             ringtoneAudio.currentTime = 0;
         }
         action();
+    };
+
+    const handleQuickReply = async (message) => {
+        if (ringtoneAudio) {
+            ringtoneAudio.pause();
+            ringtoneAudio.currentTime = 0;
+        }
+
+        console.log('📱 [QuickReply] Starting quick reply process...');
+        console.log('📱 [QuickReply] Message:', message);
+        console.log('📱 [QuickReply] Caller ID:', incomingCall.caller_id);
+        console.log('📱 [QuickReply] Receiver ID:', incomingCall.receiver_id);
+
+        // First, reject the call (this will create the call log)
+        await onReject();
+
+        // Wait a brief moment for the call log to be created
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Then send the message as a reply to the call log
+        // We need to fetch the most recent call log message between these two users
+        const { data: recentMessages, error: fetchError } = await supabase
+            .from('messages')
+            .select('id, created_at, content')
+            .eq('message_type', 'call_log')
+            .or(`and(sender_id.eq.${incomingCall.caller_id},receiver_id.eq.${incomingCall.receiver_id}),and(sender_id.eq.${incomingCall.receiver_id},receiver_id.eq.${incomingCall.caller_id})`)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        console.log('📱 [QuickReply] Fetch error:', fetchError);
+        console.log('📱 [QuickReply] Recent call logs:', recentMessages);
+
+        const replyToId = recentMessages?.[0]?.id || null;
+        console.log('📱 [QuickReply] Replying to message ID:', replyToId);
+
+        // Send the selected message as a reply
+        const { error } = await supabase.from('messages').insert({
+            sender_id: incomingCall.receiver_id,
+            receiver_id: incomingCall.caller_id,
+            content: message,
+            message_type: 'text',
+            reply_to_message_id: replyToId
+        });
+
+        if (error) {
+            console.error("❌ [QuickReply] Error sending message:", error);
+        } else {
+            console.log("✅ [QuickReply] Message sent successfully!");
+        }
     };
 
     const avatarUrl = getAvatar2D(incomingCall.caller.avatar_url || incomingCall.caller.avatar);
@@ -63,8 +119,8 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     
                     <button 
                         className="banner-btn message"
-                        onClick={() => handleAction(onRejectWithMessage)}
-                        title="Message"
+                        onClick={() => setShowQuickReplies(!showQuickReplies)}
+                        title="Quick Reply"
                     >
                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
                     </button>
@@ -79,13 +135,38 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 </div>
             </div>
 
+            {/* Quick Reply Popup */}
+            {showQuickReplies && (
+                <div className="quick-reply-popup">
+                    <div className="quick-reply-header">
+                        <span>Quick Reply</span>
+                        <button 
+                            className="close-btn"
+                            onClick={() => setShowQuickReplies(false)}
+                        >×</button>
+                    </div>
+                    <div className="quick-reply-options">
+                        {quickReplyMessages.map((msg, idx) => (
+                            <button
+                                key={idx}
+                                className="quick-reply-option"
+                                onClick={() => handleQuickReply(msg)}
+                            >
+                                {msg}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <style>{`
                 .incoming-call-banner-container {
                     position: fixed; top: 12px; left: 0; right: 0;
-                    display: flex; justify-content: center;
+                    display: flex; flex-direction: column; align-items: center;
                     z-index: 11000;
                     pointer-events: none;
                     padding: 0 12px;
+                    gap: 12px;
                 }
                 
                 .incoming-call-banner {
@@ -179,6 +260,80 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 
                 .banner-btn.accept {
                     background: #34c759;
+                }
+
+                /* Quick Reply Popup */
+                .quick-reply-popup {
+                    pointer-events: auto;
+                    background: #2e2e2e;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px;
+                    width: 100%; max-width: 440px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+                    animation: slideDown 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    overflow: hidden;
+                }
+
+                .quick-reply-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 14px 18px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    color: white;
+                    font-weight: 600;
+                    font-size: 0.95rem;
+                }
+
+                .close-btn {
+                    background: none;
+                    border: none;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-size: 28px;
+                    cursor: pointer;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 50%;
+                    transition: all 0.2s;
+                    line-height: 1;
+                    padding: 0;
+                }
+
+                .close-btn:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: white;
+                }
+
+                .quick-reply-options {
+                    display: flex;
+                    flex-direction: column;
+                    padding: 8px;
+                    gap: 6px;
+                }
+
+                .quick-reply-option {
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 12px;
+                    padding: 14px 16px;
+                    color: white;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    text-align: left;
+                }
+
+                .quick-reply-option:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-color: rgba(255, 255, 255, 0.2);
+                    transform: translateX(4px);
+                }
+
+                .quick-reply-option:active {
+                    transform: scale(0.98);
                 }
             `}</style>
         </div>

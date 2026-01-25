@@ -266,9 +266,23 @@ export default function MapHome() {
         // Subscribe to new messages
         const channel = supabase
             .channel('global_unread')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, (payload) => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, async (payload) => {
+                const newMessage = payload.new;
                 setUnreadCount(prev => prev + 1);
-                showToast(`New message from user! 📩`);
+
+                // Check mute settings before notifying
+                const { data: muteData } = await supabase
+                    .from('chat_settings')
+                    .select('muted_until')
+                    .eq('user_id', currentUser.id)
+                    .eq('partner_id', newMessage.sender_id)
+                    .maybeSingle();
+
+                const isMuted = muteData?.muted_until && new Date(muteData.muted_until) > new Date();
+
+                if (!isMuted) {
+                    showToast(`New message from user! 📩`);
+                }
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, async () => {
                 // Re-fetch if messages are marked read elsewhere
@@ -376,7 +390,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public')
                         .neq('id', currentUser.id)
                         .eq('is_ghost_mode', false)
                         .not('latitude', 'is', null)
@@ -484,8 +498,11 @@ export default function MapHome() {
                             isLocationShared: true,
                             friendshipStatus: fData?.status || null, 
                             friendshipId: fData?.id || null,
-                            hasStory: usersWithStories.has(u.id),
-                            hasUnseenStory: usersWithUnseenStories.has(u.id)
+                            friendshipId: fData?.id || null,
+                            is_public: u.is_public,
+                            // PRIVACY CHECK: Only show story if public OR friends
+                            hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
+                            hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
                         };
                     });
 
@@ -543,9 +560,12 @@ export default function MapHome() {
                             status: updatedUser.status,
                             thought: updatedUser.status_message,
                             lastActive: updatedUser.last_active,
-                            isLocationOn: true,
                             isLocationShared: true,
-                            friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null // Preserve local friendship state
+                            is_public: updatedUser.is_public,
+                            friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null, // Preserve local friendship state
+                            // Preserve story state but re-check privacy (e.g. if user went private)
+                            hasStory: exists ? (prev[existingIndex].hasStory && (updatedUser.is_public !== false || prev[existingIndex].friendshipStatus === 'accepted')) : false,
+                            hasUnseenStory: exists ? (prev[existingIndex].hasUnseenStory && (updatedUser.is_public !== false || prev[existingIndex].friendshipStatus === 'accepted')) : false
                         };
 
                         if (exists) {

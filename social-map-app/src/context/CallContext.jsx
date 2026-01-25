@@ -77,6 +77,22 @@ export const CallProvider = ({ children }) => {
                         return;
                     }
 
+                    // CHECK MUTE SETTINGS
+                    const { data: muteData } = await supabase
+                        .from('chat_settings')
+                        .select('muted_until')
+                        .eq('user_id', currentUser.id)
+                        .eq('partner_id', payload.new.caller_id)
+                        .maybeSingle();
+
+                    if (muteData?.muted_until && new Date(muteData.muted_until) > new Date()) {
+                        console.log(`🔕 Call from ${payload.new.caller_id} is muted. suppressing.`);
+                        // Optional: Does silence mean we silently reject or just let it ring out?
+                        // Usually let it ring out (missed) or effectively ignore locally.
+                        // We will just return here, so for the sender it stays 'pending' until timeout.
+                        return;
+                    }
+
                     console.log('🔔 [CallContext] Processing Incoming Call from:', payload.new.caller_id);
 
                     // Fetch caller details
@@ -103,9 +119,9 @@ export const CallProvider = ({ children }) => {
                     }
                 }
 
-                // CASE 2: Call Cancelled/Ended remotely while ringing
+                // CASE 2: Call Cancelled/Ended remotely
                 if (payload.eventType === 'UPDATE') {
-                   // If the updated call is the one currently ringing
+                   // A. Incoming Call Update (Ringing -> Cancelled/Missed)
                    if (incomingCall && payload.new.id === incomingCall.id) {
                        const newStatus = payload.new.status;
                        if (['ended', 'cancelled', 'missed', 'rejected'].includes(newStatus)) {
@@ -114,6 +130,23 @@ export const CallProvider = ({ children }) => {
                            setIncomingCall(null);
                        }
                    }
+
+                   // B. Outgoing Call Update (Ringing -> Declined/Active/Missed)
+                   // Safety Net: If CallOverlay fails to catch the update (e.g. unmounted), we catch it here.
+                   // We trust 'activeCallMessageId' to prevent double-logging (logCallMessage clears it).
+                   // DISABLED to prevent race condition
+                   /*
+                   if (activeCallMessageId.current && payload.new.caller_id === currentUser.id) {
+                       const newStatus = payload.new.status;
+                       
+                       if (['declined', 'missed', 'busy', 'rejected'].includes(newStatus)) {
+                           console.log(`📞 [Global] Outgoing call was ${newStatus}. Updating log via Safety Net.`);
+                           // Trigger log update
+                           // We pass 'null' as partnerId because activeCallMessageId logic handles the update target
+                           await logCallMessage(null, newStatus, null, payload.new.type);
+                       }
+                   }
+                   */
                 }
             })
             .subscribe((status, err) => {
@@ -127,6 +160,56 @@ export const CallProvider = ({ children }) => {
     }, [currentUser, isCalling, incomingCall]);
 
     // Handle Call Actions
+    // Track the current call log message ID to prevent duplicates
+    const activeCallMessageId = useRef(null);
+
+    // Helper to log call messages to Chat
+    const logCallMessage = async (callId, status, partnerId, callType = 'audio', duration = 0) => {
+        // If updating active log, partnerId is optional. If new log, partnerId is required.
+        if (!currentUser || (!activeCallMessageId.current && !partnerId)) return;
+
+        // Structured content for UI rendering
+        const contentPayload = {
+            status,
+            call_type: callType,
+            duration
+        };
+
+        // If we already have a log for this session and we are ending/updating it
+        if (activeCallMessageId.current && (status === 'ended' || status === 'declined' || status === 'missed' || status === 'rejected' || status === 'busy')) {
+             console.log(`📝 Updating existing call log ${activeCallMessageId.current} to: ${status}`);
+             const { error } = await supabase.from('messages')
+                .update({ content: JSON.stringify(contentPayload) })
+                .eq('id', activeCallMessageId.current);
+             
+             if (error) console.error("Error updating call log:", error);
+             
+             // Clear ref after final update
+             if (status === 'ended' || status === 'declined' || status === 'missed' || status === 'rejected' || status === 'busy') {
+                 activeCallMessageId.current = null;
+             }
+        } else {
+            // New Log (Start of call or standalone event)
+            console.log(`📝 Creating NEW call log for: ${status}`);
+            const { data, error } = await supabase.from('messages').insert({
+                sender_id: currentUser.id,
+                receiver_id: partnerId,
+                content: JSON.stringify(contentPayload),
+                message_type: 'call_log', // Special type for Chat.jsx
+                is_read: true // System messages read by default
+            }).select().single();
+
+            if (error) {
+                console.error("Error logging call message:", error);
+            } else if (data) {
+                // If this is a "starting" status, save the ID for future updates
+                if (status === 'ringing' || status === 'active' || status === 'calling') {
+                    activeCallMessageId.current = data.id;
+                }
+            }
+        }
+    };
+
     const startCall = (partner, type) => {
         if (!currentUser) return;
         setCallData({
@@ -135,6 +218,8 @@ export const CallProvider = ({ children }) => {
             isIncoming: false
         });
         setIsCalling(true);
+        // Start log immediately
+        logCallMessage(null, 'calling', partner.id, type);
     };
 
     const answerCall = async () => {
@@ -145,8 +230,11 @@ export const CallProvider = ({ children }) => {
             if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
             
             if (incomingCall) {
-                // Update status to active
-                await supabase.from('calls').update({ status: 'active' }).eq('id', incomingCall.id);
+                // Update status to active and set start time
+                await supabase.from('calls').update({ 
+                    status: 'active',
+                    started_at: new Date().toISOString()
+                }).eq('id', incomingCall.id);
                 
                 setCallData({
                     partner: incomingCall.caller,
@@ -161,28 +249,6 @@ export const CallProvider = ({ children }) => {
         }
     };
 
-    // Helper to log call messages to Chat
-    const logCallMessage = async (callId, status, partnerId, callType = 'audio', duration = 0) => {
-        if (!callId || !currentUser || !partnerId) return;
-
-        // Structured content for UI rendering
-        const contentPayload = {
-            status,
-            call_type: callType,
-            duration
-        };
-
-        const { error } = await supabase.from('messages').insert({
-            sender_id: currentUser.id,
-            receiver_id: partnerId,
-            content: JSON.stringify(contentPayload),
-            message_type: 'call_log', // Special type for Chat.jsx
-            is_read: true // System messages read by default
-        });
-
-        if (error) console.error("Error logging call message:", error);
-    };
-
     const rejectCall = async (callId = null, reason = 'rejected') => {
         if (processingAction.current) return;
         processingAction.current = true;
@@ -194,16 +260,22 @@ export const CallProvider = ({ children }) => {
             const partnerId = incomingCall ? incomingCall.caller_id : null;
             const type = incomingCall ? incomingCall.type : 'audio';
 
+            console.log(`❌ [rejectCall] Rejecting call ${idToReject} with reason: ${reason}`);
+
             if (idToReject) {
-                await supabase.from('calls').update({ status: reason }).eq('id', idToReject);
+                const { error } = await supabase.from('calls').update({ status: reason }).eq('id', idToReject);
+                
+                if (error) {
+                    console.error(`❌ [rejectCall] Error updating call status:`, error);
+                } else {
+                    console.log(`✅ [rejectCall] Successfully updated call ${idToReject} to status: ${reason}`);
+                }
                 
                 // Log missed call to chat (only if missed/timeout, or declined)
-                if (partnerId) {
-                    // If I am the receiver rejecting -> It creates a log "Declined" or "Missed"
-                    // Usually "Missed" is logged when timeout occurs.
-                    // "Declined" is when I manually click decline.
-                    await logCallMessage(idToReject, reason, partnerId, type);
-                }
+                // Log missed call logic removed for Receiver. Caller handles it via Realtime to preventing dupes.
+                // if (partnerId) {
+                //    await logCallMessage(idToReject, reason, partnerId, type);
+                // }
             }
             setIncomingCall(null);
         } finally {
@@ -239,7 +311,7 @@ export const CallProvider = ({ children }) => {
             const type = incomingCall.type;
 
             await supabase.from('calls').update({ status: 'declined' }).eq('id', idToReject);
-            await logCallMessage(idToReject, 'declined', partnerId, type);
+            // await logCallMessage(idToReject, 'declined', partnerId, type); // Dedupe
             
             setIncomingCall(null);
 
@@ -253,16 +325,29 @@ export const CallProvider = ({ children }) => {
         processingAction.current = true;
 
         try {
-            // Log the ended call
+            console.log(`🔚 [endCallSession] Called with duration: ${duration}, status: ${status}`);
+            
+            // Log the ended/rejected/declined call
             if (callData && callData.partner) {
-                 // Prevent duplicate logs: Only Caller logs the session end
-                 // And only if the call was actually connected/ended (not rejected/missed)
-                 if (!callData.isIncoming && status === 'ended') {
+                 console.log(`🔚 [endCallSession] CallData exists. isIncoming: ${callData.isIncoming}`);
+                 
+                 // Prevent duplicate logs: Only Caller logs the session end/result
+                 if (!callData.isIncoming) {
                      const partnerId = callData.partner.id;
                      const type = callData.type;
                      
-                     await logCallMessage('session_end', 'ended', partnerId, type, duration);
+                     console.log(`🔚 [endCallSession] Caller logging status: ${status} to partner: ${partnerId}`);
+                     console.log(`🔚 [endCallSession] activeCallMessageId.current: ${activeCallMessageId.current}`);
+                     
+                     // Handle all terminal states
+                     if (['ended', 'declined', 'rejected', 'missed', 'busy'].includes(status)) {
+                        await logCallMessage('session_end', status, partnerId, type, duration);
+                     }
+                 } else {
+                     console.log(`🔚 [endCallSession] Skipping log (receiver side)`);
                  }
+            } else {
+                console.log(`🔚 [endCallSession] No callData or partner found`);
             }
 
             setIsCalling(false);

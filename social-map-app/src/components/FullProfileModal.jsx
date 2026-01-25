@@ -11,6 +11,8 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
         birthDate: null,
         interests: []
     });
+    const [sharedMedia, setSharedMedia] = useState([]);
+    const [viewingMedia, setViewingMedia] = useState(null);
 
     const isFriend = user.friendshipStatus === 'accepted';
     const isOwner = currentUser?.id === user.id;
@@ -39,7 +41,23 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 .eq('id', user.id)
                 .maybeSingle();
 
-            // 2. Fetch Mutual Friends Count (Mock logic or complex query)
+            // 2. Fetch Shared Media (Images)
+            // Only if we are friends or owner (don't show for public strangers usually, but user asked for "shared" so presumably implies interaction)
+            if (isFriend || isOwner) {
+                const { data: mediaMessages } = await supabase
+                    .from('messages')
+                    .select('id, image_url, created_at')
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
+                    .eq('message_type', 'image')
+                    .order('created_at', { ascending: false })
+                    .limit(9); // Show last 9 images
+                
+                if (mediaMessages) {
+                    setSharedMedia(mediaMessages);
+                }
+            }
+
+            // 3. Fetch Mutual Friends Count (Mock logic or complex query)
             // For now, simpler approximation or just 0 if too complex for single query
             // Let's approximate by checking shared accepted friendships
             // This is expensive in SQL without a function, so we might mock/randomize for demo 
@@ -137,6 +155,27 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         <p>{stats.bio}</p>
                     </div>
 
+                    {/* Shared Media Section */}
+                    {sharedMedia.length > 0 && (
+                        <div className="fp-media-section">
+                             <div className="fp-media-header">
+                                <h3>SHARED MEDIA</h3>
+                                <span className="fp-media-count">{sharedMedia.length} Recent</span>
+                            </div>
+                            <div className="fp-media-grid">
+                                {sharedMedia.map((media) => (
+                                    <div 
+                                        key={media.id} 
+                                        className="fp-media-item"
+                                        onClick={() => setViewingMedia(media.image_url)}
+                                    >
+                                        <img src={media.image_url} alt="Shared" loading="lazy" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Interests Section */}
                     {stats.interests && stats.interests.length > 0 && (
                         <div className="fp-interests-section">
@@ -172,6 +211,14 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     </div>
 
                 </motion.div>
+
+                {/* Simple Image Viewer Overlay */}
+                {viewingMedia && (
+                    <div className="fp-media-viewer" onClick={() => setViewingMedia(null)}>
+                        <img src={viewingMedia} alt="Full size" onClick={e => e.stopPropagation()} />
+                        <button className="fp-viewer-close" onClick={() => setViewingMedia(null)}>×</button>
+                    </div>
+                )}
 
                 <style>{`
                     .full-profile-backdrop {
@@ -351,6 +398,90 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         line-height: 1.6;
                         margin: 0;
                         font-style: italic;
+                    }
+
+                    /* Media Section Styles */
+                    .fp-media-section {
+                        width: 100%;
+                        margin-bottom: 24px;
+                    }
+                    .fp-media-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: baseline;
+                        margin-bottom: 12px;
+                        padding: 0 4px;
+                    }
+                    .fp-media-header h3 {
+                        color: rgba(255,255,255,0.4);
+                        font-size: 0.75rem;
+                        text-transform: uppercase;
+                        letter-spacing: 1.2px;
+                        font-weight: 700;
+                        margin: 0;
+                    }
+                    .fp-media-count {
+                        color: rgba(255,255,255,0.3);
+                        font-size: 0.75rem;
+                    }
+                    .fp-media-grid {
+                        display: grid;
+                        grid-template-columns: repeat(3, 1fr);
+                        gap: 8px;
+                    }
+                    .fp-media-item {
+                        aspect-ratio: 1;
+                        border-radius: 12px;
+                        overflow: hidden;
+                        cursor: pointer;
+                        position: relative;
+                        background: rgba(255,255,255,0.05);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        transition: transform 0.2s;
+                    }
+                    .fp-media-item:hover {
+                        transform: scale(1.03);
+                        border-color: rgba(255,255,255,0.3);
+                    }
+                    .fp-media-item img {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                    }
+
+                    /* Media Viewer Overlay */
+                    .fp-media-viewer {
+                        position: fixed;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background: rgba(0,0,0,0.95);
+                        z-index: 3100;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        animation: fadeIn 0.2s;
+                    }
+                    .fp-media-viewer img {
+                        max-width: 95%;
+                        max-height: 95vh;
+                        border-radius: 8px;
+                        box-shadow: 0 0 50px rgba(0,0,0,0.5);
+                    }
+                    .fp-viewer-close {
+                        position: absolute;
+                        top: 20px;
+                        right: 20px;
+                        background: rgba(255,255,255,0.2);
+                        border: none;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 50%;
+                        color: white;
+                        font-size: 24px;
+                        cursor: pointer;
+                        display: flex; align-items: center; justify-content: center;
+                    }
+                    .fp-viewer-close:hover {
+                        background: rgba(255,255,255,0.3);
                     }
 
                     .fp-interests-section {

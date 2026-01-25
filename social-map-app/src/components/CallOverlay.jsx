@@ -50,24 +50,32 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 // 1. IMMEDIATE: Initialize Local Tracks first for instant UI feedback
                 if (isVideoCall) {
                     try {
-                        localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack();
+                        const videoTrack = await AgoraRTC.createCameraVideoTrack();
+                        if (!mounted) { videoTrack.close(); return; } // Cleanup if unmounted during await
+                        localVideoTrackRef.current = videoTrack;
+
                         // Force a small delay to ensure track is ready for UI binding
                         await new Promise(r => setTimeout(r, 100)); 
+                        if (!mounted) return;
+
                         setLocalTrackReady(true);
                         console.log('✅ Local video track ready');
                     } catch (trackErr) {
                         console.error('Failed to create camera track:', trackErr);
                         setStatus('⚠️ Camera Access Denied');
-                        // Consider throwing here if video is critical, or fallback to audio
                     }
                 }
                 
                 try {
-                    localAudioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
+                    const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                    if (!mounted) { audioTrack.close(); return; } // Cleanup if unmounted
+                    localAudioTrackRef.current = audioTrack;
                 } catch (micErr) {
                     console.error('Failed to create mic track:', micErr);
                     setStatus('⚠️ Mic Access Denied');
                 }
+
+                if (!mounted) return;
 
                 // 2. Setup Agora Client
                 const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -75,6 +83,14 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                 // Handle remote user events
                 client.on('user-published', async (user, mediaType) => {
+                    // FILTER: Ignore "ghost" sessions of myself
+                    // uid format is `${currentUser.id}-${timestamp}`
+                    // If user.uid matches my ID prefix, it's me from another tab/stuck session.
+                    if (String(user.uid).startsWith(String(currentUser.id))) {
+                        console.warn('👻 Ignoring ghost session of self:', user.uid);
+                        return;
+                    }
+
                     await client.subscribe(user, mediaType);
                     console.log('Subscribed to remote user:', user.uid, mediaType);
 
@@ -121,11 +137,20 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 // 4. Join Channel
                 // Use a unique UID to prevent collision with ghost sessions from previous tabs
                 const uniqueUid = `${currentUser.id}-${Date.now().toString().slice(-6)}`;
+                
+                if (!mounted) return;
                 await client.join(APP_ID, channelName, null, uniqueUid);
+                
+                // Double check mounted after join before publishing
+                if (!mounted) {
+                     await client.leave();
+                     return;
+                }
 
                 // 5. Publish Tracks
                 const tracksToPublish = [];
                 if (localAudioTrackRef.current) tracksToPublish.push(localAudioTrackRef.current);
+                // Only publish video if track exists AND it is enabled (not strictly required as track can be disabled later, but good practice)
                 if (localVideoTrackRef.current) tracksToPublish.push(localVideoTrackRef.current);
                 
                 if (tracksToPublish.length > 0) {
@@ -298,14 +323,24 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             clientRef.current = null;
         }
 
+        // Determine final status
+        // If Caller hung up before answer (duration 0), mark as missed/cancelled
+        const isMissed = !callData.isIncoming && callDuration === 0;
+        const finalStatus = isMissed ? 'missed' : 'ended';
+
         // Update DB to end call
         const sortedIds = [currentUser.id, callData.partner.id].sort();
         const channelName = `call_${sortedIds[0].slice(0, 15)}_${sortedIds[1].slice(0, 15)}`;
+        
         await supabase.from('calls')
-            .update({ status: 'ended' })
+            .update({ 
+                status: finalStatus,
+                ended_at: new Date().toISOString(),
+                duration_seconds: callDuration
+            })
             .eq('channel_name', channelName);
         
-        onEnd(callDuration, 'ended');
+        onEnd(callDuration, finalStatus);
     };
 
     const formatDuration = (seconds) => {
