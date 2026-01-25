@@ -16,7 +16,8 @@
 }
 
 .attachment-preview-container {
-    background: white;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     border-radius: 20px;
     padding: 24px;
     max-width: 500px;
@@ -37,11 +38,11 @@
     margin: 0;
     font-size: 1.3rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .preview-close {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--glass-border);
     border: none;
     width: 36px;
     height: 36px;
@@ -72,7 +73,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px;
-    background: #f8f9fa;
+    background: var(--bg-color);
     border-radius: 12px;
     transition: all 0.2s;
 }
@@ -109,7 +110,7 @@
 
 .file-name {
     font-weight: 500;
-    color: #333;
+    color: var(--text-primary);
     font-size: 0.9rem;
     white-space: nowrap;
     overflow: hidden;
@@ -118,7 +119,7 @@
 
 .file-size {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-secondary);
 }
 
 .remove-file-btn {
@@ -184,8 +185,8 @@
 }
 
 .preview-cancel-btn {
-    background: #e9ecef;
-    color: #333;
+    background: var(--glass-border);
+    color: var(--text-primary);
 }
 
 .preview-cancel-btn:hover:not(:disabled) {

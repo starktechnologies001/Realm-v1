@@ -21,7 +21,10 @@ export default function Friends() {
 
     const fetchFriendsData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+            navigate('/login');
+            return;
+        }
         setCurrentUser(user);
 
         // Fetch Pending Requests (where I am receiver)
@@ -29,7 +32,7 @@ export default function Friends() {
             .from('friendships')
             .select(`
                 id, 
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
             `)
             .eq('receiver_id', user.id)
             .eq('status', 'pending');
@@ -48,8 +51,8 @@ export default function Friends() {
                 id,
                 requester_id,
                 receiver_id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
             `)
             .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
             .eq('status', 'accepted');
@@ -192,9 +195,11 @@ export default function Friends() {
         e.stopPropagation();
         const userObj = {
             id: friend.id,
-            name: friend.username || friend.full_name,
+            name: friend.username,
             avatar: friend.avatar_url || (friend.gender === 'Male' ? `https://avatar.iran.liara.run/public/boy?username=${encodeURIComponent(friend.username)}` : friend.gender === 'Female' ? `https://avatar.iran.liara.run/public/girl?username=${encodeURIComponent(friend.username)}` : `https://avatar.iran.liara.run/public?username=${encodeURIComponent(friend.username)}`),
             status: friend.status,
+            hide_status: friend.hide_status,
+            show_last_seen: friend.show_last_seen,
             gender: friend.gender,
             friendshipStatus: 'accepted' // For UserProfileCard logic
         };
@@ -275,7 +280,7 @@ export default function Friends() {
                                             />
                                         </div>
                                         <div className="info">
-                                            <h3>{req.username || req.full_name}</h3>
+                                            <h3>{req.username}</h3>
                                             <span className="subtitle">wants to connect</span>
                                         </div>
                                         <div className="actions">
@@ -309,7 +314,7 @@ export default function Friends() {
                         ) : (
                             <div className="list">
                                 {friends.map(friend => (
-                                    <div key={friend.id} className="friend-card" onClick={() => startChat(friend)}>
+                                    <div key={friend.id} className="friend-card" onClick={(e) => handleViewProfile(e, friend)}>
                                         <div className="avatar-container">
                                             <img 
                                                 src={(() => {
@@ -333,8 +338,8 @@ export default function Friends() {
                                             <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
                                         <div className="info">
-                                            <h3>{friend.username || friend.full_name}</h3>
-                                            <span className="status-text">{friend.status || 'Offline'}</span>
+                                            <h3>{friend.username}</h3>
+                                            {!friend.hide_status && <span className="status-text">{friend.status || 'Offline'}</span>}
                                         </div>
                                         
                                         <div className="menu-wrapper">
@@ -351,6 +356,13 @@ export default function Friends() {
                                             {activeMenuId === friend.id && (
                                                 <div className="dropdown-menu">
 
+                                                    <button onClick={(e) => { e.stopPropagation(); startChat(friend); }}>
+                                                        Chat
+                                                    </button>
+                                                    <button onClick={(e) => handleViewProfile(e, friend)}>
+                                                        View Profile
+                                                    </button>
+                                                    <div style={{ height: 1, background: '#eee', margin: '4px 0' }}></div>
                                                     <button className="danger" onClick={(e) => confirmUnfriend(e, friend)}>
                                                         Unfriend
                                                     </button>
@@ -368,6 +380,7 @@ export default function Friends() {
             {/* Profile Modal */}
             <UserProfileCard 
                 user={viewingProfile} 
+                currentUser={currentUser}
                 onClose={() => setViewingProfile(null)} 
                 onAction={handleCardAction}
             />
@@ -376,7 +389,7 @@ export default function Friends() {
             {showUnfriendModal && (
                 <div className="modal-overlay">
                     <div className="modal-content">
-                        <h3>Unfriend {friendToUnfriend?.username || friendToUnfriend?.full_name}?</h3>
+                        <h3>Unfriend {friendToUnfriend?.username}?</h3>
                         <p>Are you sure you want to remove this friend? You will need to poke them again to reconnect.</p>
                         <div className="modal-actions">
                             <button className="btn-cancel" onClick={cancelUnfriend}>No, Keep</button>
@@ -469,6 +482,19 @@ export default function Friends() {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 }
                 .tab-btn:hover:not(.active) { color: #0084ff; }
+
+                /* Dark mode tab buttons */
+                html[data-theme="dark"] .tab-btn.active {
+                    background: rgba(255, 255, 255, 0.15) !important;
+                    color: white !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .tab-btn.active {
+                        background: rgba(255, 255, 255, 0.15) !important;
+                        color: white !important;
+                    }
+                }
                 
                 .tab-badge {
                     background: #ff453a; color: white;
@@ -485,13 +511,14 @@ export default function Friends() {
                 .menu-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
                 .friend-badge {
                     font-size: 0.85rem; 
-                    background: rgba(0, 212, 255, 0.15); 
-                    color: #00d4ff; 
-                    padding: 6px 12px; 
-                    border-radius: 14px;
-                    font-weight: 600;
-                    border: 1px solid rgba(0, 212, 255, 0.3);
-                    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.15);
+                    background: linear-gradient(180deg, #E0F7FA 0%, #B2EBF2 100%);
+                    color: #0097A7;
+                    padding: 6px 14px;
+                    border-radius: 100px;
+                    font-weight: 700;
+                    border: 1px solid #4DD0E1;
+                    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+                    display: inline-flex; align-items: center; gap: 4px;
                 }
                 .btn-menu {
                     width: 40px; height: 40px;
@@ -545,7 +572,7 @@ export default function Friends() {
 
                 .friends-page {
                     min-height: 100vh;
-                    background: var(--bg-dark);
+                    background: var(--bg-color);
                     color: var(--text-primary);
                     font-family: 'Inter', sans-serif;
                     position: relative;
@@ -560,6 +587,17 @@ export default function Friends() {
                     position: sticky; top: 0; z-index: 10;
                     background: var(--bg-dark);
                     /* Removed border for ultra-clean look */
+                }
+
+                /* Dark mode Friends header */
+                html[data-theme="dark"] .glass-header {
+                    background: rgba(0, 0, 0, 0.95) !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .glass-header {
+                        background: rgba(0, 0, 0, 0.95) !important;
+                    }
                 }
 
                 .back-btn {

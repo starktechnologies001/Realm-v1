@@ -1,35 +1,95 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
+import { supabase } from '../supabaseClient';
+
+// Helper to format date
+const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); // 10 January 2026
+};
+
+const formatJoinDate = (dateStr) => {
+     if (!dateStr) return 'N/A';
+     const date = new Date(dateStr);
+     return date.toLocaleDateString('en-GB'); // 18/01/2026
+};
 
 
-export default function UserProfileCard({ user, onClose, onAction }) {
+export default function UserProfileCard({ user, onClose, onAction, currentUser }) {
     if (!user) return null;
 
-    // Debug: Log user data to see what's available
-    console.log('🔵 [UserProfileCard] User data:', user);
-    console.log('🔵 [UserProfileCard] Avatar:', user.avatar);
-    console.log('🔵 [UserProfileCard] Avatar URL:', user.avatar_url);
+    const [sharedMedia, setSharedMedia] = React.useState([]);
+    const [previewImage, setPreviewImage] = React.useState(null);
 
-    // Get the avatar URL and convert GLB to PNG if needed
+    React.useEffect(() => {
+        if (user.friendshipStatus === 'accepted' && currentUser) {
+            const fetchMedia = async () => {
+                const { data } = await supabase
+                    .from('messages')
+                    .select('content, image_url, created_at')
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
+                    .eq('message_type', 'image')
+                    .not('image_url', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(5); 
+                if (data) setSharedMedia(data);
+            };
+            fetchMedia();
+        }
+    }, [user, currentUser]);
+
+    const handleMediaClick = (media, index) => {
+        if (index === 3 && sharedMedia.length > 4) {
+            onAction('message', user); // Go to chat to see all
+        } else {
+            setPreviewImage(media.image_url);
+        }
+    };
+
     const avatarUrl = user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`;
     const displayAvatar = getAvatar2D(avatarUrl);
-    console.log('🔵 [UserProfileCard] Display Avatar:', displayAvatar);
 
-    // Calculate time since active
-    const getLastActive = (dateStr) => {
-        if (!dateStr) return 'Offline';
-        const diff = Date.now() - new Date(dateStr).getTime();
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return 'Online';
-        if (mins < 60) return `${mins}m ago`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h ago`;
-        return 'Offline';
-    };
+    // Fields
+    const bio = user.bio || "No bio available.";
+    const interests = user.interests || []; 
+    // const mutuals = user.mutuals_count || 0; // TODO: Calculate mutuals if possible, else 0
+    const mutuals = 0; 
+    const joinedDate = formatJoinDate(user.created_at); 
+    const birthday = user.birthday ? formatDate(user.birthday) : null;
 
     return (
         <AnimatePresence>
+            {/* Lightbox */}
+            {previewImage && (
+                <motion.div 
+                    className="lightbox-overlay"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    onClick={() => setPreviewImage(null)}
+                >
+                    <img src={previewImage} alt="Full view" className="lightbox-img" />
+                    <button className="lightbox-close">✕</button>
+                    <style>{`
+                        .lightbox-overlay {
+                            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                            background: rgba(0,0,0,0.9); z-index: 3000;
+                            display: flex; justify-content: center; align-items: center;
+                        }
+                        .lightbox-img {
+                            max-width: 90%; max-height: 90%; border-radius: 8px;
+                            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                        }
+                        .lightbox-close {
+                            position: absolute; top: 20px; right: 20px;
+                            background: rgba(255,255,255,0.1); border: none; color: white;
+                            width: 40px; height: 40px; border-radius: 50%; font-size: 1.5rem;
+                            cursor: pointer; display: flex; align-items: center; justify-content: center;
+                        }
+                    `}</style>
+                </motion.div>
+            )}
+
             <motion.div 
                 className="user-profile-overlay"
                 initial={{ opacity: 0 }}
@@ -45,406 +105,326 @@ export default function UserProfileCard({ user, onClose, onAction }) {
                     transition={{ type: "spring", damping: 25, stiffness: 300 }}
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="card-drag-handle" />
-                    
-                    <div className="card-header">
-                        <div className="avatar-large-container" onClick={() => onAction('view-profile', user)}>
-                            <img 
+                    {/* Close Button */}
+                    <button className="close-btn-floating" onClick={onClose}>✕</button>
+
+                    <div className="card-header-centered">
+                        <div className="avatar-ring-container">
+                             <img 
                                 src={displayAvatar} 
                                 alt={user.name} 
-                                className="avatar-large"
+                                className="avatar-main"
                             />
-                            <div className={`status-dot ${user.isLocationOn ? 'online' : 'offline'}`} />
+                             <div className={`status-dot-large ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         
-                        <div className="user-info-area">
-                            <h2 onClick={() => onAction('view-profile', user)} style={{ cursor: 'pointer' }}>
-                                {user.name} 
-                                {user.email_verified && (
-                                    <span className="verified-badge" title="Email Verified">
-                                        ✔ Verified
-                                    </span>
-                                )}
-                                <span>›</span>
-                            </h2>
-                            <div className="badges-row">
-                                {user.friendshipStatus === 'accepted' && (
-                                    <span className="badge-pill status" style={{ background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', border: '1px solid rgba(52, 199, 89, 0.3)' }}>
-                                        🤝 Friend
-                                    </span>
-                                )}
-                                <span className="badge-pill status">{user.status || 'Available'}</span>
-                                <span className="badge-pill active-time">{getLastActive(user.lastActive)}</span>
+                        <h2 className="user-name">{user.name}</h2>
+                        
+                        <div className="header-badges">
+                            <div className="status-pill">
+                                {user.relationship_status || 'Single'}
                             </div>
+
                             {user.friendshipStatus === 'accepted' && (
-                                <button className="view-profile-sm" onClick={() => onAction('view-profile', user)}>View Profile</button>
+                                <span className="badge-pill friend-premium">
+                                    🤝 Friend
+                                </span>
                             )}
                         </div>
                     </div>
 
-                    {user.thought && (
-                        <div className="thought-bubble-large">
-                            {user.thought}
+                    {/* Stats Row */}
+                    <div className="stats-container">
+                        <div className="stat-item">
+                            <span className="stat-value">{mutuals}</span>
+                            <span className="stat-label">MUTUALS</span>
+                        </div>
+                        <div className="stat-item">
+                            <span className="stat-value">{joinedDate}</span>
+                            <span className="stat-label">JOINED</span>
+                        </div>
+                        {birthday && (
+                            <div className="stat-item">
+                                <span className="stat-value">🎂 {birthday.split(' ').slice(0, 2).join(' ')}</span>
+                                <span className="stat-label">BIRTHDAY</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* About Section */}
+                    <div className="info-section">
+                        <h4 className="section-title">ABOUT</h4>
+                        <p className="bio-text">{bio}</p>
+                    </div>
+
+                    {/* Interests Section */}
+                    {interests.length > 0 && (
+                        <div className="info-section">
+                            <h4 className="section-title">INTERESTS</h4>
+                            <div className="tags-row">
+                                {interests.map((tag, i) => (
+                                    <span key={i} className="interest-tag">{tag}</span>
+                                ))}
+                            </div>
                         </div>
                     )}
 
-                    <div className="action-grid">
+                    {/* Shared Media Section */}
+                    {user.friendshipStatus === 'accepted' && sharedMedia.length > 0 && (
+                        <div className="info-section">
+                            <h4 className="section-title">SHARED MEDIA</h4>
+                            <div className="media-grid">
+                                {sharedMedia.slice(0, 4).map((media, i) => (
+                                    <div key={i} className="media-item" onClick={() => handleMediaClick(media, i)}>
+                                        <img src={media.image_url} alt="Shared" />
+                                        {i === 3 && sharedMedia.length > 4 && (
+                                            <div className="media-overlay">
+                                                <span>+More</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="action-buttons-container">
                         {user.friendshipStatus === 'accepted' ? (
                             <>
                                 <button 
-                                    className="action-btn primary-action"
+                                    className="btn-message-large"
                                     onClick={() => onAction('message', user)}
                                 >
-                                    <span className="icon">💬</span>
-                                    <span className="label">Message</span>
+                                    💬 Message
                                 </button>
-                                {/* Mute Button */}
-                                <button 
-                                    className="action-btn secondary-action"
-                                    onClick={() => onAction('mute', user)}
-                                >
-                                    <span className="icon">{user.isMuted ? '🔕' : '🔔'}</span>
-                                    <span className="label">{user.isMuted ? 'Unmute' : 'Mute'}</span>
-                                </button>
+                                
+                                <div className="call-buttons-row">
+                                    <button 
+                                        className="btn-call"
+                                        onClick={() => onAction('call-audio', user)}
+                                    >
+                                        📞 Audio Call
+                                    </button>
+                                    <button 
+                                        className="btn-call"
+                                        onClick={() => onAction('call-video', user)}
+                                    >
+                                        📹 Video Call
+                                    </button>
+                                </div>
                             </>
                         ) : (
-                            <>
-                                <button 
-                                    className="action-btn primary-action"
-                                    onClick={() => onAction('poke', user)}
-                                    disabled={user.friendshipStatus === 'pending'}
-                                    style={{ opacity: user.friendshipStatus === 'pending' ? 0.6 : 1 }}
-                                >
-                                    <span className="icon">👋</span>
-                                    <span className="label">{user.friendshipStatus === 'pending' ? 'Poke Sent' : 'Poke'}</span>
-                                </button>
-                                <button 
-                                    className="action-btn secondary-action"
-                                    onClick={() => onAction('message', user)}
-                                    style={{ opacity: 0.5, cursor: 'not-allowed' }}
-                                >
-                                    <span className="icon">🔒</span>
-                                    <span className="label">Message</span>
-                                </button>
-                            </>
+                            <button 
+                                className="btn-message-large"
+                                style={{ background: 'linear-gradient(135deg, #00d4ff 0%, #0084ff 100%)' }}
+                                onClick={() => onAction('poke', user)}
+                            >
+                                👋 Poke
+                            </button>
                         )}
-                        
-                         <button 
-                            className="action-btn secondary-action danger"
-                            onClick={() => onAction('block', user)}
-                        >
-                            <span className="icon">🚫</span>
-                            <span className="label">Block</span>
-                        </button>
+                    </div>
 
-                         <button 
-                            className="action-btn secondary-action danger"
-                            onClick={() => onAction('report', user)}
-                        >
-                            <span className="icon">⚠️</span>
-                            <span className="label">Report</span>
-                        </button>
+                    {/* Footer Actions */}
+                    <div className="footer-links">
+                        <button className="text-link danger" onClick={() => onAction('block', user)}>Block User</button>
+                        <span className="divider">•</span>
+                        <button className="text-link danger" onClick={() => onAction('report', user)}>Report User</button>
                     </div>
 
                 </motion.div>
 
                 <style>{`
                     .user-profile-overlay {
-                        position: fixed;
-                        top: 0; left: 0; right: 0; bottom: 80px;
+                        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                         background: rgba(0,0,0,0.6);
                         backdrop-filter: blur(8px);
                         -webkit-backdrop-filter: blur(8px);
                         z-index: 2000;
-                        display: flex;
-                        justify-content: center;
-                        align-items: flex-end;
+                        display: flex; justify-content: center; align-items: center;
                     }
 
                     .glass-panel {
-                        background: linear-gradient(180deg, rgba(28, 28, 30, 0.98) 0%, rgba(20, 20, 22, 0.98) 100%);
-                        backdrop-filter: blur(40px) saturate(180%);
-                        -webkit-backdrop-filter: blur(40px) saturate(180%);
-                        border-top: 1px solid rgba(255, 255, 255, 0.15);
-                        border-left: 1px solid rgba(255, 255, 255, 0.08);
-                        border-right: 1px solid rgba(255, 255, 255, 0.08);
-                        box-shadow: 
-                            0 -20px 60px rgba(0,0,0,0.6),
-                            0 -1px 0 rgba(255,255,255,0.1) inset;
+                        background: radial-gradient(circle at top right, #2a2a2e 0%, #1c1c1e 100%);
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
                     }
 
                     .user-profile-card {
-                        width: 100%;
-                        max-width: 500px;
-                        border-radius: 28px 28px 0 0;
-                        padding: 24px 20px 32px;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        gap: 24px;
+                        width: 90%; max-width: 400px;
+                        border-radius: 32px;
+                        padding: 32px 24px;
+                        display: flex; flex-direction: column; align-items: center;
                         position: relative;
-                    }
-
-                    .card-drag-handle {
-                        width: 48px;
-                        height: 5px;
-                        background: rgba(255,255,255,0.25);
-                        border-radius: 3px;
-                        margin-bottom: 12px;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-                    }
-
-                    .card-header {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        gap: 16px;
-                        width: 100%;
-                    }
-
-                    .avatar-large-container {
-                        position: relative;
-                        padding: 5px;
-                        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 114, 255, 0.2) 100%);
-                        border-radius: 50%;
-                        box-shadow: 0 8px 24px rgba(0, 132, 255, 0.25);
-                        cursor: pointer;
-                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    }
-                    
-                    .avatar-large-container:hover {
-                        transform: scale(1.05);
-                        box-shadow: 0 12px 32px rgba(0, 132, 255, 0.35);
-                    }
-
-                    .avatar-large {
-                        width: 110px;
-                        height: 110px;
-                        border-radius: 50%;
-                        object-fit: cover;
-                        border: 4px solid rgba(0,0,0,0.3);
-                        background: linear-gradient(135deg, #2a2a2e 0%, #1a1a1e 100%);
-                        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-                    }
-
-                    .status-dot {
-                        position: absolute;
-                        bottom: 10px;
-                        right: 10px;
-                        width: 20px;
-                        height: 20px;
-                        border-radius: 50%;
-                        border: 4px solid rgba(28, 28, 30, 0.95);
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                    }
-                    .status-dot.online { 
-                        background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
-                        box-shadow: 0 0 12px rgba(0,255,136,0.8), 0 2px 8px rgba(0,0,0,0.4);
-                        animation: pulse 2s ease-in-out infinite;
-                    }
-                    .status-dot.offline { 
-                        background: linear-gradient(135deg, #666 0%, #555 100%);
-                    }
-                    
-                    @keyframes pulse {
-                        0%, 100% { opacity: 1; }
-                        50% { opacity: 0.7; }
-                    }
-
-                    .user-info-area { 
-                        text-align: center;
-                        width: 100%;
-                    }
-                    
-                    .user-info-area h2 {
-                        margin: 0;
-                        font-size: 1.75rem;
                         color: white;
-                        font-weight: 700;
+                        max-height: 85vh;
+                        overflow-y: auto;
+                    }
+                    
+                    /* Custom Scrollbar */
+                    .user-profile-card::-webkit-scrollbar { width: 4px; }
+                    .user-profile-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+                    .close-btn-floating {
+                        position: absolute; top: 20px; right: 20px;
+                        width: 36px; height: 36px;
+                        border-radius: 50%; background: rgba(255,255,255,0.08);
+                        border: none; color: rgba(255,255,255,0.6); 
+                        display: flex; align-items: center; justify-content: center;
+                        cursor: pointer; font-size: 1.2rem;
+                        transition: all 0.2s;
+                    }
+                    .close-btn-floating:hover { background: rgba(255,255,255,0.15); color: white; transform: rotate(90deg); }
+
+                    .card-header-centered {
+                        display: flex; flex-direction: column; align-items: center; gap: 12px;
+                        margin-bottom: 30px;
+                        width: 100%;
+                    }
+
+                    .avatar-ring-container {
+                        position: relative; width: 110px; height: 110px;
+                        padding: 4px;
+                        border-radius: 50%;
+                        background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                    }
+
+                    .avatar-main {
+                        width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+                        border: 3px solid #1c1c1e;
+                    }
+
+                    .status-dot-large {
+                        position: absolute; bottom: 8px; right: 8px;
+                        width: 20px; height: 20px; border-radius: 50%;
+                        border: 3px solid #1c1c1e;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    }
+                    .status-dot-large.online { background: #00ff88; box-shadow: 0 0 12px rgba(0, 255, 136, 0.6); }
+                    .status-dot-large.offline { background: #666; }
+
+                    .user-name { 
+                        font-size: 1.75rem; font-weight: 800; margin: 8px 0 0 0; 
                         letter-spacing: -0.5px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 6px;
+                        background: linear-gradient(180deg, #fff 0%, #ddd 100%);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
                     }
                     
-                    .user-info-area h2 span {
-                        color: rgba(255,255,255,0.4);
-                        font-size: 1.5rem;
+                    .header-badges {
+                        display: flex; flex-direction: column; align-items: center; gap: 8px;
                     }
 
-                    .verified-badge {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 4px;
-                        font-size: 0.75rem;
-                        font-weight: 600;
-                        color: #0084ff;
-                        background: rgba(0, 132, 255, 0.15);
-                        padding: 4px 10px;
-                        border-radius: 12px;
-                        border: 1px solid rgba(0, 132, 255, 0.3);
-                        margin-left: 8px;
-                        letter-spacing: 0.3px;
+                    .status-pill {
+                        background: rgba(255,255,255,0.06);
+                        padding: 6px 16px; border-radius: 20px;
+                        font-size: 0.85rem; color: rgba(255,255,255,0.6);
+                        font-weight: 500;
+                        backdrop-filter: blur(4px);
                     }
 
-                    .badges-row {
-                        display: flex;
-                        justify-content: center;
-                        gap: 10px;
-                        margin-top: 12px;
-                        flex-wrap: wrap;
-                    }
-
-                    .badge-pill {
-                        font-size: 0.8rem;
-                        padding: 6px 14px;
-                        border-radius: 14px;
-                        font-weight: 600;
-                        transition: all 0.2s;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-                    }
-                    
-                    .badge-pill.status {
-                        background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(0, 132, 255, 0.15) 100%);
-                        color: #00d4ff;
-                        border: 1px solid rgba(0, 212, 255, 0.3);
-                    }
-                    
-                    .badge-pill.active-time {
-                        background: rgba(255, 255, 255, 0.08);
-                        color: #aaa;
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                    }
-                    
-                    .view-profile-sm {
-                        background: rgba(255,255,255,0.05);
-                        border: 1.5px solid rgba(255,255,255,0.15);
-                        color: #ddd;
-                        padding: 8px 18px;
-                        border-radius: 24px;
-                        font-size: 0.85rem;
-                        font-weight: 600;
-                        cursor: pointer;
-                        margin-top: 14px;
-                        transition: all 0.2s;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                    }
-                    
-                    .view-profile-sm:hover {
-                        border-color: rgba(0, 212, 255, 0.5);
-                        color: #00d4ff;
-                        background: rgba(0, 212, 255, 0.1);
-                        transform: translateY(-1px);
-                        box-shadow: 0 4px 12px rgba(0, 212, 255, 0.2);
-                    }
-
-                    .thought-bubble-large {
-                        background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
-                        color: #1a1a1a;
-                        padding: 14px 20px;
-                        border-radius: 18px;
-                        font-weight: 600;
-                        font-size: 1rem;
-                        position: relative;
-                        box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-                        max-width: 90%;
-                        line-height: 1.5;
-                    }
-                    
-                    .thought-bubble-large::after {
-                        content: '';
-                        position: absolute;
-                        top: -8px;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        border-width: 0 8px 8px;
-                        border-style: solid;
-                        border-color: transparent transparent #ffffff;
-                        filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.1));
-                    }
-
-                    .action-grid {
-                        display: grid;
-                        grid-template-columns: 1fr 1fr 1fr 1fr;
-                        gap: 12px;
-                        width: 100%;
-                        margin-top: 8px;
-                    }
-
-                    .action-btn {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        padding: 16px 12px;
-                        border-radius: 18px;
-                        border: none;
-                        background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.05) 100%);
+                    .badge-pill.friend-premium {
+                        background: linear-gradient(90deg, #00d4ff 0%, #0084ff 100%);
                         color: white;
-                        cursor: pointer;
-                        gap: 8px;
-                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                        border: 1px solid rgba(255,255,255,0.1);
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                        position: relative;
-                        overflow: hidden;
-                    }
-                    
-                    .action-btn::before {
-                        content: '';
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        height: 1px;
-                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-                    }
-                    
-                    .action-btn:hover {
-                        transform: translateY(-2px);
-                        background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.08) 100%);
-                        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-                        border-color: rgba(255,255,255,0.15);
-                    }
-                    
-                    .action-btn:active {
-                        transform: translateY(0) scale(0.95);
-                    }
-                    
-                    .action-btn .icon {
-                        font-size: 1.75rem;
-                        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-                    }
-                    
-                    .action-btn .label {
-                        font-size: 0.8rem;
-                        font-weight: 600;
-                        opacity: 0.9;
-                        letter-spacing: 0.2px;
+                        border: none;
+                        box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+                        font-weight: 700;
+                        font-size: 0.85rem;
+                        padding: 6px 20px;
+                        border-radius: 100px;
+                        display: flex; align-items: center; gap: 6px;
+                        margin-top: 6px;
+                        letter-spacing: 0.5px;
                     }
 
-                    .primary-action {
+                    .stats-container {
+                        display: flex; justify-content: space-evenly; width: 100%;
+                        padding: 20px 0; border-top: 1px solid rgba(255,255,255,0.06);
+                        border-bottom: 1px solid rgba(255,255,255,0.06);
+                        margin-bottom: 24px;
+                    }
+                    .stat-item { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+                    .stat-value { font-size: 1.15rem; font-weight: 700; color: white; }
+                    .stat-label { font-size: 0.65rem; color: rgba(255,255,255,0.4); font-weight: 700; letter-spacing: 1px; }
+                    .stat-item:not(:last-child) { border-right: 1px solid rgba(255,255,255,0.06); }
+
+                    .info-section {
+                         width: 100%; text-align: left; margin-bottom: 24px;
+                    }
+                    .section-title { 
+                        font-size: 0.75rem; color: rgba(255,255,255,0.4); 
+                        letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 700; 
+                        text-transform: uppercase;
+                        padding-left: 4px;
+                    }
+                    .bio-text { 
+                        color: rgba(255,255,255,0.9); font-size: 0.95rem; 
+                        line-height: 1.6; font-weight: 400; opacity: 1; margin: 0; 
+                        background: rgba(255,255,255,0.03); padding: 16px; border-radius: 16px;
+                    }
+
+                    .tags-row { display: flex; gap: 8px; flex-wrap: wrap; }
+                    .interest-tag {
+                        background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.9);
+                        padding: 8px 16px; border-radius: 12px; font-size: 0.85rem; font-weight: 500;
+                        transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);
+                    }
+                    .interest-tag:hover {
+                         background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);
+                    }
+
+                    .action-buttons-container { width: 100%; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+                    
+                    .btn-message-large {
+                        width: 100%; padding: 16px; border-radius: 18px; border: none;
                         background: linear-gradient(135deg, #00d4ff 0%, #0084ff 100%);
-                        box-shadow: 0 4px 16px rgba(0, 132, 255, 0.4);
-                        border-color: rgba(0, 212, 255, 0.3);
+                        color: white; font-weight: 700; font-size: 1rem;
+                        cursor: pointer; box-shadow: 0 8px 20px rgba(0, 132, 255, 0.3);
+                        transition: all 0.2s; position: relative; overflow: hidden;
                     }
+                    .btn-message-large:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 132, 255, 0.4); }
+                    .btn-message-large:active { transform: scale(0.98); }
                     
-                    .primary-action:hover {
-                        background: linear-gradient(135deg, #00e0ff 0%, #0090ff 100%);
-                        box-shadow: 0 6px 24px rgba(0, 132, 255, 0.5);
-                        transform: translateY(-3px);
+                    .call-buttons-row { display: flex; gap: 12px; }
+                    .btn-call {
+                        flex: 1; padding: 16px; border-radius: 18px; border: none;
+                        background: rgba(255,255,255,0.05); color: white; font-weight: 600;
+                        cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);
                     }
-                    
-                    .danger {
-                        color: #ff6b6b;
-                        background: linear-gradient(135deg, rgba(255, 69, 58, 0.15) 0%, rgba(255, 69, 58, 0.1) 100%);
-                        border-color: rgba(255, 69, 58, 0.25);
+                    .btn-call:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
+
+                    .footer-links { 
+                        display: flex; gap: 20px; font-size: 0.85rem; color: #666; 
+                        margin-top: 10px; width: 100%; justify-content: center;
                     }
-                    
-                    .danger:hover {
-                        background: linear-gradient(135deg, rgba(255, 69, 58, 0.25) 0%, rgba(255, 69, 58, 0.15) 100%);
-                        border-color: rgba(255, 69, 58, 0.4);
+                    .text-link { background: none; border: none; color: #888; cursor: pointer; padding: 8px; transition: color 0.2s; font-weight: 500; }
+                    .text-link.danger { color: #ff453a; opacity: 0.6; }
+                    .text-link.danger:hover { opacity: 1; }
+                    .text-link:hover { color: white; }
+                    .divider { color: #444; }
+
+                    .media-grid {
+                        display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+                        margin-top: 10px;
+                    }
+                    .media-item {
+                        position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden;
+                        cursor: pointer; background: rgba(255,255,255,0.05);
+                        border: 1px solid rgba(255,255,255,0.05);
+                        transition: all 0.2s;
+                    }
+                    .media-item img {
+                        width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s;
+                    }
+                    .media-item:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.2); }
+                    .media-item:hover img { transform: scale(1.1); }
+                    .media-overlay {
+                        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                        background: rgba(0,0,0,0.6);
+                        backdrop-filter: blur(2px);
+                        display: flex; align-items: center; justify-content: center;
+                        color: white; font-size: 0.8rem; font-weight: 700;
                     }
                 `}</style>
             </motion.div>

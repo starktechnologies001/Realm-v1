@@ -11,7 +11,8 @@ export const usePresence = (userId, viewerId) => {
     lastSeen: null,
     displayStatus: '',
     canViewOnline: false,
-    canViewLastSeen: false
+    canViewLastSeen: false,
+    viewerShowsLastSeen: true // Default true
   });
 
   useEffect(() => {
@@ -20,50 +21,56 @@ export const usePresence = (userId, viewerId) => {
     // Initial fetch
     const fetchPresence = async () => {
       try {
-        const { data, error } = await supabase
+        // 1. Fetch Target Profile (status + privacy)
+        const { data: targetData, error: targetError } = await supabase
           .from('profiles')
-          .select('is_online, last_active_at, show_online_status, last_seen_privacy')
+          .select('is_online, last_active, show_last_seen')
           .eq('id', userId)
           .single();
 
-        if (error) throw error;
+        if (targetError) throw targetError;
 
-        // Check privacy
-        const canViewOnline = data.show_online_status;
-        let canViewLastSeen = true;
-
-        if (data.last_seen_privacy === 'nobody') {
-          canViewLastSeen = false;
-        } else if (data.last_seen_privacy === 'friends' && viewerId) {
-          // Check friendship
-          const { data: friendship } = await supabase
-            .from('friends')
-            .select('id')
-            .or(`and(user_id.eq.${viewerId},friend_id.eq.${userId}),and(user_id.eq.${userId},friend_id.eq.${viewerId})`)
-            .eq('status', 'accepted')
-            .maybeSingle();
-
-          canViewLastSeen = !!friendship;
+        // 2. Fetch Viewer Profile (privacy only) - Needed for bidirectional check
+        let viewerShows = true;
+        if (viewerId) {
+            const { data: viewerData, error: viewerError } = await supabase
+            .from('profiles')
+            .select('show_last_seen')
+            .eq('id', viewerId)
+            .single();
+            
+            if (!viewerError && viewerData) {
+                viewerShows = viewerData.show_last_seen !== false;
+            }
         }
 
-        // Calculate display status
+        // 3. Determine Visibility
+        // Default to true if null (undefined)
+        const targetShows = targetData.show_last_seen !== false;
+        
+        const canView = targetShows && viewerShows;
+
+        // 4. Calculate display status
         let displayStatus = '';
-        if (canViewOnline) {
-          if (data.is_online) {
+        if (canView) {
+          if (targetData.is_online) {
             displayStatus = 'Online';
-          } else if (canViewLastSeen) {
-            displayStatus = formatLastSeen(data.last_active_at);
+          } else if (targetData.last_active) {
+            displayStatus = formatLastSeen(targetData.last_active);
           } else {
-            displayStatus = 'Last seen recently';
+            displayStatus = 'Offline';
           }
+        } else {
+          displayStatus = ''; // Hidden
         }
 
         setPresence({
-          isOnline: data.is_online,
-          lastSeen: data.last_active_at,
+          isOnline: canView ? targetData.is_online : false,
+          lastSeen: canView ? targetData.last_active : null,
           displayStatus,
-          canViewOnline,
-          canViewLastSeen
+          canViewOnline: canView,
+          canViewLastSeen: canView,
+          viewerShowsLastSeen: viewerShows
         });
       } catch (error) {
         console.error('Error fetching presence:', error);
@@ -87,22 +94,32 @@ export const usePresence = (userId, viewerId) => {
           const newData = payload.new;
           
           setPresence(prev => {
+            // Re-calculate visibility using new target data and cached viewer privacy
+            const targetShows = newData.show_last_seen !== false;
+            const viewerShows = prev.viewerShowsLastSeen; // Use cached value
+            
+            const canView = targetShows && viewerShows;
+
             let displayStatus = '';
-            if (prev.canViewOnline) {
+            if (canView) {
               if (newData.is_online) {
                 displayStatus = 'Online';
-              } else if (prev.canViewLastSeen) {
-                displayStatus = formatLastSeen(newData.last_active_at);
+              } else if (newData.last_active) {
+                displayStatus = formatLastSeen(newData.last_active);
               } else {
-                displayStatus = 'Last seen recently';
+                displayStatus = 'Offline';
               }
+            } else {
+              displayStatus = ''; // Hidden
             }
 
             return {
               ...prev,
-              isOnline: newData.is_online,
-              lastSeen: newData.last_active_at,
-              displayStatus
+              isOnline: canView ? newData.is_online : false,
+              lastSeen: canView ? newData.last_active : null,
+              displayStatus,
+              canViewOnline: canView,
+              canViewLastSeen: canView
             };
           });
         }
@@ -112,15 +129,16 @@ export const usePresence = (userId, viewerId) => {
     // Update display status every minute for relative time
     const interval = setInterval(() => {
       setPresence(prev => {
-        if (!prev.canViewOnline) return prev;
+        if (!prev.canViewOnline || !prev.displayStatus) return prev;
         
         let displayStatus = '';
         if (prev.isOnline) {
           displayStatus = 'Online';
-        } else if (prev.canViewLastSeen) {
+        } else if (prev.lastSeen) {
+           // Re-format time
           displayStatus = formatLastSeen(prev.lastSeen);
         } else {
-          displayStatus = 'Last seen recently';
+          displayStatus = 'Offline';
         }
 
         return { ...prev, displayStatus };

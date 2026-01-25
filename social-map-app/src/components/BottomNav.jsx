@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import Badge from './Badge';
 
 export default function BottomNav({ friendRequestCount = 0, unreadMessageCount = 0 }) {
   const navigate = useNavigate();
@@ -68,9 +69,7 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
           >
             <span className="nav-icon-wrapper">
                 {tab.icon(isActive)}
-                {notificationCount > 0 && (
-                  <span className="notification-badge">{notificationCount}</span>
-                )}
+                <Badge count={notificationCount} size="small" />
             </span>
             <span className="nav-label">{tab.label}</span>
             {isActive && <div className="active-dot" />}
@@ -119,6 +118,7 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
             transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
@@ -149,26 +149,6 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
             border-radius: 50%;
             box-shadow: 0 0 8px #4285F4;
             animation: fadeIn 0.3s ease;
-        }
-
-        /* Notification Badge */
-        .notification-badge {
-            position: absolute;
-            top: -6px;
-            right: -8px;
-            background: #ff453a;
-            color: white;
-            font-size: 0.65rem;
-            font-weight: 700;
-            min-width: 16px;
-            height: 16px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-            box-shadow: 0 2px 6px rgba(255, 69, 58, 0.4);
-            border: 2px solid rgba(10, 10, 10, 0.85);
         }
 
         @media (min-width: 768px) {

@@ -3,10 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
+import Badge from '../components/Badge';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { getBlockedUserIds } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
 import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
+import MessageBubble from '../components/MessageBubble';
 import { uploadToStorage, validateFile } from '../utils/fileUpload';
 import EmojiPicker from 'emoji-picker-react';
 import { usePresence } from '../hooks/usePresence';
@@ -14,10 +17,12 @@ import { initializePresence, cleanupPresence } from '../services/presenceService
 import { useIncomingCall } from '../hooks/useIncomingCall';
 import IncomingCallPopup from '../components/IncomingCallPopup';
 import { initiateCall } from '../services/callSignalingService';
+import StatusView from '../components/StatusView';
+import StoryViewer from '../components/StoryViewer';
+import { useCall } from '../context/CallContext';
+import { useLocationContext } from '../context/LocationContext';
 
 const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
-
-import { useCall } from '../context/CallContext';
 
 // Chat Theme Configuration
 const CHAT_THEMES = {
@@ -68,12 +73,21 @@ const CHAT_THEMES = {
 
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
-    const [chats, setChats] = useState([]);
+    const [selectedStoryUser, setSelectedStoryUser] = useState(null);
+    const [refreshTrigger, setRefreshTrigger] = useState(0); // For StoryViewer
+    const [chats, setChats] = useState(() => {
+        const cached = localStorage.getItem('cached_chats_list');
+        return cached ? JSON.parse(cached) : [];
+    });
+    const [totalUnreadCount, setTotalUnreadCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => {
+        return !localStorage.getItem('cached_chats_list');
+    });
     const navigate = useNavigate();
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
+    const { isLocationEnabled } = useLocationContext();
 
     // Refactored fetchChats to be a pure function that returns the chat data
     const fetchChats = async (userId) => {
@@ -82,8 +96,8 @@ export default function Chat() {
             .from('friendships')
             .select(`
                 id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, show_last_seen),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender, show_last_seen)
             `)
             .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
             .eq('status', 'accepted');
@@ -125,11 +139,23 @@ export default function Chat() {
             return [];
         }
 
-        // 3. Fetch Profiles for ALL these partners
+        // 2.5. Get blocked user IDs and filter them out
+        const blockedIds = await getBlockedUserIds(userId);
+        blockedIds.forEach(id => partnerIds.delete(id));
+
+        if (partnerIds.size === 0) {
+            return [];
+        }
+
+        // 3. Fetch Profiles for ALL these partners (excluding blocked)
+        const validPartnerIds = Array.from(partnerIds).filter(id => id); // Filter out null/undefined/empty string
+        
+        if (validPartnerIds.length === 0) return [];
+
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender')
-            .in('id', Array.from(partnerIds));
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen')
+            .in('id', validPartnerIds);
 
         if (!profiles) {
             return [];
@@ -137,21 +163,60 @@ export default function Chat() {
 
         // 4. Fetch last message and unread count for each partner
         const chatsWithDetails = await Promise.all(profiles.map(async partner => {
-            // Fetch last message
-            const { data: lastMessage } = await supabase
+            // Fetch last message (fetch more to handle deleted ones)
+            const { data: recentMessages } = await supabase
                 .from('messages')
-                .select('content, created_at, sender_id, message_type')
-                .or(`(sender_id.eq.${userId},receiver_id.eq.${partner.id}),(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
+                .select('content, created_at, sender_id, message_type, deleted_for')
+                .or(`and(sender_id.eq.${userId},receiver_id.eq.${partner.id}),and(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .limit(50); // Fetch top 50 to find first non-deleted (increased from 10)
+
+            // Find first message NOT deleted for me
+            const lastMessage = recentMessages?.find(msg => {
+                const deletedFor = msg.deleted_for || [];
+                return !deletedFor.includes(userId);
+            });
 
             let lastMsgContent = 'Tap to chat';
             let lastMsgTime = '';
             let rawTime = 0;
 
             if (lastMessage) {
-                if (lastMessage.message_type === 'image') {
+                if (lastMessage.message_type === 'system') {
+                    // Handle system messages (like theme changes)
+                    if (lastMessage.content.includes('changed the theme')) {
+                        // Determine sender name by checking who sent it
+                        let senderName;
+                        const isSenderCurrentUser = String(lastMessage.sender_id) === String(userId);
+                        
+                        if (isSenderCurrentUser) {
+                            senderName = 'You';
+                        } else {
+                            // The sender is the partner (the other person in this chat)
+                            senderName = partner.username || partner.full_name || 'Friend';
+                        }
+                        lastMsgContent = `${senderName} ${lastMessage.content}`;
+                    } else {
+                        lastMsgContent = lastMessage.content;
+                    }
+                } else if (lastMessage.message_type === 'call_log') {
+                    try {
+                        const callData = JSON.parse(lastMessage.content);
+                        const isMissed = callData.status === 'missed';
+                        const isDeclined = callData.status === 'declined';
+                        const callType = callData.call_type === 'video' ? 'Video' : 'Voice';
+                        
+                        if (isMissed) {
+                            lastMsgContent = `📞 Missed ${callType} call`;
+                        } else if (isDeclined) {
+                            lastMsgContent = `📵 Declined ${callType} call`;
+                        } else {
+                            lastMsgContent = `📞 Call ended • ${lastMessage.sender_id === userId ? 'Outgoing' : 'Incoming'}`;
+                        }
+                    } catch (e) {
+                         lastMsgContent = '📞 Call log';
+                    }
+                } else if (lastMessage.message_type === 'image') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📷 Photo' : '📷 Photo';
                 } else if (lastMessage.message_type === 'attachment') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📎 Attachment' : '📎 Attachment';
@@ -164,13 +229,20 @@ export default function Chat() {
                 rawTime = date.getTime();
             }
 
-            // Fetch unread count
-            const { count } = await supabase
+            // Fetch unread count (excluding system messages and deleted messages)
+            const { data: unreadMessages } = await supabase
                 .from('messages')
-                .select('*', { count: 'exact', head: true })
+                .select('id, deleted_for')
                 .eq('sender_id', partner.id)
                 .eq('receiver_id', userId)
-                .eq('is_read', false);
+                .eq('is_read', false)
+                .neq('message_type', 'system'); // Exclude system messages from unread count
+            
+            // Filter out deleted messages client-side
+            const count = unreadMessages ? unreadMessages.filter(msg => {
+                const deletedFor = msg.deleted_for || [];
+                return !deletedFor.includes(userId);
+            }).length : 0;
 
             // Fetch mute settings
             const { data: muteData } = await supabase
@@ -194,7 +266,7 @@ export default function Chat() {
 
             return {
                 id: partner.id,
-                name: partner.username || partner.full_name,
+                name: partner.username,
                 avatar: genderAvatar,
                 lastMsg: lastMsgContent,
                 time: lastMsgTime,
@@ -205,7 +277,14 @@ export default function Chat() {
             };
         }));
         return chatsWithDetails.sort((a, b) => {
-            // Sort by time (newest first)
+            // 1. Prioritize unread chats
+            const aHasUnread = (a.unread || 0) > 0;
+            const bHasUnread = (b.unread || 0) > 0;
+            if (aHasUnread !== bHasUnread) {
+                return bHasUnread ? 1 : -1; // Unread chats first
+            }
+            
+            // 2. Sort by time (newest first)
             const timeA = new Date(a.rawTime || 0);
             const timeB = new Date(b.rawTime || 0);
             return timeB - timeA;
@@ -214,9 +293,19 @@ export default function Chat() {
 
     // Sub-function to actually run the fetch
     const loadChats = async (userId) => {
-        setLoading(true);
+        // Only set loading if we don't have data
+        if (chats.length === 0) setLoading(true);
+        
         const results = await fetchChats(userId);
         setChats(results);
+        
+        // Cache the results
+        localStorage.setItem('cached_chats_list', JSON.stringify(results));
+        
+        // Calculate total unread count
+        const total = results.reduce((sum, chat) => sum + (chat.unread || 0), 0);
+        setTotalUnreadCount(total);
+        
         setLoading(false);
     };
 
@@ -237,7 +326,7 @@ export default function Chat() {
                 
                 const newChat = {
                     id: profile.id,
-                    name: profile.username || profile.full_name || 'User',
+                    name: profile.username || 'User',
                     avatar: getAvatarHeadshot(profile.avatar_url), // Use existing util
                     lastMsg: lastMsg,
                     time: time,
@@ -266,9 +355,25 @@ export default function Chat() {
                 console.log('🔔 [ChatList] NEW MESSAGE:', payload.new);
 
                 const senderId = payload.new.sender_id;
-                const newContent = payload.new.message_type === 'image' ? '📷 Photo' : 
-                                 payload.new.message_type === 'attachment' ? '📎 Attachment' : 
-                                 payload.new.content;
+                
+                // Format message content based on type
+                let newContent;
+                if (payload.new.message_type === 'system') {
+                    // Handle system messages (like theme changes)
+                    if (payload.new.content.includes('changed the theme')) {
+                        const senderName = String(payload.new.sender_id) === String(currentUser.id) ? 'You' : null;
+                        // If sender is current user, show "You", otherwise we'll fetch the sender's name below
+                        newContent = senderName ? `${senderName} ${payload.new.content}` : payload.new.content;
+                    } else {
+                        newContent = payload.new.content;
+                    }
+                } else if (payload.new.message_type === 'image') {
+                    newContent = '📷 Photo';
+                } else if (payload.new.message_type === 'attachment') {
+                    newContent = '📎 Attachment';
+                } else {
+                    newContent = payload.new.content;
+                }
                 
                 // Format time string
                 const date = new Date(payload.new.created_at);
@@ -276,6 +381,17 @@ export default function Chat() {
 
                 setChats(prev => {
                     const existingChatIndex = prev.findIndex(chat => String(chat.id) === String(senderId));
+                    
+                    // For system messages from others, prepend their name
+                    if (payload.new.message_type === 'system' && 
+                        payload.new.content.includes('changed the theme') &&
+                        String(payload.new.sender_id) !== String(currentUser.id)) {
+                        if (existingChatIndex !== -1) {
+                            const chatName = prev[existingChatIndex].name;
+                            const senderName = chatName || 'Friend';
+                            newContent = `${senderName} ${payload.new.content}`;
+                        }
+                    }
                     
                     if (existingChatIndex !== -1) {
                         // Update existing chat
@@ -335,7 +451,15 @@ export default function Chat() {
             navigate('/login');
             return;
         }
-        setCurrentUser(user);
+        
+        // Fetch full profile to get avatar and username
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+            
+        setCurrentUser(profile || user);
         
         // Initialize presence tracking
         initializePresence(user.id);
@@ -392,12 +516,12 @@ export default function Chat() {
                         if (!data) {
                             setActiveChatUser(null);
                             Toast.show("Friendship ended.");
-                            fetchChats(currentUser.id); // Refresh list
+                             loadChats(currentUser.id); // Refresh list
                             return;
                         }
                      }
                      // Always refresh list on delete to be safe
-                     fetchChats(currentUser.id); 
+                     loadChats(currentUser.id); 
                 }
 
                 // HANDLE NEW FRIEND (INSERT/UPDATE)
@@ -406,7 +530,7 @@ export default function Chat() {
                     if (rec.status === 'accepted') {
                         // Check if it involves me
                         if (rec.requester_id === currentUser.id || rec.receiver_id === currentUser.id) {
-                            fetchChats(currentUser.id); // Refresh list to show new friend
+                            loadChats(currentUser.id); // Refresh list to show new friend
                         }
                     }
                     // Handle Block logic if needed (handled by refresh)
@@ -418,7 +542,7 @@ export default function Chat() {
                                      setActiveChatUser(null);
                                  }
                              }
-                             fetchChats(currentUser.id);
+                             loadChats(currentUser.id);
                         }
                     }
                 }
@@ -435,63 +559,8 @@ export default function Chat() {
 
     // --- Render Logic ---
 
-    // 1. Missed Call Popup
-    // The missedCall state is now managed by the CallContext and rendered by a global CallUI component.
+    // 1. Missed Call Popup - Handled globally by CallContext now.
 
-    if (incomingCall && !incomingCall.answered) {
-        return (
-            <div className="incoming-call-overlay">
-                <div className="call-card">
-                    <img src={getAvatarHeadshot(incomingCall.caller.avatar_url)} className="call-avatar" alt="Caller" />
-                    <h2>{incomingCall.caller.username || incomingCall.caller.full_name}</h2>
-                    <p>Incoming {incomingCall.type} call...</p>
-
-                    {!showQuickReplyMenu ? (
-                        <div className="call-actions">
-                            <button className="ctrl-btn message-btn" onClick={() => setShowQuickReplyMenu(true)}>💬</button>
-                            <button className="reject-btn" onClick={rejectCall} style={{ background: '#ff4444', color: 'white' }}>✖</button>
-                            <button className="answer-btn" style={{ background: '#00cc66', color: 'white' }} onClick={() => {
-                                answerCall();
-                            }}>📞</button>
-                        </div>
-                    ) : (
-                        <div className="quick-replies-list">
-                            <button className="close-replies" onClick={() => setShowQuickReplyMenu(false)}>✕</button>
-                            <h4>Or send a quick message:</h4>
-                            <button onClick={() => sendQuickReply("I am busy right now, can’t talk. I’ll call you later.")}>
-                                I am busy right now, can’t talk. I’ll call you later.
-                            </button>
-                            <button onClick={() => sendQuickReply("I'll call you back.")}>I'll call you back</button>
-                            <button onClick={() => sendQuickReply("Talk to you later.")}>Talk to you later</button>
-                        </div>
-                    )}
-                </div>
-                <style>{`
-                    .message-btn { background: #333; box-shadow: 0 0 10px rgba(255,255,255,0.1); font-size: 1.2rem; }
-                    .quick-replies-list {
-                        display: flex; flex-direction: column; gap: 8px; margin-top: 20px;
-                        background: #25252b; padding: 15px; border-radius: 12px;
-                        position: relative; animation: slideUp 0.2s;
-                    }
-                    .quick-replies-list h4 { margin: 0 0 10px 0; font-size: 0.9rem; color: #aaa; }
-                    .quick-replies-list button {
-                        background: rgba(255,255,255,0.1); border: none; padding: 10px;
-                        color: white; border-radius: 8px; cursor: pointer; text-align: left;
-                        font-size: 0.9rem; transition: background 0.2s;
-                    }
-                    .quick-replies-list button:hover { background: rgba(0, 240, 255, 0.2); }
-                    .close-replies {
-                        position: absolute; top: 10px; right: 10px;
-                        background: none !important; color: #aaa !important; width: auto !important; padding: 0 !important;
-                    }
-                    @keyframes slideUp {
-                        from { opacity: 0; transform: translateY(10px); }
-                        to { opacity: 1; transform: translateY(0); }
-                    }
-                `}</style>
-            </div>
-        );
-    }
 
     // If incoming call is answered, show overlay
     // CallOverlay is now handled by the global CallUI component in CallContext
@@ -504,25 +573,28 @@ export default function Chat() {
                 onBack={() => {
                     setActiveChatUser(null);
                     // Refresh chat list to show latent changes if any
-                    fetchChats(currentUser.id);
+                    loadChats(currentUser.id);
                 }}
             />
         );
     }
 
     // Mark messages as read when opening a chat
+    // Mark messages as read when opening a chat
     const markMessagesAsRead = async (senderId, receiverId) => {
+        // Optimistic Update: Update local UI immediately
+        setChats(prev => prev.map(chat => 
+            chat.id === senderId ? { ...chat, unread: 0 } : chat
+        ));
+
+        // Update Database in background
         await supabase
             .from('messages')
             .update({ is_read: true })
             .eq('sender_id', senderId)
             .eq('receiver_id', receiverId)
-            .eq('is_read', false);
-        
-        // Update local chat list to reflect read status
-        setChats(prev => prev.map(chat => 
-            chat.id === senderId ? { ...chat, unread: 0 } : chat
-        ));
+            .eq('is_read', false)
+            .neq('message_type', 'system');
     };
 
     const handleSelectChat = async (chat) => {
@@ -533,10 +605,36 @@ export default function Chat() {
         }
     };
 
-    return <ChatList chats={chats} onSelectChat={handleSelectChat} loading={loading} currentUser={currentUser} connectionStatus={connectionStatus} />;
+
+
+    return (
+        <>
+            <ChatList 
+                chats={chats} 
+                onSelectChat={handleSelectChat} 
+                onSelectStory={setSelectedStoryUser}
+                loading={loading} 
+                currentUser={currentUser} 
+                connectionStatus={connectionStatus} 
+                refreshTrigger={refreshTrigger}
+            />
+            
+            {/* Story Viewer Overlay */}
+            {selectedStoryUser && (
+                <StoryViewer 
+                    userStories={selectedStoryUser} 
+                    currentUser={currentUser}
+                    onClose={() => {
+                        setSelectedStoryUser(null);
+                        setRefreshTrigger(prev => prev + 1); // Refresh status view
+                    }}
+                />
+            )}
+        </>
+    );
 }
 
-function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus }) {
+function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('messages');
     
@@ -552,28 +650,8 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                 <div className="header-top">
                     <h1>Chats</h1>
                     <div className="header-actions">
-                         {/* Connection Status Indicator */}
-                         {connectionStatus && (
-                            <div 
-                                title={`Realtime Status: ${connectionStatus}`}
-                                style={{
-                                    width: 10,
-                                    height: 10,
-                                    borderRadius: '50%',
-                                    backgroundColor: connectionStatus === 'connected' ? '#4caf50' : connectionStatus === 'disconnected' ? '#f44336' : '#ff9800',
-                                    marginRight: 10,
-                                    border: '1.5px solid rgba(0,0,0,0.1)',
-                                    display: 'inline-block'
-                                }}
-                            />
-                        )}
-                    <button className="settings-btn" onClick={() => {}}>
-                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                    </button>
-                </div>
+                        {/* Status and Settings removed as per user request */}
+                    </div>
             </div>
                 
                 {/* Tabs */}
@@ -610,7 +688,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
 
             <div className="chat-list-scroll">
                 {activeTab === 'status' ? (
-                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectChat} />
+                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectStory} refreshTrigger={refreshTrigger} />
                 ) : loading ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
@@ -653,7 +731,11 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                                     <p className="chat-preview">
                                         {chat.lastMsg}
                                     </p>
-                                    {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
+                                    {chat.unread > 0 && (
+                                        <span className="unread-badge">
+                                            {chat.unread > 99 ? '99+' : chat.unread}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -673,7 +755,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                 }
 
                 .chat-page-container {
-                    background-color: var(--bg-dark);
+                    background-color: var(--bg-color);
                     min-height: 100vh;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                     color: var(--text-primary);
@@ -747,6 +829,27 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                 }
                 .search-bar input::placeholder {
                     color: var(--text-secondary);
+                }
+
+                /* Dark mode search bar */
+                html[data-theme="dark"] .search-bar {
+                    background: rgba(255, 255, 255, 0.1) !important;
+                }
+
+                html[data-theme="dark"] .glass-header {
+                    background: rgba(0, 0, 0, 0.95) !important;
+                    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .search-bar {
+                        background: rgba(255, 255, 255, 0.1) !important;
+                    }
+                    
+                    html[data-theme="system"] .glass-header {
+                        background: rgba(0, 0, 0, 0.95) !important;
+                        border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+                    }
                 }
 
                 .chat-list-scroll {
@@ -835,26 +938,61 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
                     line-height: 1.3;
                 }
 
+                .chat-item.unread {
+                    background-color: rgba(33, 150, 243, 0.08);
+                }
+
                 .chat-item.unread .chat-name {
                     font-weight: 700;
+                    color: var(--text-primary);
                 }
                 .chat-item.unread .chat-preview {
-                    color: var(--text-primary);
-                    font-weight: 500;
+                    color: var(--text-primary) !important;
+                    font-weight: 700; /* Increased bold */
+                }
+
+                /* Dark mode unread background highlight */
+                html[data-theme="dark"] .chat-item.unread {
+                    background-color: rgba(255, 255, 255, 0.08) !important;
+                }
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .chat-item.unread {
+                         background-color: rgba(255, 255, 255, 0.08) !important;
+                    }
+                }
+
+                /* Fix for dark mode global overrides killing the grey text */
+                html[data-theme="dark"] .chat-preview {
+                    color: var(--text-secondary) !important;
+                }
+                html[data-theme="dark"] .chat-item.unread .chat-preview {
+                    color: #ffffff !important;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .chat-preview {
+                        color: var(--text-secondary) !important;
+                    }
+                    html[data-theme="system"] .chat-item.unread .chat-preview {
+                        color: #ffffff !important;
+                    }
                 }
 
                 .unread-badge {
-                    background-color: var(--accent-blue);
+                    background: linear-gradient(135deg, #ff453a 0%, #ff3b30 100%);
                     color: white;
-                    font-size: 14px;
-                    font-weight: 600;
-                    min-width: 20px;
-                    height: 20px;
-                    border-radius: 10px;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    min-width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     padding: 0 6px;
+                    margin-left: 8px; /* Spacing from preview text */
+                    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+                    flex-shrink: 0;
                 }
 
                 .mute-icon {
@@ -907,368 +1045,7 @@ function ChatList({ chats, onSelectChat, loading, currentUser, connectionStatus 
     );
 }
 
-function StatusView({ currentUser, friends, onSelectFriend }) {
-    const [myStatus, setMyStatus] = useState(currentUser?.status_message || '');
-    const [isEditing, setIsEditing] = useState(false);
-    const [loading, setLoading] = useState(false);
 
-    // Filter displaying friends with status
-    // Also ensuring no duplicates if possible, though 'chats' is unique by ID
-    const statusFriends = friends?.filter(f => f.fullProfile?.status_message && f.id !== currentUser?.id) || [];
-
-    const handleSave = async () => {
-        if (!currentUser) return;
-        setLoading(true);
-        const { error } = await supabase.from('profiles').update({ status_message: myStatus }).eq('id', currentUser.id);
-        setLoading(false);
-        setIsEditing(false);
-        if (error) {
-            console.error(error);
-            // simple alert for now
-        }
-    };
-
-    return (
-        <div className="status-view">
-            <div className="status-section">
-                <h3 className="section-title">My Status</h3>
-                <div className="status-item me">
-                    <div className="avatar-wrapper">
-                        <img 
-                            src={getAvatarHeadshot(currentUser?.avatar_url)} 
-                            className="status-avatar" 
-                            loading="eager" decoding="sync"
-                        />
-                         <div className="add-badge">+</div>
-                    </div>
-                    <div className="status-content">
-                        {isEditing ? (
-                            <div className="edit-area">
-                                <input 
-                                    className="status-input"
-                                    value={myStatus} 
-                                    onChange={e=>setMyStatus(e.target.value)} 
-                                    placeholder="What's on your mind?"
-                                    autoFocus
-                                />
-                                <div className="edit-actions">
-                                    <button className="save-btn" onClick={handleSave} disabled={loading}>
-                                        {loading ? '...' : 'Save'}
-                                    </button>
-                                    <button className="cancel-btn" onClick={()=>{
-                                        setIsEditing(false);
-                                        setMyStatus(currentUser?.status_message || '');
-                                    }}>✕</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="view-area" onClick={() => setIsEditing(true)}>
-                                <span className="status-name">My Status</span>
-                                <p className="status-text">{myStatus || "Tap to add a status update"}</p>
-                            </div>
-                        )}
-                    </div>
-                    {!isEditing && (
-                        <button className="edit-icon-btn" onClick={()=>setIsEditing(true)}>✎</button>
-                    )}
-                </div>
-            </div>
-
-            <div className="status-section">
-                <h3 className="section-title">Recent Updates</h3>
-                {statusFriends.length === 0 ? (
-                     <div className="no-status">
-                         <p>No recent updates from friends.</p>
-                     </div>
-                ) : (
-                    statusFriends.map(friend => (
-                        <div key={friend.id} className="status-item" onClick={() => onSelectFriend(friend)}>
-                             <div className="avatar-wrapper ring">
-                                <img 
-                                    src={friend.avatar} 
-                                    className="status-avatar" 
-                                    loading="eager" decoding="sync"
-                                />
-                             </div>
-                             <div className="status-content">
-                                 <span className="status-name">{friend.name}</span>
-                                 <p className="status-text">{friend.fullProfile.status_message}</p>
-                             </div>
-                        </div>
-                    ))
-                )}
-            </div>
-            
-            <style>{`
-                .status-view { 
-                    padding: 16px 0 0 0;
-                    min-height: 60vh;
-                }
-                
-                .status-section { 
-                    margin-bottom: 32px; 
-                    padding: 0 16px;
-                }
-                
-                .section-title {
-                    font-size: 13px; 
-                    font-weight: 700; 
-                    color: var(--text-secondary);
-                    margin: 0 0 16px 4px; 
-                    text-transform: uppercase; 
-                    letter-spacing: 1px;
-                    opacity: 0.8;
-                }
-                
-                .status-item {
-                    display: flex; 
-                    align-items: center; 
-                    gap: 14px;
-                    padding: 16px;
-                    background: linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(28, 28, 30, 0.85) 100%);
-                    border-radius: 16px; 
-                    margin-bottom: 12px;
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    cursor: pointer;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                    position: relative;
-                    overflow: hidden;
-                }
-                
-                .status-item::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 1px;
-                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-                }
-                
-                .status-item:hover {
-                    background: linear-gradient(135deg, rgba(35, 35, 38, 0.95) 0%, rgba(32, 32, 35, 0.9) 100%);
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-                    border-color: rgba(255, 255, 255, 0.08);
-                }
-                
-                .status-item:active { 
-                    transform: translateY(0) scale(0.98);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                }
-                
-                .status-item.me { 
-                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.12) 0%, rgba(10, 132, 255, 0.05) 100%);
-                    border: 1.5px solid rgba(10, 132, 255, 0.25);
-                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.1);
-                }
-                
-                .status-item.me:hover {
-                    background: linear-gradient(135deg, rgba(10, 132, 255, 0.18) 0%, rgba(10, 132, 255, 0.08) 100%);
-                    border-color: rgba(10, 132, 255, 0.35);
-                    box-shadow: 0 6px 20px rgba(10, 132, 255, 0.15);
-                }
-                
-                .avatar-wrapper { 
-                    position: relative; 
-                    width: 56px; 
-                    height: 56px;
-                    flex-shrink: 0;
-                }
-                
-                .status-avatar { 
-                    width: 100%; 
-                    height: 100%; 
-                    border-radius: 50%; 
-                    object-fit: cover; 
-                    background: linear-gradient(135deg, #2a2a2e 0%, #1a1a1e 100%);
-                    border: 2px solid rgba(255, 255, 255, 0.05);
-                }
-                
-                .avatar-wrapper.ring { 
-                    padding: 3px;
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    border-radius: 50%;
-                    box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
-                }
-                
-                .avatar-wrapper.ring .status-avatar { 
-                    border: 3px solid var(--bg-dark);
-                }
-                
-                .add-badge {
-                    position: absolute; 
-                    bottom: -2px; 
-                    right: -2px;
-                    width: 24px; 
-                    height: 24px; 
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    color: white; 
-                    border-radius: 50%; 
-                    border: 3px solid var(--bg-dark);
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center; 
-                    font-size: 16px; 
-                    font-weight: 700;
-                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.4);
-                }
-
-                .status-content { 
-                    flex: 1; 
-                    display: flex; 
-                    flex-direction: column; 
-                    gap: 6px; 
-                    overflow: hidden;
-                    min-width: 0;
-                }
-                
-                .status-name { 
-                    font-weight: 600; 
-                    font-size: 17px; 
-                    color: var(--text-primary);
-                    letter-spacing: -0.3px;
-                }
-                
-                .status-text { 
-                    color: var(--text-secondary); 
-                    font-size: 15px; 
-                    margin: 0; 
-                    line-height: 1.4;
-                    display: -webkit-box;
-                    -webkit-line-clamp: 2;
-                    -webkit-box-orient: vertical;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                
-                .view-area {
-                    width: 100%;
-                    cursor: pointer;
-                }
-                
-                .edit-area { 
-                    display: flex; 
-                    flex-direction: column;
-                    gap: 12px; 
-                    width: 100%;
-                }
-                
-                .status-input {
-                    background: rgba(255,255,255,0.08);
-                    border: 1.5px solid rgba(255,255,255,0.1);
-                    padding: 12px 14px;
-                    border-radius: 12px;
-                    color: white;
-                    width: 100%;
-                    outline: none;
-                    font-size: 15px;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    transition: all 0.2s;
-                }
-                
-                .status-input:focus {
-                    background: rgba(255,255,255,0.12);
-                    border-color: var(--accent-blue);
-                    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
-                }
-                
-                .status-input::placeholder {
-                    color: var(--text-secondary);
-                    opacity: 0.6;
-                }
-                
-                .edit-actions {
-                    display: flex;
-                    gap: 10px;
-                    justify-content: flex-end;
-                }
-                
-                .save-btn {
-                    background: linear-gradient(135deg, var(--accent-blue) 0%, #0066cc 100%);
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 15px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
-                }
-                
-                .save-btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.4);
-                }
-                
-                .save-btn:active {
-                    transform: translateY(0);
-                }
-                
-                .save-btn:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-                
-                .cancel-btn { 
-                    background: rgba(255, 255, 255, 0.08);
-                    border: none;
-                    color: var(--text-secondary);
-                    font-size: 15px;
-                    cursor: pointer;
-                    padding: 10px 16px;
-                    border-radius: 10px;
-                    transition: all 0.2s;
-                    font-weight: 600;
-                }
-                
-                .cancel-btn:hover {
-                    background: rgba(255, 255, 255, 0.12);
-                    color: var(--text-primary);
-                }
-                
-                .edit-icon-btn {
-                    background: rgba(10, 132, 255, 0.12);
-                    border: none;
-                    color: var(--accent-blue);
-                    font-size: 20px;
-                    cursor: pointer;
-                    padding: 10px;
-                    border-radius: 10px;
-                    transition: all 0.2s;
-                    flex-shrink: 0;
-                }
-                
-                .edit-icon-btn:hover {
-                    background: rgba(10, 132, 255, 0.2);
-                    transform: scale(1.05);
-                }
-                
-                .edit-icon-btn:active {
-                    transform: scale(0.95);
-                }
-                
-                .no-status { 
-                    padding: 60px 20px;
-                    text-align: center;
-                    color: var(--text-secondary);
-                    font-size: 15px;
-                    opacity: 0.7;
-                    background: rgba(255, 255, 255, 0.02);
-                    border-radius: 16px;
-                    border: 1px dashed rgba(255, 255, 255, 0.1);
-                }
-                
-                .no-status p {
-                    margin: 0;
-                    line-height: 1.6;
-                }
-            `}</style>
-        </div>
-    );
-}
 
 function ChatRoom({ currentUser, targetUser, onBack }) {
     // Local state for partner to handle real-time updates (e.g. online status)
@@ -1297,10 +1074,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     }, [targetUser.id]);
 
     const [messages, setMessages] = useState([]);
+    const messagesActionRef = useRef(messages); // Renamed to avoid collision if messagesRef is used for DOM elements loops (though here it was used for scroll-to map)
+    // Actually, looking at code, 'messageRefs' is used for DOM. 'messagesEndRef' is for scroll. 
+    // I will use 'messagesStateRef' to be safe.
+    const messagesStateRef = useRef(messages);
+    useEffect(() => { messagesStateRef.current = messages; }, [messages]);
+
     const [input, setInput] = useState('');
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
     const messagesEndRef = useRef(null);
+    const isInitialLoad = useRef(true);
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
 
@@ -1322,6 +1106,94 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     // Emoji Picker State
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    
+    // Reply-to message state
+    const [replyToMessage, setReplyToMessage] = useState(null);
+    
+    // Message context menu state (long-press)
+    // Message context menu state (long-press) REPLACED by Selection Mode
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedMessages, setSelectedMessages] = useState(new Set());
+    const [showMessageMenu, setShowMessageMenu] = useState(false); // Kept for backward compat if needed, but will likely remove
+    const [selectedMessage, setSelectedMessage] = useState(null); // Kept for backward compat
+
+    // Message refs for scroll-to functionality
+    const messageRefs = useRef({});
+    const messageInputRef = useRef(null);
+    // Swipe gesture state persistence
+    const swipeRefs = useRef({});
+    const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+
+    // Scroll to message function
+    const scrollToMessage = (messageId) => {
+        const messageElement = messageRefs.current[messageId];
+        if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setHighlightedMessageId(messageId);
+            setTimeout(() => setHighlightedMessageId(null), 2000);
+        }
+    };
+
+    // Selection Mode Handlers
+    const toggleSelection = (msgId) => {
+        setSelectedMessages(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(msgId)) {
+                newSet.delete(msgId);
+            } else {
+                newSet.add(msgId);
+            }
+            if (newSet.size === 0) {
+                setIsSelectionMode(false);
+            }
+            return newSet;
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedMessages(new Set());
+        setIsSelectionMode(false);
+    };
+
+    const handleMessageAction = async (action) => {
+        const selectedIds = Array.from(selectedMessages);
+        if (selectedIds.length === 0) return;
+
+        if (action === 'delete') {
+            if (!confirm(`Delete ${selectedIds.length} message(s)?`)) return;
+            
+            // Optimistic update
+            setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)));
+            clearSelection();
+
+            // DB Update
+            for (const id of selectedIds) {
+                const msg = messages.find(m => m.id === id);
+                if (msg) {
+                    const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
+                    await supabase.from('messages').update({ deleted_for: updatedDeletedFor }).eq('id', id);
+                }
+            }
+            showToast('Messages deleted');
+        } else if (action === 'reply') {
+            if (selectedIds.length !== 1) return;
+            const msg = messages.find(m => m.id === selectedIds[0]);
+            if (msg) {
+                setReplyToMessage(msg);
+                clearSelection();
+            }
+        } else if (action === 'forward') {
+            showToast('Forwarding feature coming soon!');
+            clearSelection();
+        } else if (action === 'copy') {
+             const texts = selectedIds.map(id => messages.find(m => m.id === id)?.content).filter(Boolean).join('\n');
+             if (texts) {
+                 navigator.clipboard.writeText(texts);
+                 showToast('Copied to clipboard');
+             }
+             clearSelection();
+        }
+    };
 
 
     // Fetch mute settings
@@ -1342,92 +1214,253 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     // Theme State (Mode: dark/light/auto)
     const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('chat_theme') || 'dark');
 
     // Chat Theme State (Visual themes)
-    const [chatTheme, setChatTheme] = useState(localStorage.getItem('visual_chat_theme') || 'clean_slate');
+    // Chat Theme State (Visual themes) - Initialize from partner-specific cache if available
+    const [chatTheme, setChatTheme] = useState(() => {
+        const partnerCache = localStorage.getItem(`chat_theme_partner_${targetUser?.id}`);
+        return partnerCache && CHAT_THEMES[partnerCache] ? partnerCache : (localStorage.getItem('visual_chat_theme') || 'clean_slate');
+    });
+    
+    // Ref to track active theme inside closures (subscriptions)
+    const activeThemeRef = useRef(chatTheme);
+    useEffect(() => { activeThemeRef.current = chatTheme; }, [chatTheme]);
+
     const [showChatThemeSelector, setShowChatThemeSelector] = useState(false);
 
     // Wallpaper State
     const [chatBackground, setChatBackground] = useState(null);
     const [showWallpaperMenu, setShowWallpaperMenu] = useState(false);
 
-    // Fetch Chat Theme from Database
-    useEffect(() => {
-        if (!currentUser?.id) return;
+    // Delete chat for current user only (Delete for Me)
+    const handleDeleteChat = async () => {
+        console.log('🗑️ Delete Chat - Starting...');
+        console.log('Current User ID:', currentUser.id);
+        console.log('Target User ID:', targetUser.id);
         
-        const fetchChatTheme = async () => {
-            const { data } = await supabase.from('profiles').select('chat_theme').eq('id', currentUser.id).single();
-            const localTheme = localStorage.getItem('visual_chat_theme');
+        try {
+        console.log('🗑️ Delete Chat - Calling RPC...');
+        
+        const { error } = await supabase.rpc('delete_chat_for_user', {
+            p_user_id: currentUser.id,
+            p_partner_id: targetUser.id
+        });
 
-            if (localTheme) {
-                // If local theme exists, prioritize it and sync to DB if different
-                if (data?.chat_theme !== localTheme) {
-                    await supabase.from('profiles').update({ chat_theme: localTheme }).eq('id', currentUser.id);
+        if (error) throw error;
+        
+        console.log('✅ Chat deleted via RPC');
+        
+        // Clear local messages state
+        setMessages([]);
+        showToast('Deleted successfully ✅');
+        
+        // Return to chat list
+        // setTimeout(() => {
+        //     onBack(); // Navigate back to chat list
+        // }, 300); // Reduce delay for snappier feel
+    } catch (error) {
+            console.error('❌ Error deleting chat:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            showToast('Failed to delete chat ❌');
+        }
+    };
+
+    // Subscribe to shared_themes changes for real-time theme sync
+    useEffect(() => {
+        if (!currentUser?.id || !targetUser?.id) return;
+
+        const channel = supabase
+            .channel(`theme_sync_${currentUser.id}_${targetUser.id}`)
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'shared_themes' 
+            }, (payload) => {
+                console.log('📡 Received theme update:', payload);
+                
+                const newData = payload.new;
+                // Check if this update involves the current user pair
+                // The table uses user_1 and user_2 (sorted), so checking containment is enough
+                const ids = [newData.user_1, newData.user_2];
+                const isRelevant = ids.includes(currentUser.id) && ids.includes(targetUser.id);
+                
+                if (isRelevant && newData.theme) {
+                    console.log('✅ Applying shared theme:', newData.theme);
+                    setChatTheme(newData.theme);
+                    setChatBackground(null); // Clear custom background
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.theme);
+                    
+                    if (CHAT_THEMES[newData.theme]) {
+                         showToast(`Theme updated to ${CHAT_THEMES[newData.theme].name}`);
+                    }
                 }
-            } else if (data?.chat_theme && CHAT_THEMES[data.chat_theme]) {
-                // If no local theme but DB has one, use DB
-                setChatTheme(data.chat_theme);
-                localStorage.setItem('visual_chat_theme', data.chat_theme);
-            } else {
-                 // Fallback to default if neither exists
-                 const defaultTheme = 'clean_slate';
-                 setChatTheme(defaultTheme);
-                 localStorage.setItem('visual_chat_theme', defaultTheme);
-                 if (!data?.chat_theme) {
-                    await supabase.from('profiles').update({ chat_theme: defaultTheme }).eq('id', currentUser.id);
+            })
+            // ALSO Listen to INSERTs (first time theme is set)
+            .on('postgres_changes', { 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'shared_themes' 
+            }, (payload) => {
+                 const newData = payload.new;
+                 const ids = [newData.user_1, newData.user_2];
+                 const isRelevant = ids.includes(currentUser.id) && ids.includes(targetUser.id);
+                 if (isRelevant && newData.theme) {
+                    setChatTheme(newData.theme);
+                    setChatBackground(null);
+                    localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.theme);
                  }
-            }
-        };
-        fetchChatTheme();
-    }, [currentUser?.id]);
+            })
+            .subscribe();
 
-    // Handle Chat Theme Change
-    // Handle Chat Theme Change
+        return () => {
+             supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, targetUser?.id]);
+
+    // Handle Chat Theme Change (Shared)
     const handleChatThemeChange = async (newTheme) => {
         setChatTheme(newTheme);
-        localStorage.setItem('visual_chat_theme', newTheme);
-        setChatBackground(null); // Clear custom wallpaper to show theme background
+        setChatBackground(null); 
         setShowChatThemeSelector(false);
         const themeName = CHAT_THEMES[newTheme].name;
         
-        // 1. Update theme in profile & clear wallpaper
-        await supabase.from('profiles').update({ 
-            chat_theme: newTheme,
-            chat_background: null 
-        }).eq('id', currentUser.id);
-        
-        // 2. Insert system message for the chat
-        if (targetUser) {
-            // Fetch username for the message
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('username')
-                .eq('id', currentUser.id)
-                .single();
-                
-            const username = profile?.username || 'User';
 
-            await supabase.from('messages').insert({
+        
+        // Optimistic UI Update: Apply immediately
+        setChatTheme(newTheme);
+        setChatBackground(null); // Clear custom wallpaper so theme shows
+        
+        try {
+
+            
+            const { data, error } = await supabase.rpc('update_chat_theme', {
+                p_partner_id: targetUser.id,
+                p_theme: newTheme
+            });
+
+            if (error) {
+                console.error('❌ Error updating theme via RPC:', error);
+                throw error;
+            }
+
+
+
+            // 3. Send System Message
+            const { error: messageError } = await supabase.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: targetUser.id,
-                content: `${username} changed theme to ${themeName} ${CHAT_THEMES[newTheme].emoji}`,
+                content: `changed the theme to ${themeName}`,
                 message_type: 'system',
-                is_read: true
-            });
+                created_at: new Date().toISOString()
+            }]);
+            
+            if (messageError) {
+                console.error('❌ Error inserting system message:', messageError);
+            } else {
+                console.log('✅ System message inserted');
+            }
+        } catch (error) {
+            console.error('❌ Error updating theme:', error);
+            showToast('Failed to update theme');
+            return;
         }
 
         showToast(`Theme changed to ${themeName} ${CHAT_THEMES[newTheme].emoji}`);
     };
 
-    // Fetch Wallpaper
+    // Fetch Wallpaper & Subscribe to Real-time Profile Updates
     useEffect(() => {
-        const fetchWallpaper = async () => {
-            const { data } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
-            if (data?.chat_background) setChatBackground(data.chat_background);
+        if (!currentUser?.id) return;
+
+        // 1. Initial Fetch
+        const fetchInitialState = async () => {
+            // 1. Fetch Shared Theme first (Priority)
+            let activeTheme = chatTheme;
+            const { data: rpcResult, error: themeError } = await supabase.rpc('get_chat_theme_v3', {
+                p_partner_id: targetUser.id
+            });
+
+            if (themeError) {
+                console.error("❌ [Chat] Error fetching theme via RPC:", themeError);
+            } else {
+                const themeData = rpcResult?.theme;
+                if (themeData && CHAT_THEMES[themeData]) {
+
+                     setChatTheme(themeData);
+                     activeTheme = themeData;
+                     localStorage.setItem(`chat_theme_partner_${targetUser.id}`, themeData);
+                }
+            }
+
+            // 2. Fetch Profile Wallpaper
+            const { data: profile } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+            
+            // Logic: Only apply global wallpaper if the current theme is Default ('clean_slate')
+            // This ensures specific themes override the global wallpaper
+            if (activeTheme === 'clean_slate' && profile?.chat_background) {
+                setChatBackground(profile.chat_background);
+            } else if (activeTheme !== 'clean_slate') {
+                // If using a specific theme, ensure wallpaper is cleared
+                setChatBackground(null);
+            }
         };
-        fetchWallpaper();
-    }, [currentUser.id]);
+        fetchInitialState();
+
+        // 2. Real-time Subscription
+        const profileChannel = supabase.channel(`profile_changes_${currentUser.id}`)
+            .on(
+                'postgres_changes', 
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` },
+                (payload) => {
+
+                    if (payload.new.chat_background !== undefined) {
+                        // Priority Check: Only apply global wallpaper if current theme is default ('clean_slate')
+                        if (activeThemeRef.current === 'clean_slate') {
+                            setChatBackground(payload.new.chat_background);
+                        } else {
+
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        // 3. Real-time Subscription for Shared Theme (Friendships)
+        // We rely on RLS to only send us updates for friendships we are part of.
+        // We filter client-side to ensure we only react to the meaningful update.
+        const friendshipChannel = supabase.channel(`friendship_theme_${currentUser.id}_${targetUser.id}`)
+            .on(
+                'postgres_changes',
+                { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'friendships'
+                },
+                (payload) => {
+                    const newData = payload.new;
+                    // Check if this update involves the current user and valid theme
+                    const isRelevant = (newData.requester_id === currentUser.id || newData.receiver_id === currentUser.id) && 
+                                     (newData.requester_id === targetUser.id || newData.receiver_id === targetUser.id);
+                    
+                    if (isRelevant && newData.chat_theme) {
+
+                        setChatTheme(newData.chat_theme);
+                        localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newData.chat_theme);
+                        setChatBackground(null);
+                    }
+                }
+            )
+            .subscribe((status) => {
+                 console.log(`Friendship theme subscription status: ${status}`);
+            });
+
+        return () => {
+            supabase.removeChannel(profileChannel);
+            supabase.removeChannel(friendshipChannel);
+        };
+    }, [currentUser?.id, targetUser?.id]);
 
     const handleWallpaperChange = async (bg) => {
         setChatBackground(bg);
@@ -1494,11 +1527,42 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
-    const handleThemeChange = (newTheme) => {
-        setTheme(newTheme);
-        localStorage.setItem('chat_theme', newTheme);
+    const handleThemeChange = async (newTheme) => {
+        // Update correct visual theme state
+        setChatTheme(newTheme);
+        // Update partner-specific cache to match initialization logic
+        localStorage.setItem(`chat_theme_partner_${targetUser.id}`, newTheme);
         setShowThemeMenu(false);
-        showToast(`Theme changed to ${newTheme} 🎨`);
+
+        // Persist to database (Shared Theme)
+        try {
+
+
+            if (!targetUser.id) {
+                 throw new Error("Partner ID is missing!");
+            }
+
+            const { data, error } = await supabase.rpc('update_chat_theme', {
+                p_partner_id: targetUser.id,
+                p_theme: newTheme
+            });
+            
+
+
+            if (error) throw error;
+            
+            // Check for logical error from RPC
+            if (data && !data.success) {
+                console.error('RPC Logical Error:', data.error);
+                throw new Error(data.error || 'Failed to update theme');
+            }
+
+            // System message is handled by RPC, so we just show a local toast
+            showToast(`Theme changed to ${newTheme} 🎨`);
+        } catch (err) {
+            console.error('Failed to update shared theme:', err);
+            showToast(`Failed: ${err.message || "Sync error"} ❌`);
+        }
     };
 
     // Mute Calls State
@@ -1529,16 +1593,33 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .from('messages')
                 .select(`
                     *,
-                    attachments:message_attachments(*)
+                    attachments:message_attachments(*),
+                    reply_to:reply_to_message_id(
+                        id,
+                        sender_id,
+                        content,
+                        message_type,
+                        image_url
+                    ),
+                    reply_to_story:reply_to_story_id(
+                        id,
+                        media_url,
+                        caption
+                    )
                 `)
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .order('created_at', { ascending: true });
 
             if (!error && data) {
-                setMessages(data);
+                // Filter out messages deleted by current user
+                const filteredMessages = data.filter(msg => {
+                    const deletedFor = msg.deleted_for || [];
+                    return !deletedFor.includes(currentUser.id);
+                });
+                setMessages(filteredMessages);
 
-                // Mark UNREAD messages from this user as READ
-                const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read).map(m => m.id);
+                // Mark UNREAD messages from this user as READ (excluding system messages)
+                const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
                 if (unreadIds.length > 0) {
                     await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
                 }
@@ -1555,20 +1636,54 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 table: 'messages'
             }, async (payload) => {
                 // Client-side Filter:
-                // 1. Must be sent to me (receiver = currentUser)
-                // 2. Must be from the partner (sender = targetUser)
                 if (String(payload.new.receiver_id) === String(currentUser.id) && 
                     String(payload.new.sender_id) === String(targetUser.id)) {
+                    
+                    // Supabase realtime doesn't return joined data, so we must manually fetch or find reply_to context
+                    let replyToData = null;
+                    
+                    if (payload.new.reply_to_message_id) {
+                         // 1. Try finding in local state ref (fastest & synchronous)
+                         const found = messagesStateRef.current.find(m => m.id === payload.new.reply_to_message_id);
+                         if (found) {
+                             replyToData = {
+                                 id: found.id,
+                                 sender_id: found.sender_id,
+                                 content: found.content,
+                                 message_type: found.message_type,
+                                 image_url: found.image_url
+                             };
+                         }
+
+                         // 2. If not found locally, fetch single
+                         if (!replyToData) {
+                             const { data: fetchedReply } = await supabase
+                                 .from('messages')
+                                 .select('id, sender_id, content, message_type, image_url')
+                                 .eq('id', payload.new.reply_to_message_id)
+                                 .single();
+                             if (fetchedReply) replyToData = fetchedReply;
+                         }
+                    }
+
+                    const newMessage = { ...payload.new, reply_to: replyToData };
+
                     setMessages(prev => {
                         // Replace optimistic message if exists
                         const withoutOptimistic = prev.filter(m => !m.tempId);
-                        return [...withoutOptimistic, payload.new];
+                        // Check if already applied (duplicate event protection)
+                        if (withoutOptimistic.some(m => m.id === newMessage.id)) return prev;
+                        
+                        return [...withoutOptimistic, newMessage];
                     });
-                    // Mark as read immediately
-                    await supabase.from('messages').update({ is_read: true }).eq('id', payload.new.id);
                     
-                    // Set delivered_at for sender
-                    await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
+                    // Don't mark as read here - let the polling mechanism handle it
+                    // This avoids 400 errors from RLS policies
+                    
+                    // Set delivered_at for sender (skip system messages)
+                    if (payload.new.message_type !== 'system') {
+                        await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
+                    }
                 }
             })
             // Listen for message updates (read/delivered status)
@@ -1577,13 +1692,41 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 schema: 'public',
                 table: 'messages'
             }, (payload) => {
-                // Filter: check if it concerns a message I sent
-                if (String(payload.new.sender_id) !== String(currentUser.id)) return;
+                console.log('💬 [Chat] UPDATE event received:', payload.new.id, payload.new.message_type);
+                
+                // Filter: check if it concerns this chat
+                const isMySentMessage = String(payload.new.sender_id) === String(currentUser.id);
+                const isCallLogInThisChat = payload.new.message_type === 'call_log' && (
+                    (String(payload.new.sender_id) === String(currentUser.id) && String(payload.new.receiver_id) === String(targetUser.id)) ||
+                    (String(payload.new.sender_id) === String(targetUser.id) && String(payload.new.receiver_id) === String(currentUser.id))
+                );
+
+                console.log('💬 [Chat] isMySentMessage:', isMySentMessage, 'isCallLogInThisChat:', isCallLogInThisChat);
+
+                // Only process if it's my sent message OR a call log in this chat
+                if (!isMySentMessage && !isCallLogInThisChat) {
+                    console.log('💬 [Chat] UPDATE ignored - not relevant to this chat');
+                    return;
+                }
+
+                console.log('💬 [Chat] Processing UPDATE for message:', payload.new.id);
+                console.log('💬 [Chat] Updated content:', payload.new.content);
 
                 // Update message status in UI
-                setMessages(prev => prev.map(m => 
-                    m.id === payload.new.id ? payload.new : m
-                ));
+                const updatedMessage = payload.new;
+                const deletedFor = updatedMessage.deleted_for || [];
+                const isDeletedForMe = deletedFor.includes(currentUser.id);
+
+                setMessages(prev => {
+                    if (isDeletedForMe) {
+                        console.log('💬 [Chat] Removing deleted message:', updatedMessage.id);
+                        // Remove message if it's now deleted for me
+                        return prev.filter(m => m.id !== updatedMessage.id);
+                    }
+                    // Otherwise update it
+                    console.log('💬 [Chat] Updating message in state:', updatedMessage.id);
+                    return prev.map(m => m.id === updatedMessage.id ? updatedMessage : m);
+                });
             })
             .subscribe((status) => {
                 console.log(`Chat room subscription status: ${status}`);
@@ -1598,20 +1741,88 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             const fetchLatest = async () => {
                  const { data, error } = await supabase
                     .from('messages')
-                    .select('*')
+                    .select(`
+                        *,
+                        attachments:message_attachments(*),
+                        reply_to:reply_to_message_id(
+                            id,
+                            sender_id,
+                            content,
+                            message_type,
+                            image_url
+                        ),
+                        reply_to_story:reply_to_story_id(
+                            id,
+                            media_url,
+                            caption
+                        )
+                    `)
                     .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                     .order('created_at', { ascending: true });
 
                 if (data) {
-                    setMessages(prev => {
-                        // Only update if count is different or last message is different
-                        // Simple heuristic to avoid aggressive re-renders
-                        if (prev.length !== data.length) return data;
-                        if (prev.length > 0 && data.length > 0 && prev[prev.length - 1].id !== data[data.length - 1].id) return data;
-                        return prev;
+                    // Debug: Log the most recent call_log message
+                    const callLogs = data.filter(m => m.message_type === 'call_log');
+                    if (callLogs.length > 0) {
+                        const mostRecent = callLogs[callLogs.length - 1];
+                        console.log('🔄 [Polling] Most recent call log:', {
+                            id: mostRecent.id,
+                            content: mostRecent.content,
+                            content_parsed: typeof mostRecent.content === 'string' ? JSON.parse(mostRecent.content) : mostRecent.content,
+                            created_at: mostRecent.created_at
+                        });
+                    }
+                    
+                    // Filter out messages deleted by current user
+                    const filteredData = data.filter(msg => {
+                        const deletedFor = msg.deleted_for || [];
+                        return !deletedFor.includes(currentUser.id);
                     });
-                     // Mark UNREAD messages from this user as READ
-                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read).map(m => m.id);
+
+                    setMessages(prev => {
+                        const optimisticMessages = prev.filter(m => m.tempId);
+                        
+                        // Deduplicate: Don't show optimistic message if it's already in fetched data
+                        const safeOptimistic = optimisticMessages.filter(oMsg => {
+                            const match = filteredData.find(fMsg => 
+                                fMsg.sender_id === oMsg.sender_id &&
+                                fMsg.content === oMsg.content &&
+                                // Check if created within last 10 seconds to ensure it's the same message
+                                Math.abs(new Date(fMsg.created_at).getTime() - new Date(oMsg.created_at).getTime()) < 10000
+                            );
+                            return !match;
+                        });
+
+                        const combined = [...filteredData, ...safeOptimistic];
+
+                        // Debug: Check if call logs are in the combined data
+                        const callLogsInCombined = combined.filter(m => m.message_type === 'call_log');
+                        if (callLogsInCombined.length > 0) {
+                            const mostRecentInState = callLogsInCombined[callLogsInCombined.length - 1];
+                            console.log('🔄 [Polling] Setting state with call log:', {
+                                id: mostRecentInState.id,
+                                content: mostRecentInState.content
+                            });
+                        }
+
+                        // Improved check: Also compare content to detect updates to existing messages
+                        if (prev.length === combined.length && 
+                            prev.every((p, i) => {
+                                const c = combined[i];
+                                return p.id === c.id && 
+                                       p.tempId === c.tempId && 
+                                       p.content === c.content &&
+                                       p.is_read === c.is_read;
+                            })) {
+                            console.log('🔄 [Polling] State unchanged, skipping update');
+                            return prev;
+                        }
+                        
+                        console.log('🔄 [Polling] Updating state with', combined.length, 'messages');
+                        return combined;
+                    });
+                     // Mark UNREAD messages from this user as READ (excluding system messages)
+                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
                     if (unreadIds.length > 0) {
                         await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
                     }
@@ -1624,7 +1835,14 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     }, [currentUser.id, targetUser.id]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (messages.length > 0) {
+            const behavior = isInitialLoad.current ? "auto" : "smooth";
+            messagesEndRef.current?.scrollIntoView({ behavior });
+            
+            if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+            }
+        }
     }, [messages]);
 
     const sendMessage = async (type = 'text', content = null, imageUrl = null) => {
@@ -1642,12 +1860,24 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             created_at: new Date().toISOString(),
             is_read: false,
             delivered_at: null,
-            sending: true // Flag for UI
+            sending: true, // Flag for UI
+            reply_to_message_id: replyToMessage?.id || null,
+            reply_to: replyToMessage ? {
+                id: replyToMessage.id,
+                sender_id: replyToMessage.sender_id,
+                content: replyToMessage.content,
+                message_type: replyToMessage.message_type,
+                image_url: replyToMessage.image_url
+            } : null
         };
 
         // Optimistic Update - show immediately
         setMessages(prev => [...prev, optimisticMessage]);
         if (type === 'text') setInput('');
+        
+        // Clear reply state after adding to messages
+        const replyId = replyToMessage?.id || null;
+        setReplyToMessage(null);
 
         // DB Insert
         const { data, error } = await supabase.from('messages').insert({
@@ -1656,7 +1886,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             content: optimisticMessage.content,
             message_type: type,
             image_url: imageUrl,
-            is_read: true
+            is_read: true,
+            reply_to_message_id: replyId
         }).select();
 
         if (error) {
@@ -1667,7 +1898,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         } else if (data && data[0]) {
             // Replace optimistic with real message
             setMessages(prev => prev.map(m => 
-                m.tempId === tempId ? data[0] : m
+                m.tempId === tempId ? { ...data[0], reply_to: optimisticMessage.reply_to } : m
             ));
         }
     };
@@ -1879,13 +2110,47 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
             return;
         }
         if (action === 'block') {
-            // Update friendship status
-            await supabase.from('friendships')
-                .update({ status: 'blocked' })
-                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+            try {
+                // Determine if friendship exists (bidirectional check)
+                const { data: existingFriendship, error: fetchError } = await supabase
+                    .from('friendships')
+                    .select('id')
+                    .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                    .maybeSingle();
 
-            showToast(`🚫 Blocked ${targetUser.name}`);
-            setTimeout(onBack, 1000);
+                if (fetchError) throw fetchError;
+
+                if (existingFriendship) {
+                    // Update existing to blocked
+                    const { error: updateError } = await supabase
+                        .from('friendships')
+                        .update({ status: 'blocked', requester_id: currentUser.id, receiver_id: targetUser.id }) // Ensure blocker becomes requester? Or just status. Let's just update status.
+                        // Actually, for blocking, usually the one who blocks becomes the 'requester' of the block theoretically, 
+                        // but sticking to simple status update first. 
+                        // If we want to strictly enforce "who blocked who", we might need a separate 'blocked_by' column or rely on requester_id.
+                        // For now, let's just set status='blocked'.
+                         .eq('id', existingFriendship.id);
+
+                    if (updateError) throw updateError;
+                } else {
+                    // Create new blocked record
+                    const { error: insertError } = await supabase
+                        .from('friendships')
+                        .insert({
+                            requester_id: currentUser.id,
+                            receiver_id: targetUser.id,
+                            status: 'blocked'
+                        });
+
+                    if (insertError) throw insertError;
+                }
+
+                showToast(`🚫 Blocked ${targetUser.name || targetUser.username || 'User'}`);
+                setTimeout(onBack, 1000);
+            } catch (err) {
+                console.error('Error blocking user:', err);
+                showToast(`❌ Failed to block user`);
+            }
         }
         else if (action === 'unfriend') {
             await supabase.from('friendships')
@@ -1910,7 +2175,10 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     };
 
     // Format last seen status
-    const getLastSeenStatus = (lastActive) => {
+    const getLastSeenStatus = (lastActive, partnerShowLastSeen = true, myShowLastSeen = true) => {
+        // Privacy Check: If either party hides status, show nothing/offline (Empty string renders as standard 'Offline' in UI)
+        if (partnerShowLastSeen === false || myShowLastSeen === false) return '';
+        
         if (!lastActive) return 'Offline';
         
         const now = new Date();
@@ -1964,124 +2232,256 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
 
     return (
-        <div className="chat-room-container" data-theme-type={currentTheme.type}>
+        <div 
+            className="chat-room-container" 
+            data-theme-type={currentTheme.type}
+            style={{
+                // Direct application for reliability
+                background: chatBackground || currentTheme.backgroundColor,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                
+                // CSS Variables for children
+                '--theme-bg': chatBackground || currentTheme.backgroundColor,
+                '--theme-bubble-sent': currentTheme.bubbleSent,
+                '--theme-bubble-received': currentTheme.bubbleReceived,
+                '--theme-text-color': currentTheme.textColor,
+                '--theme-accent': currentTheme.accentColor,
+                '--theme-font-color': currentTheme.fontColor,
+                '--theme-icon-color': currentTheme.iconColor
+            }}
+        >
             <style>{`
-                .chat-room-container {
-                    --theme-bg: ${chatBackground || currentTheme.backgroundColor};
-                    --theme-bubble-sent: ${currentTheme.bubbleSent};
-                    --theme-bubble-received: ${currentTheme.bubbleReceived};
-                    --theme-text-color: ${currentTheme.textColor};
-                    --theme-accent: ${currentTheme.accentColor};
-                    --theme-font-color: ${currentTheme.fontColor};
-                    --theme-icon-color: ${currentTheme.iconColor};
+                /* Selection Mode Styles */
+                .chat-room-header.selection-mode { 
+                    background: rgba(30, 30, 35, 0.95) !important; 
+                    border-bottom: 1px solid rgba(255,255,255,0.15); 
+                }
+                .selection-header-left { 
+                    display: flex; align-items: center; gap: 15px; 
+                    flex: 1;
+                }
+                .selection-count {
+                    font-size: 1.2rem; font-weight: 600; color: white;
+                }
+                .selection-actions {
+                    display: flex; gap: 8px;
+                }
+                .msg-bubble.selected {
+                    background: rgba(0, 240, 255, 0.15) !important;
+                    border: 1px solid rgba(0, 240, 255, 0.3);
+                    box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+                }
+                .selection-overlay {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 5;
+                    pointer-events: none;
+                }
+                .selection-checkbox {
+                    position: absolute;
+                    bottom: -8px;
+                    right: -8px;
+                    width: 22px; height: 22px;
+                    border-radius: 50%;
+                    border: 2px solid rgba(255,255,255,0.4);
+                    background: #2a2a2a;
+                    display: flex; align-items: center; justify-content: center;
+                    color: white;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                }
+                .selection-checkbox.checked {
+                    background: #00f0ff;
+                    border-color: #00f0ff;
+                    color: black;
+                    transform: scale(1.1);
+                }
+
+                /* Quoted Message (Reply Preview) Styles */
+                .quoted-message {
+                    background: rgba(0, 0, 0, 0.1);
+                    border-left: 3px solid var(--theme-accent, #00f0ff);
+                    padding: 8px 10px;
+                    margin-bottom: 8px;
+                    border-radius: 6px;
+                    font-size: 0.85rem;
+                }
+                .quoted-message.clickable {
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                .quoted-message.clickable:hover {
+                    background: rgba(0, 0, 0, 0.15);
+                }
+                .quoted-message-header {
+                    font-weight: 600;
+                    color: var(--theme-accent, #00f0ff);
+                    margin-bottom: 4px;
+                    font-size: 0.8rem;
+                }
+                .quoted-message-content {
+                    color: var(--theme-text-color, #e0e0e0);
+                    opacity: 0.8;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                /* Message Highlight Animation */
+                .message-highlight {
+                    animation: highlightPulse 2s ease-in-out;
+                }
+                @keyframes highlightPulse {
+                    0%, 100% { 
+                        box-shadow: 0 0 0 rgba(0, 240, 255, 0);
+                    }
+                    50% { 
+                        box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+                        background: rgba(0, 240, 255, 0.1) !important;
+                    }
                 }
             `}</style>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
+
+
+            
             <div className="ambient-glow-chat"></div>
 
-            <div className="chat-room-header glass-header">
-                <button onClick={onBack} className="back-btn">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-                </button>
-                <div className="header-user">
-                    <img src={(() => {
-                        // Priority 1: Stored avatar
-                        if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
-
-                        // Priority 2: Consistent generation
-                        const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
-                        const g = partner.gender?.toLowerCase();
-                        if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                        if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                        return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                    })()} className="header-avatar" alt="avatar" />
-                    <div className="header-text">
-                        <h3>{partner.username || partner.full_name}</h3>
-                        {presence.displayStatus && (
-                            <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
-                                {presence.isOnline && <span className="online-dot">●</span>}
-                                {presence.displayStatus}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className="header-actions">
-                    <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
-                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+            <div className={`chat-room-header glass-header ${isSelectionMode ? 'selection-mode' : ''}`}>
+                {isSelectionMode ? (
+                    <>
+                        <div className="selection-header-left">
+                            <button onClick={clearSelection} className="icon-btn">
+                                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                            <span className="selection-count">{selectedMessages.size}</span>
+                        </div>
+                        <div className="selection-actions">
+                            {selectedMessages.size === 1 && (
+                                <button className="icon-btn" onClick={() => handleMessageAction('reply')} title="Reply">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"></path></svg>
+                                </button>
+                            )}
+                            <button className="icon-btn" onClick={() => handleMessageAction('delete')} title="Delete">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                            <button className="icon-btn" onClick={() => handleMessageAction('copy')} title="Copy">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                            <button className="icon-btn" onClick={() => handleMessageAction('forward')} title="Forward">
+                                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 10l5 5-5 5"></path><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>
+                            </button>
+                            {selectedMessages.size === 1 && messages.find(m => m.id === Array.from(selectedMessages)[0])?.sender_id === currentUser.id && (
+                                <button className="icon-btn" onClick={() => showToast('Edit coming soon!')} title="Edit">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                    <button onClick={onBack} className="back-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
-                    <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
-                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                    </button>
-                    <div style={{ position: 'relative' }}>
-                        <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
-                        {showMenu && (
-                            <div className="dropdown-menu">
-                                <button onClick={toggleMuteCalls}>
-                                    <span className="icon">
-                                        {muteCalls ? (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                        ) : (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                        )}
-                                    </span>
-                                    {muteCalls ? 'Unmute Call' : 'Mute Call'}
-                                </button>
-                                
-                                <button onClick={() => handleMenuAction('mute')}>
-                                    <span className="icon">
-                                        {isChatMuted() ? (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
-                                        ) : (
-                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                                        )}
-                                    </span>
-                                    {isChatMuted() ? 'Unmute Message' : 'Mute Message'}
-                                </button>
+                    <div className="header-user">
+                        <img src={(() => {
+                            // Priority 1: Stored avatar
+                            if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
 
-                                <button onClick={() => {
-                                    setShowChatThemeSelector(true);
-                                    setShowMenu(false);
-                                }}>
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                                    </span>
-                                    Theme
-                                </button>
-                                
-                                <button onClick={() => {
-                                    setShowThemeMenu(true);
-                                    setShowMenu(false);
-                                }}>
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
-                                    </span>
-                                    Mode
-                                </button>
-
-                                <div className="divider"></div>
-
-                                <button onClick={() => {
-                                    const reason = prompt("Reason for reporting:");
-                                    if (reason) showToast("Report submitted successfully ✅");
-                                    setShowMenu(false);
-                                }} className="danger">
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                    </span>
-                                    Report
-                                </button>
-
-                                <button onClick={() => handleMenuAction('block')} className="danger">
-                                    <span className="icon">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-                                    </span>
-                                    Block
-                                </button>
-                            </div>
-                        )}
+                            // Priority 2: Consistent generation
+                            const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
+                            const g = partner.gender?.toLowerCase();
+                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
+                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
+                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
+                        })()} className="header-avatar" alt="avatar" />
+                        <div className="header-text">
+                            <h3>{partner.username || partner.full_name}</h3>
+                            {presence.displayStatus && (
+                                <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
+                                    {presence.isOnline && <span className="online-dot">●</span>}
+                                    {presence.displayStatus}
+                                </span>
+                            )}
+                        </div>
                     </div>
-                </div>
+                    <div className="header-actions">
+                        <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
+                            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                        </button>
+                        <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
+                            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                        </button>
+                        <div style={{ position: 'relative' }}>
+                            <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
+                            {showMenu && (
+                                <>
+                                    <div 
+                                        style={{ position: 'fixed', inset: 0, zIndex: 99 }} 
+                                        onClick={() => setShowMenu(false)}
+                                    />
+                                    <div className="dropdown-menu" style={{ zIndex: 100 }}>
+                                        
+                                        <button onClick={() => handleMenuAction('mute')}>
+                                            <span className="icon">
+                                                {isChatMuted() ? (
+                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg> 
+                                                ) : (
+                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                                )}
+                                            </span>
+                                            {isChatMuted() ? 'Unmute' : 'Mute'}
+                                        </button>
+
+                                        <button onClick={() => {
+                                            setShowChatThemeSelector(true);
+                                            setShowMenu(false);
+                                        }}>
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                            </span>
+                                            Theme
+                                        </button>
+
+                                        <div className="divider"></div>
+
+                                        <button onClick={() => {
+                                            setShowDeleteConfirm(true);
+                                            setShowMenu(false);
+                                        }} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                            </span>
+                                            Delete Chat
+                                        </button>
+
+                                        <button onClick={() => {
+                                            const reason = prompt("Reason for reporting:");
+                                            if (reason) showToast("Report submitted successfully ✅");
+                                            setShowMenu(false);
+                                        }} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                            </span>
+                                            Report
+                                        </button>
+
+                                        <button onClick={() => handleMenuAction('block')} className="danger">
+                                            <span className="icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                                            </span>
+                                            Block
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    </>
+                )}
             </div>
 
             {/* Theme Menu Modal */}
@@ -2101,6 +2501,54 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                             </button>
                         </div>
                         <button onClick={() => setShowThemeMenu(false)} className="cancel-btn">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Chat Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="delete-confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
+                    <div className="delete-confirm-modal" onClick={(e) => e.stopPropagation()}>
+                        {/* Warning Icon */}
+                        <div className="delete-icon-wrapper">
+                            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18"/>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                <line x1="10" x2="10" y1="11" y2="17"/>
+                                <line x1="14" x2="14" y1="11" y2="17"/>
+                            </svg>
+                        </div>
+
+                        {/* Title and Description */}
+                        <h3 className="delete-title">Delete Chat?</h3>
+                        <p className="delete-description">
+                            All messages with <strong>{partner?.username || 'this user'}</strong> will be permanently deleted. This action cannot be undone.
+                        </p>
+
+                        {/* Action Buttons */}
+                        <div className="delete-actions">
+                            <button 
+                                onClick={() => setShowDeleteConfirm(false)} 
+                                className="delete-btn-cancel"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    handleDeleteChat();
+                                    setShowDeleteConfirm(false);
+                                }} 
+                                className="delete-btn-confirm"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 6h18"/>
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                </svg>
+                                Delete Chat
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -2221,13 +2669,32 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 className={`chat-messages ${getThemeClass()}`}
                 data-theme={chatTheme}
                 data-pattern={CHAT_THEMES[chatTheme]?.backgroundPattern || 'none'}
+                onClick={() => {
+                    // Click background to clear selection if in selection mode
+                    if (isSelectionMode) {
+                        clearSelection();
+                    }
+                }}
                 style={{ 
-                    background: chatBackground || CHAT_THEMES[chatTheme]?.backgroundColor,
-                    backgroundSize: chatBackground?.includes('url') ? 'cover' : undefined,
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat'
+                    // Background handled by parent container via CSS variable
+                    position: 'relative',
+                    zIndex: 1
                 }}
             >
+                {messages.length === 0 && (
+                    <div className="empty-chat-state">
+                        <div className="empty-chat-icon">
+                            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                            </svg>
+                        </div>
+                        <h3>No messages yet</h3>
+                        <p>Start a conversation with <strong>{partner.username}</strong></p>
+                        <button className="tap-to-chat-btn" onClick={() => document.querySelector('.msg-input')?.focus()}>
+                            Tap to chat
+                        </button>
+                    </div>
+                )}
                 {messages.map((msg, i) => {
                     const isMe = msg.sender_id === currentUser.id;
                     
@@ -2247,11 +2714,65 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                     // System Message Rendering
                     if (msg.message_type === 'system') {
+                        // Determine who sent the system message
+                        let senderName;
+                        const msgSenderId = String(msg.sender_id);
+                        const currentUserId = String(currentUser.id);
+                        // Use partner state if available (for real-time updates), fallback to targetUser
+                        const targetUserId = String(partner?.id || targetUser.id);
+                        
+                        // Debug log for system naming issues
+                        if (msg.content.includes('changed the theme')) {
+                            console.log('🔍 [SysMsgRender] Rendering theme msg:', {
+                                msgId: msg.id,
+                                msgSenderId: msgSenderId,
+                                currentUserId: currentUserId,
+                                targetUserId: targetUserId,
+                                partnerName: partner?.username,
+                                targetName: targetUser.username
+                            });
+                        }
+
+                        if (String(msg.sender_id) === String(currentUser.id)) {
+                            senderName = 'You';
+                        } else {
+                            // In 1:1 chat, if it's not me, it's the partner
+                            const p = partner || targetUser;
+                            senderName = p.username || p.full_name || 'Friend';
+                        }
+                            
+                        const isThemeMsg = msg.content.includes('changed the theme');
+                        
                         return (
-                            <React.Fragment key={msg.id || i}>
+                            <React.Fragment key={`system-${msg.id || i}`}>
                                 {dateHeader}
-                                <div className="msg-system">
-                                    <span>{msg.content}</span>
+                                <div className="msg-system" style={{
+                                    display: 'flex', justifyContent: 'center', margin: '12px 0', opacity: 0.85, width: '100%'
+                                }}>
+                                    <span style={{
+                                        background: 'rgba(0, 0, 0, 0.2)',
+                                        color: '#ffffff',
+                                        padding: '6px 14px',
+                                        borderRadius: '100px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '400',
+                                        backdropFilter: 'blur(8px)',
+                                        WebkitBackdropFilter: 'blur(8px)',
+                                        maxWidth: '90%',
+                                        textAlign: 'center',
+                                        display: 'inline-block', // Block logic for text wrap
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                        lineHeight: '1.4'
+                                    }}>
+                                        {isThemeMsg ? (
+                                            <>
+                                                <span style={{ fontWeight: 600, opacity: 1 }}>{senderName}</span>
+                                                <span style={{ opacity: 0.9 }}> {msg.content}</span>
+                                            </>
+                                        ) : (
+                                            msg.content
+                                        )}
+                                    </span>
                                 </div>
                             </React.Fragment>
                         );
@@ -2268,30 +2789,44 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         }
 
                         const getCallIcon = () => {
-                            if (callData.status === 'missed') return '📵';
-                            if (callData.status === 'declined') return '🚫';
+                            // User prefers Type-based icons (🎥/📞) even for missed/declined
                             return callData.call_type === 'video' ? '🎥' : '📞';
                         };
 
                         const getCallText = () => {
                             const prefix = isMe ? 'Outgoing' : 'Incoming';
-                            if (callData.status === 'missed') return 'Missed call';
-                            if (callData.status === 'declined') {
-                                return callData.declined_reason 
-                                    ? `Declined: "${callData.declined_reason}"`
-                                    : 'Declined call';
+                            const typeLabel = callData.call_type === 'video' ? 'Video' : 'Audio';
+                            const base = `${prefix} ${typeLabel} Call`;
+
+                            if (callData.status === 'missed') {
+                                // If I am the caller, it means they didn't answer -> "Not Answered"
+                                // If I am the receiver, I missed it -> "Missed"
+                                return isMe ? `${base} • Not Answered` : `${base} • Missed`;
                             }
+                            
+                            if (callData.status === 'declined' || callData.status === 'rejected' || callData.status === 'busy') {
+                                return `${base} • Declined`;
+                            }
+                            
                             if (callData.status === 'ended') {
                                 const duration = callData.duration || 0;
                                 const mins = Math.floor(duration / 60);
                                 const secs = duration % 60;
-                                return `${prefix} ${callData.call_type} call (${mins}:${secs.toString().padStart(2, '0')})`;
+                                const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                                return `${base} • ${timeStr}`;
                             }
-                            return `${prefix} ${callData.call_type} call`;
+                            
+                            // Active/Ringing
+                            if (callData.status === 'ringing' || callData.status === 'calling') {
+                                return `${base} • ${callData.status === 'calling' ? 'Calling...' : 'Ringing...'}`;
+                            }
+                            
+                            // Fallback
+                            return base;
                         };
 
                         return (
-                            <React.Fragment key={msg.id || msg.tempId || i}>
+                            <React.Fragment key={`call-${msg.id || msg.tempId || i}`}>
                                 {dateHeader}
                                 <div className={`call-log-entry ${callData.status}`}>
                                     <span className="call-icon">{getCallIcon()}</span>
@@ -2307,56 +2842,60 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     const isImage = msg.message_type === 'image' || msg.type === 'image';
                     const imageUrl = msg.image_url || msg.media_url;
 
-                    // Determine message status
-                    let statusIcon = '';
-                    if (isMe) {
-                        if (msg.sending) {
-                            statusIcon = '🕐'; // Sending
-                        } else if (msg.is_read) {
-                            statusIcon = '✓✓'; // Read (blue)
-                        } else if (msg.delivered_at) {
-                            statusIcon = '✓✓'; // Delivered (gray)
-                        } else {
-                            statusIcon = '✓'; // Sent
-                        }
-                    }
+                    // Determine message status with proper tick indicators
+                    const isSelected = selectedMessages.has(msg.id);
 
                     return (
-                        <React.Fragment key={msg.id || msg.tempId || i}>
-                            {dateHeader}
-                            <div className={`msg-bubble ${isMe ? 'me' : 'them'}`}>
-                                {isImage ? (
-                                    <img 
-                                        src={imageUrl} 
-                                        alt="Sent" 
-                                        className="sent-image" 
-                                        onClick={() => setViewingImage(imageUrl)}
-                                        style={{ cursor: 'pointer' }}
-                                    />
-                                ) : (
-                                    <div className="msg-content-wrapper">
-                                        <span className="msg-text">{msg.content}</span>
-                                        <span className="msg-time">{formatTime(msg.created_at)}</span>
-                                        {isMe && <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>{statusIcon}</span>}
-                                    </div>
-                                )}
-                                
-                                {/* Render attachments if present */}
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                    <div className="message-attachments">
-                                        {msg.attachments.map((attachment, idx) => (
-                                            <MessageAttachment key={idx} attachment={attachment} />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                        <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
+                            <MessageBubble
+                                msg={msg}
+                                userId={currentUser.id}
+                                partner={partner || targetUser}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={isSelected}
+                                isHighlighted={highlightedMessageId === msg.id}
+                                dateHeader={dateHeader}
+                                onSwipeReply={(m) => setReplyToMessage(m)}
+                                onToggleSelection={toggleSelection}
+                                onViewImage={(url) => setViewingImage(url)}
+                                onScrollToMessage={scrollToMessage}
+                            />
                         </React.Fragment>
                     );
                 })}
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* Message Context Menu (Long-Press) */}
+
+
             <div className="chat-input-container">
+                {/* Reply Preview */}
+                {replyToMessage && (
+                    <div className="reply-preview">
+                        <div className="reply-preview-content">
+                            <div className="reply-preview-header">
+                                <span className="reply-icon">↩️</span>
+                                <span className="reply-to-name">
+                                    {replyToMessage.sender_id === currentUser.id ? 'You' : (partner.username || partner.full_name)}
+                                </span>
+                            </div>
+                            <div className="reply-preview-text">
+                                {replyToMessage.message_type === 'image' ? '📷 Photo' : replyToMessage.content}
+                            </div>
+                        </div>
+                        <button className="reply-preview-close" onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setReplyToMessage(null);
+                            // Refocus input to keep keyboard open
+                            setTimeout(() => messageInputRef.current?.focus(), 10);
+                        }}>
+                             ✕
+                        </button>
+                    </div>
+                )}
+                
                 <div className="glass-input-bar">
                     <input
                         type="file"
@@ -2420,6 +2959,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     </button>
 
                     <input
+                        ref={messageInputRef}
                         className="msg-input"
                         value={input}
                         onChange={e => setInput(e.target.value)}
@@ -2510,10 +3050,15 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: radial-gradient(ellipse at top, #1a1a2e 0%, #000 90%);
+                    background: var(--theme-bg);
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
                     z-index: 10000;
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
+                    overflow: hidden;
+                    height: 100vh;
                 }
                 
                 .ambient-glow-chat {
@@ -2581,7 +3126,17 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .icon-btn:hover { background: rgba(255,255,255,0.1); color: white; }
                 
                 /* Chat Area */
-                .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+                .chat-messages { 
+                    flex: 1; 
+                    padding: 20px; 
+                    overflow-y: auto; 
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 6px; 
+                    min-height: 0; 
+                    scroll-behavior: smooth;
+                    overscroll-behavior-y: contain;
+                }
                 
                 .msg-bubble { 
                     max-width: 75%; padding: 12px 16px; border-radius: 20px; 
@@ -2617,6 +3172,50 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .msg-bubble.them {
                     background: var(--theme-bubble-received, rgba(255,255,255,0.08));
                     color: var(--theme-text-color, #eee);
+                }
+
+                /* Dark mode incoming bubbles - Light bubble, black text */
+                html[data-theme="dark"] .msg-bubble.them {
+                    background: #e0e0e0 !important;
+                    color: #000000 !important;
+                    border: none !important;
+                }
+                html[data-theme="dark"] .msg-bubble.them .msg-text,
+                html[data-theme="dark"] .msg-bubble.them .msg-time {
+                    color: #000000 !important;
+                }
+
+                /* Dark mode SENT bubbles - Light bubble, black text */
+                html[data-theme="dark"] .msg-bubble.me {
+                    background: #bbdefb !important; /* Light blue to distinguish from incoming */
+                    color: #000000 !important;
+                    box-shadow: none !important;
+                }
+                html[data-theme="dark"] .msg-bubble.me .msg-text,
+                html[data-theme="dark"] .msg-bubble.me .msg-time {
+                    color: #000000 !important;
+                }
+                
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .msg-bubble.them {
+                        background: #e0e0e0 !important;
+                        color: #000000 !important;
+                        border: none !important;
+                    }
+                    html[data-theme="system"] .msg-bubble.them .msg-text,
+                    html[data-theme="system"] .msg-bubble.them .msg-time {
+                        color: #000000 !important;
+                    }
+
+                    html[data-theme="system"] .msg-bubble.me {
+                        background: #bbdefb !important;
+                        color: #000000 !important;
+                        box-shadow: none !important;
+                    }
+                    html[data-theme="system"] .msg-bubble.me .msg-text,
+                    html[data-theme="system"] .msg-bubble.me .msg-time {
+                        color: #000000 !important;
+                    }
                 }
                 
                 .msg-content-wrapper {
@@ -2732,6 +3331,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     background: rgba(10, 10, 10, 0.6);
                     backdrop-filter: blur(10px);
                     transition: background 0.3s ease;
+                    position: relative;
+                    z-index: 10;
                 }
                 
                 /* Light theme override for input area */
@@ -2837,26 +3438,66 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
                 /* Dropdown & Modals */
                 .dropdown-menu {
-                    position: absolute; top: 110%; right: 0;
-                    background: rgba(20, 20, 20, 0.95);
-                    backdrop-filter: blur(16px);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px; padding: 8px;
-                    width: 220px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+                    position: absolute; 
+                    top: calc(100% + 8px); 
+                    right: 0;
+                    background: rgba(28, 28, 30, 0.98);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 16px;
+                    padding: 6px;
+                    min-width: 220px;
+                    box-shadow: 
+                        0 8px 32px rgba(0, 0, 0, 0.4),
+                        0 2px 8px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
                     z-index: 10001; 
+                    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    transform-origin: top right;
+                    overflow: hidden;
                 }
                 .dropdown-menu button { 
-                    padding: 12px; width: 100%; text-align: left;
-                    background: none; border: none; color: #ddd;
-                    border-radius: 8px; cursor: pointer;
-                    display: flex; align-items: center; gap: 12px;
-                    font-size: 0.9rem; transition: background 0.2s;
+                    padding: 12px 14px; 
+                    width: 100%; 
+                    text-align: left;
+                    background: none; 
+                    border: none; 
+                    color: rgba(255, 255, 255, 0.9);
+                    border-radius: 10px; 
+                    cursor: pointer;
+                    display: flex; 
+                    align-items: center; 
+                    gap: 12px;
+                    font-size: 0.95rem; 
+                    font-weight: 500;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    letter-spacing: 0.01em;
                 }
-                .dropdown-menu button:hover { background: rgba(255,255,255,0.1); color: white; }
-                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
-                .dropdown-menu button.danger { color: #ff5555; }
-                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.15); }
+                .dropdown-menu button:active {
+                    transform: scale(0.98);
+                }
+                .dropdown-menu button:hover { 
+                    background: rgba(255,255,255,0.1); 
+                    color: white; 
+                }
+                .dropdown-menu .divider { 
+                    height: 1px; 
+                    background: linear-gradient(
+                        90deg, 
+                        transparent, 
+                        rgba(255, 255, 255, 0.12) 50%, 
+                        transparent
+                    );
+                    margin: 6px 8px; 
+                }
+                .dropdown-menu button.danger { 
+                    color: #ff5757; 
+                }
+                .dropdown-menu button.danger:hover { 
+                    background: rgba(255, 69, 58, 0.15); 
+                    color: #ff6b6b;
+                }
                 
                 .glass-panel {
                     background: rgba(20,20,20,0.8); backdrop-filter: blur(20px);
@@ -2866,7 +3507,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 }
                 
                 /* Light Theme */
-                .light-theme { background: #f0f2f5; }
+                .light-theme { background: transparent; }
                 .light-theme .glass-header { background: rgba(255,255,255,0.85); border-bottom-color: rgba(0,0,0,0.1); }
                 .light-theme .header-text h3 { color: #000; }
                 .light-theme .back-btn, .light-theme .icon-btn { color: #333; }
@@ -2891,39 +3532,92 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 .header-actions button { background: none; border: none; font-size: 1.2rem; color: white; cursor: pointer; }
                 
                 .dropdown-menu {
-                    position: absolute; top: 110%; right: 0;
-                    background: rgba(30, 30, 30, 0.95);
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 8px;
-                    display: flex; flex-direction: column; gap: 4px;
-                    min-width: 200px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    position: absolute; 
+                    top: calc(100% + 8px); 
+                    right: 0;
+                    background: rgba(28, 28, 30, 0.98);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 16px;
+                    padding: 6px;
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 2px;
+                    min-width: 220px;
+                    box-shadow: 
+                        0 8px 32px rgba(0, 0, 0, 0.4),
+                        0 2px 8px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
                     z-index: 10001; 
-                    animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
                     transform-origin: top right;
+                    overflow: hidden;
                 }
                 @keyframes slideDown {
-                    from { opacity: 0; transform: scale(0.95); }
-                    to { opacity: 1; transform: scale(1); }
+                    from { 
+                        opacity: 0; 
+                        transform: scale(0.92) translateY(-8px); 
+                    }
+                    to { 
+                        opacity: 1; 
+                        transform: scale(1) translateY(0); 
+                    }
                 }
                 .dropdown-menu button { 
-                    font-size: 0.95rem; color: #ececec; 
-                    padding: 10px 12px; 
-                    text-align: left; width: 100%; 
-                    cursor: pointer; background: none; border: none; 
-                    border-radius: 8px;
-                    display: flex; align-items: center; gap: 10px;
-                    transition: all 0.2s ease;
+                    font-size: 0.95rem; 
+                    color: rgba(255, 255, 255, 0.9); 
+                    padding: 12px 14px; 
+                    text-align: left; 
+                    width: 100%; 
+                    cursor: pointer; 
+                    background: none; 
+                    border: none; 
+                    border-radius: 10px;
+                    display: flex; 
+                    align-items: center; 
+                    gap: 12px;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                     font-weight: 500;
+                    position: relative;
+                    letter-spacing: 0.01em;
                 }
-                .dropdown-menu button:hover { background: rgba(255,255,255,0.08); color: white; transform: translateX(2px); }
-                .dropdown-menu button.danger { color: #ff5555; }
-                .dropdown-menu button.danger:hover { background: rgba(255, 85, 85, 0.1); }
-                .dropdown-menu .icon { display: flex; align-items: center; justify-content: center; opacity: 0.8; }
-                .dropdown-menu .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 6px 0; }
+                .dropdown-menu button:active {
+                    transform: scale(0.98);
+                }
+                .dropdown-menu button:hover { 
+                    background: rgba(255, 255, 255, 0.1); 
+                    color: white; 
+                }
+                .dropdown-menu button.danger { 
+                    color: #ff5757; 
+                }
+                .dropdown-menu button.danger:hover { 
+                    background: rgba(255, 69, 58, 0.15); 
+                    color: #ff6b6b;
+                }
+                .dropdown-menu .icon { 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    width: 20px;
+                    height: 20px;
+                    opacity: 0.85;
+                    flex-shrink: 0;
+                }
+                .dropdown-menu button:hover .icon {
+                    opacity: 1;
+                }
+                .dropdown-menu .divider { 
+                    height: 1px; 
+                    background: linear-gradient(
+                        90deg, 
+                        transparent, 
+                        rgba(255, 255, 255, 0.12) 50%, 
+                        transparent
+                    );
+                    margin: 6px 8px; 
+                }
 
 
                 .sent-image { max-width: 100%; max-height: 300px; border-radius: 10px; display: block; }
@@ -2984,6 +3678,154 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     transition: all 0.2s;
                 }
                 .cancel-btn:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.3); }
+                
+                /* Delete Confirmation Modal */
+                .delete-confirm-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0, 0, 0, 0.85);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    z-index: 15000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    animation: fadeIn 0.2s ease-out;
+                }
+
+                .delete-confirm-modal {
+                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
+                    backdrop-filter: blur(40px);
+                    -webkit-backdrop-filter: blur(40px);
+                    border-radius: 24px;
+                    padding: 32px 28px;
+                    width: 90%;
+                    max-width: 380px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+                    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-align: center;
+                }
+
+                @keyframes slideUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(20px) scale(0.95);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0) scale(1);
+                    }
+                }
+
+                .delete-icon-wrapper {
+                    width: 80px;
+                    height: 80px;
+                    margin: 0 auto 20px;
+                    background: rgba(255, 69, 58, 0.1);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 2px solid rgba(255, 69, 58, 0.2);
+                    animation: iconPulse 2s ease-in-out infinite;
+                }
+
+                .delete-icon-wrapper svg {
+                    color: #ff453a;
+                    filter: drop-shadow(0 2px 8px rgba(255, 69, 58, 0.3));
+                }
+
+                @keyframes iconPulse {
+                    0%, 100% {
+                        transform: scale(1);
+                        box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.4);
+                    }
+                    50% {
+                        transform: scale(1.05);
+                        box-shadow: 0 0 0 10px rgba(255, 69, 58, 0);
+                    }
+                }
+
+                .delete-title {
+                    margin: 0 0 12px 0;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    color: white;
+                    letter-spacing: -0.02em;
+                }
+
+                .delete-description {
+                    margin: 0 0 28px 0;
+                    font-size: 0.95rem;
+                    line-height: 1.5;
+                    color: rgba(255, 255, 255, 0.7);
+                }
+
+                .delete-description strong {
+                    color: white;
+                    font-weight: 600;
+                }
+
+                .delete-actions {
+                    display: flex;
+                    gap: 12px;
+                }
+
+                .delete-btn-cancel {
+                    flex: 1;
+                    padding: 14px 20px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .delete-btn-cancel:hover {
+                    background: rgba(255, 255, 255, 0.12);
+                    border-color: rgba(255, 255, 255, 0.25);
+                    transform: translateY(-1px);
+                }
+
+                .delete-btn-cancel:active {
+                    transform: translateY(0) scale(0.98);
+                }
+
+                .delete-btn-confirm {
+                    flex: 1;
+                    padding: 14px 20px;
+                    background: linear-gradient(135deg, #ff453a 0%, #e63946 100%);
+                    border: none;
+                    border-radius: 14px;
+                    color: white;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    box-shadow: 0 4px 16px rgba(255, 69, 58, 0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }
+
+                .delete-btn-confirm:hover {
+                    background: linear-gradient(135deg, #ff5a50 0%, #ff4757 100%);
+                    box-shadow: 0 6px 24px rgba(255, 69, 58, 0.4);
+                    transform: translateY(-2px);
+                }
+
+                .delete-btn-confirm:active {
+                    transform: translateY(0) scale(0.98);
+                }
+
+                .delete-btn-confirm svg {
+                    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+                }
                 
                 /* Chat Theme Selector Modal */
                 .theme-selector-modal {
@@ -3184,6 +4026,168 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     backdrop-filter: blur(4px);
                     border: 1px solid rgba(255, 255, 255, 0.05);
                 }
+
+                .empty-chat-state {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    color: rgba(255,255,255,0.5);
+                    padding: 40px;
+                    text-align: center;
+                }
+                .empty-chat-icon {
+                    width: 100px;
+                    height: 100px;
+                    background: rgba(255,255,255,0.03);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 20px;
+                    color: var(--theme-accent, #00C6FF);
+                    border: 1px solid rgba(255,255,255,0.05);
+                }
+                .empty-chat-state h3 {
+                    font-size: 1.5rem;
+                    color: white;
+                    margin: 0 0 8px 0;
+                    font-weight: 600;
+                }
+                .empty-chat-state p {
+                    font-size: 1rem;
+                    margin: 0 0 24px 0;
+                    max-width: 250px;
+                    line-height: 1.5;
+                }
+                .tap-to-chat-btn {
+                    padding: 12px 28px;
+                    background: rgba(255,255,255,0.1);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 99px;
+                    color: white;
+                    font-weight: 600;
+                    font-size: 1rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .tap-to-chat-btn:hover {
+                    background: var(--theme-accent, #00C6FF);
+                    border-color: transparent;
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                }
+                /* Reply Preview Styling */
+                .reply-preview {
+                    position: absolute;
+                    bottom: 100%;
+                    left: 10px;
+                    right: 10px;
+                    background: rgba(30, 30, 35, 0.95);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-top-left-radius: 16px;
+                    border-top-right-radius: 16px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-bottom: none;
+                    padding: 12px 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    animation: slideUpReply 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.2);
+                    z-index: 10;
+                    margin-bottom: 0px; /* Connects physically to the input bar */
+                }
+
+                @keyframes slideUpReply {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+
+                .reply-preview-content {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    overflow: hidden;
+                    border-left: 3px solid #00f0ff;
+                    padding-left: 10px;
+                }
+
+                .reply-preview-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+
+                .reply-icon {
+                    font-size: 0.8rem;
+                    color: #00f0ff;
+                }
+
+                .reply-to-name {
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    color: #00f0ff;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .reply-preview-text {
+                    font-size: 0.85rem;
+                    color: rgba(255, 255, 255, 0.8);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .reply-preview-close {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.1);
+                    border: none;
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    margin-left: 10px;
+                    transition: all 0.2s;
+                }
+
+                .reply-preview-close:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                    transform: scale(1.1);
+                }
+
+            
+                /* Menu Overlay for closing on click-outside */
+                .menu-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 9; /* Below header (10), above content (0) */
+                    background: transparent;
+                }
+
+                .dropdown-menu {
+                    position: absolute;
+                    top: 100%; right: 0;
+                    background: rgba(30, 30, 30, 0.95);
+                    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 16px;
+                    padding: 8px;
+                    min-width: 220px;
+                    display: flex; flex-direction: column; gap: 4px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    z-index: 1010; /* Above overlay */
+                }
             `}</style>
 
             {/* Attachment System Components */}
@@ -3195,13 +4199,18 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 onSelectDocument={handleSelectDocument}
             />
 
-            <AttachmentPreview
+             <AttachmentPreview
                 files={selectedFiles}
                 onRemove={handleRemoveFile}
                 onSend={handleSendAttachments}
                 onCancel={handleCancelAttachments}
                 uploadProgress={uploadProgress}
             />
+
+            {/* Global Menu Overlay for Click-Outside */}
+            {showMenu && (
+                <div className="menu-overlay" onClick={() => setShowMenu(false)} />
+            )}
         </div>
     );
 }

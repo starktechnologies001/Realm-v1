@@ -8,27 +8,26 @@
 
 .avatar-group {
     position: relative;
-    width: 80px;
-    height: 120px;
+    width: 60px;
+    height: 60px;
     overflow: visible;
     /* CRITICAL: Ensure bubble isn't clipped */
 }
 
 .thought-bubble {
     position: absolute;
-    bottom: 105%;
+    bottom: 120%;
     /* Push it slightly higher */
     left: 50%;
     transform: translateX(-50%);
-    background: white;
-    padding: 6px 12px;
-    border-radius: 16px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #333;
+    background: white !important;
+    padding: 6px 10px;
+    border-radius: 14px;
+    font-size: 0.8rem;
+    color: #000000 !important;
     white-space: nowrap;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     border: 2px solid #4285F4;
     /* Brand color border for visibility */
     z-index: 9999;
@@ -36,6 +35,24 @@
     animation: float 3s ease-in-out infinite;
     pointer-events: none;
     /* Let clicks pass through to marker */
+    text-align: center;
+    line-height: 1.2;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.thought-author {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: #4285F4 !important;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+.thought-content {
+    font-weight: 600;
+    color: #000000 !important;
 }
 
 .thought-bubble::after {
@@ -43,8 +60,8 @@
     position: absolute;
     top: 100%;
     left: 50%;
-    margin-left: -6px;
-    border: 6px solid transparent;
+    margin-left: -5px;
+    border: 5px solid transparent;
     border-top-color: #4285F4;
 }
 
@@ -54,7 +71,7 @@
     }
 
     50% {
-        transform: translateX(-50%) translateY(-5px);
+        transform: translateX(-50%) translateY(-4px);
     }
 
     100% {
@@ -64,22 +81,53 @@
 
 /* Avatar Visuals */
 .avatar-marker {
-    width: 80px;
-    height: 120px;
-    background-size: contain;
+    width: 100%;
+    height: 100%;
+    background-size: cover; /* Fill the circle */
     background-repeat: no-repeat;
-    background-position: center bottom;
-    /* Clean look: No background shape */
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+    background-position: center;
+    border-radius: 50%;
+    border: 3px solid #FFFFFF; /* Crisp White Border */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 0 4px rgba(0,0,0,0.2); /* Depth */
     transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    background-color: #333; /* Fallback bg */
 }
 
 .avatar-marker:hover {
     transform: scale(1.15) translateY(-5px);
     z-index: 10001 !important;
+    border-color: #f0f0f0;
 }
 
 .avatar-marker.self {
-    filter: drop-shadow(0 0 8px #4285F4);
-    z-index: 10000;
+    /* Subtle Blue Glow for Self to distinguish without being overwhelming */
+    box-shadow: 0 0 0 2px #4285F4, 0 4px 16px rgba(66, 133, 244, 0.4);
+    border: 3px solid #FFFFFF;
+}
+
+/* Dark Mode Leaflet Controls */
+.leaflet-control-layers {
+    background: rgba(20, 20, 20, 0.85) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+}
+
+.leaflet-control-layers-expanded {
+    padding: 12px 16px !important;
+}
+
+.leaflet-control-layers label {
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    margin-bottom: 4px !important;
+    cursor: pointer !important;
+}
+
+.leaflet-control-layers-selector {
+    accent-color: #34c759 !important; /* Green radio button */
+    margin-right: 8px !important;
 }

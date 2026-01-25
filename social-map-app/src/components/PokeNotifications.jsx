@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { getAvatar2D } from '../utils/avatarUtils';
 
 export default function PokeNotifications({ currentUser }) {
     const [pendingPokes, setPendingPokes] = useState([]);
@@ -72,6 +73,14 @@ export default function PokeNotifications({ currentUser }) {
                     setPendingPokes(prev => prev.filter(p => p.id !== payload.new.id));
                 }
             })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'friendships'
+            }, (payload) => {
+                // Remove from list if deleted (cancelled)
+                setPendingPokes(prev => prev.filter(p => p.id !== payload.old.id));
+            })
             .subscribe();
 
         return () => {
@@ -140,7 +149,7 @@ export default function PokeNotifications({ currentUser }) {
                         {pendingPokes.map(poke => (
                             <div key={poke.id} className="poke-item">
                                 <img 
-                                    src={(() => {
+                                    src={poke.requester.avatar_url ? getAvatar2D(poke.requester.avatar_url) : (() => {
                                         const safeName = encodeURIComponent(poke.requester.username || poke.requester.full_name || 'User');
                                         if (poke.requester.gender === 'Male') return `https://api.dicebear.com/7.x/avataaars/svg?seed=male-${safeName}`;
                                         if (poke.requester.gender === 'Female') return `https://api.dicebear.com/7.x/avataaars/svg?seed=female-${safeName}`;
@@ -148,6 +157,10 @@ export default function PokeNotifications({ currentUser }) {
                                     })()} 
                                     alt={poke.requester.full_name} 
                                     className="poke-avatar"
+                                    onError={(e) => {
+                                        const safeName = encodeURIComponent(poke.requester.username || poke.requester.full_name || 'User');
+                                        e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                    }}
                                 />
                                 <div className="poke-info">
                                     <strong>{poke.requester.full_name || poke.requester.username}</strong>
