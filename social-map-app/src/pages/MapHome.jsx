@@ -498,7 +498,6 @@ export default function MapHome() {
                             isLocationShared: true,
                             friendshipStatus: fData?.status || null, 
                             friendshipId: fData?.id || null,
-                            friendshipId: fData?.id || null,
                             is_public: u.is_public,
                             // PRIVACY CHECK: Only show story if public OR friends
                             hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),

@@ -23,6 +23,7 @@ function App() {
           <CallProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Login />} />
 
             {/* Protected Routes with Bottom Nav */}
             <Route element={<Layout />}>
