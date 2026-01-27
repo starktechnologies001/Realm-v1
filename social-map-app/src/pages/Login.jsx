@@ -225,6 +225,7 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
+      const siteUrl = import.meta.env.VITE_SITE_URL;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -232,7 +233,7 @@ export default function Login() {
             access_type: 'offline',
             prompt: 'consent',
           },
-          redirectTo: window.location.origin + '/map'
+          redirectTo: '${siteUrl}/map'
         }
       });
       if (error) throw error;

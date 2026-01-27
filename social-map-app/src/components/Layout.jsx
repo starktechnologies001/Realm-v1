@@ -10,52 +10,74 @@ export default function Layout() {
 
     // Initial Auth Check & Session Recovery
     useEffect(() => {
-        const recoverSession = async () => {
-             const userStr = localStorage.getItem('currentUser');
-             
-             // If local storage is populated, we are good (optimistic)
-             if (userStr) {
-                 setCheckingAuth(false);
-             }
+        let mounted = true;
 
-             // Always verify against Supabase (handles OAuth redirect case)
+        const syncProfile = async (session) => {
+            if (!session?.user) return;
+            
+            // Check if we already have the user in local storage to avoid extra fetch
+            const userStr = localStorage.getItem('currentUser');
+            // But for OAuth, the local storage might be empty on first login
+            if (!userStr) {
+                console.log("Recovering session from Supabase...");
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
+                 
+                if (profile) {
+                    const recoveredUser = {
+                        id: profile.id,
+                        name: profile.username || profile.full_name,
+                        username: profile.username,
+                        full_name: profile.full_name,
+                        gender: profile.gender,
+                        avatar_url: profile.avatar_url,
+                        status: profile.status || 'Online',
+                        interests: profile.interests
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(recoveredUser));
+                }
+            }
+        };
+
+        const initAuth = async () => {
+             // 1. Get initial session
              const { data: { session } } = await supabase.auth.getSession();
-             
-             if (session?.user) {
-                 // Even if we have local storage, sync with real session occasionally?
-                 // For OAuth specifically: if local storage is missing, we MUST fetch profile
-                 if (!userStr) {
-                     console.log("Recovering session from Supabase...");
-                     const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
-                     
-                     if (profile) {
-                         const recoveredUser = {
-                             id: profile.id,
-                             name: profile.username || profile.full_name,
-                             username: profile.username,
-                             full_name: profile.full_name,
-                             gender: profile.gender,
-                             avatar_url: profile.avatar_url,
-                             status: profile.status || 'Online',
-                             interests: profile.interests
-                         };
-                         localStorage.setItem('currentUser', JSON.stringify(recoveredUser));
-                     }
+             if (mounted) {
+                 if (session) {
+                     await syncProfile(session);
+                     setCheckingAuth(false);
+                 } else if (!window.location.hash.includes('access_token') && !window.location.hash.includes('type=recovery')) {
+                     // Only stop checking if we are NOT expecting a hash-based login (OAuth or Recovery)
+                     setCheckingAuth(false);
                  }
-                 setCheckingAuth(false);
-             } else {
-                 // No session, and maybe no local storage. 
-                 // We don't force redirect here to allow public pages if any, 
-                 // but since this is Layout for protected routes, we can let child components redirect
-                 setCheckingAuth(false);
              }
         };
 
-        recoverSession();
+        initAuth();
+
+        // 2. Listen for auth changes (Handles OAuth Redirects)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+             if (mounted) {
+                 if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                     if (session) {
+                         await syncProfile(session);
+                         setCheckingAuth(false);
+                     }
+                 } else if (event === 'SIGNED_OUT') {
+                     // Optional: clear local storage
+                     // localStorage.removeItem('currentUser'); // Let MapHome handle redirect logic
+                     setCheckingAuth(false);
+                 }
+             }
+        });
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     // Heartbeat to update last_active and fetch notification counts
