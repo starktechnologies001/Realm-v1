@@ -40,19 +40,37 @@ export default function Login() {
   let isMounted = true;
 
   const checkSession = async () => {
-    const { data } = await supabase.auth.getSession()
+    const { data: sessionData } = await supabase.auth.getSession();
 
-    if (isMounted && data.session) {
-      navigate('/map')
+    if (!sessionData.session) return;
+
+    // 🔴 NEW: verify user still exists in profiles
+    const userId = sessionData.session.user.id;
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || error) {
+      // ❌ user deleted → force logout
+      await supabase.auth.signOut();
+      return;
     }
-  }
 
-  checkSession()
+    if (isMounted) {
+      navigate('/map');
+    }
+  };
+
+  checkSession();
 
   return () => {
-    isMounted = false
-  }
-}, [isSignUp, navigate])
+    isMounted = false;
+  };
+}, [isSignUp, navigate]);
+
   
 
   const [error, setError] = useState('');
