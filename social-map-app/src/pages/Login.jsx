@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { generateRandomRPMAvatar } from '../utils/avatarUtils';
+
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
@@ -32,6 +33,27 @@ export default function Login() {
   const navigate = useNavigate();
   // Derive mode from URL
   const isSignUp = location.pathname === '/signup';
+
+  useEffect(() => {
+  if (isSignUp) return;
+
+  let isMounted = true;
+
+  const checkSession = async () => {
+    const { data } = await supabase.auth.getSession()
+
+    if (isMounted && data.session) {
+      navigate('/map')
+    }
+  }
+
+  checkSession()
+
+  return () => {
+    isMounted = false
+  }
+}, [isSignUp, navigate])
+  
 
   const [error, setError] = useState('');
   const [usernameError, setUsernameError] = useState('');
