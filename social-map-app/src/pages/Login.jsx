@@ -34,56 +34,19 @@ export default function Login() {
   // Derive mode from URL
   const isSignUp = location.pathname === '/signup';
 
-  useEffect(() => {
-  if (isSignUp) return;
-
-  let isMounted = true;
-
-  const checkSession = async () => {
-    
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) return;
-
-    const user = sessionData.session.user;
-
-    // Try to fetch profile
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    // 🔴 Profile does not exist → CREATE IT
-    if (!profile || error) {
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert({
-          id: user.id,
-          email: user.email,
-          username: user.user_metadata?.name || user.email.split('@')[0],
-          full_name: user.user_metadata?.full_name,
-          avatar_url: user.user_metadata?.avatar_url,
-          status: 'Online'
-        });
-
-      if (insertError) {
-        console.error('Profile creation failed', insertError);
-        await supabase.auth.signOut();
-        return;
+ useEffect(() => {
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        navigate('/map');
       }
     }
-
-    if (isMounted) {
-      navigate('/map');
-    }
-  };
-
-  checkSession();
+  );
 
   return () => {
-    isMounted = false;
+    authListener.subscription.unsubscribe();
   };
-}, [isSignUp, navigate]);
+}, [navigate]);
 
 
   const [error, setError] = useState('');
