@@ -1,3 +1,14 @@
+const PROD_DOMAIN = 'realm-v1.vercel.app';
+
+if (
+  window.location.hostname.includes('vercel.app') &&
+  window.location.hostname !== PROD_DOMAIN
+) {
+  window.location.replace(
+    `https://${PROD_DOMAIN}${window.location.pathname}`
+  );
+} 
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
