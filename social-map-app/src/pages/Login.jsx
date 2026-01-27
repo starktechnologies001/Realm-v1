@@ -34,19 +34,61 @@ export default function Login() {
   // Derive mode from URL
   const isSignUp = location.pathname === '/signup';
 
- useEffect(() => {
-  const { data: authListener } = supabase.auth.onAuthStateChange(
+useEffect(() => {
+  let mounted = true;
+
+  // 1️⃣ Handle page reload after Google redirect
+  const checkExistingSession = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session && mounted) {
+      navigate('/map');
+    }
+  };
+
+  checkExistingSession();
+
+  // 2️⃣ Handle fresh sign-in event
+  const { data: listener } = supabase.auth.onAuthStateChange(
     (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+      if (event === 'SIGNED_IN' && session && mounted) {
         navigate('/map');
       }
     }
   );
 
   return () => {
-    authListener.subscription.unsubscribe();
+    mounted = false;
+    listener.subscription.unsubscribe();
   };
 }, [navigate]);
+useEffect(() => {
+  let mounted = true;
+
+  // 1️⃣ Handle page reload after Google redirect
+  const checkExistingSession = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session && mounted) {
+      navigate('/map');
+    }
+  };
+
+  checkExistingSession();
+
+  // 2️⃣ Handle fresh sign-in event
+  const { data: listener } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      if (event === 'SIGNED_IN' && session && mounted) {
+        navigate('/map');
+      }
+    }
+  );
+
+  return () => {
+    mounted = false;
+    listener.subscription.unsubscribe();
+  };
+}, [navigate]);
+
 
 
   const [error, setError] = useState('');
@@ -240,24 +282,24 @@ export default function Login() {
   };
 
   const handleGoogleLogin = async () => {
-    try {
-      const siteUrl = import.meta.env.VITE_SITE_URL;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          redirectTo: '${siteUrl}/map'
-        }
-      });
-      if (error) throw error;
-    } catch (err) {
-      console.error("Google Login Error:", err);
-      setError("Failed to initialize Google Login");
-    }
-  };
+  try {
+    const siteUrl = import.meta.env.VITE_SITE_URL;
+
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+        redirectTo: `${siteUrl}/login`
+      }
+    });
+  } catch (err) {
+    console.error("Google Login Error:", err);
+    setError("Failed to initialize Google Login");
+  }
+};
 
   return (
     <div className="login-container">
