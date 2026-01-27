@@ -40,23 +40,37 @@ export default function Login() {
   let isMounted = true;
 
   const checkSession = async () => {
+    
     const { data: sessionData } = await supabase.auth.getSession();
-
     if (!sessionData.session) return;
 
-    // 🔴 NEW: verify user still exists in profiles
-    const userId = sessionData.session.user.id;
+    const user = sessionData.session.user;
 
+    // Try to fetch profile
     const { data: profile, error } = await supabase
       .from('profiles')
-      .select('id')
-      .eq('id', userId)
+      .select('*')
+      .eq('id', user.id)
       .single();
 
+    // 🔴 Profile does not exist → CREATE IT
     if (!profile || error) {
-      // ❌ user deleted → force logout
-      await supabase.auth.signOut();
-      return;
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email,
+          username: user.user_metadata?.name || user.email.split('@')[0],
+          full_name: user.user_metadata?.full_name,
+          avatar_url: user.user_metadata?.avatar_url,
+          status: 'Online'
+        });
+
+      if (insertError) {
+        console.error('Profile creation failed', insertError);
+        await supabase.auth.signOut();
+        return;
+      }
     }
 
     if (isMounted) {
@@ -71,7 +85,6 @@ export default function Login() {
   };
 }, [isSignUp, navigate]);
 
-  
 
   const [error, setError] = useState('');
   const [usernameError, setUsernameError] = useState('');
