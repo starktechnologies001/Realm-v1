@@ -1,12 +1,18 @@
 :root {
-    /* Light Professional Theme */
+    /* Light Professional Theme - Component Specific */
     --card-bg: #ffffff;
     --card-bg-hover: #f5f3f0;
     --bg-dark: #faf8f5;
     --border-subtle: #e5e5ea;
-    --text-primary: #1d1d1f;
-    --text-secondary: #6e6e73;
     --accent-cyan: #0084ff;
+}
+
+html[data-theme="dark"] {
+    --card-bg: #1c1c1e;
+    --card-bg-hover: #2c2c2e;
+    --bg-dark: #000000;
+    --border-subtle: #38383a;
+    --accent-cyan: #0a84ff;
 }
 
 .profile-page {
@@ -134,7 +140,7 @@
     font-size: 0.8rem; 
     text-transform: uppercase; 
     letter-spacing: 1.2px;
-    color: rgba(0, 0, 0, 0.6);
+    color: var(--text-secondary);
     font-weight: 800;
     position: relative;
     padding-left: 12px;
@@ -230,7 +236,7 @@
 
 .menu-label { 
     font-size: 0.95rem; 
-    color: #000;
+    color: var(--text-primary);
     font-weight: 400; 
     margin-bottom: 0;
     letter-spacing: -0.01em;
@@ -252,7 +258,7 @@
 }
 
 .menu-chevron { 
-    color: rgba(0, 0, 0, 0.3);
+    color: var(--text-secondary);
     font-size: 1.2rem; 
     transition: all 0.3s ease; 
     margin-left: 12px;
@@ -276,10 +282,22 @@
 .icon-block,
 .icon-safety,
 .icon-delete {
-    color: #1d1d1f;
+    color: var(--text-primary);
     background: rgba(0,0,0,0.04);
     border-color: rgba(0,0,0,0.08);
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+html[data-theme="dark"] .icon-personal,
+html[data-theme="dark"] .icon-interests,
+html[data-theme="dark"] .icon-birthday,
+html[data-theme="dark"] .icon-notif,
+html[data-theme="dark"] .icon-lock,
+html[data-theme="dark"] .icon-block,
+html[data-theme="dark"] .icon-safety,
+html[data-theme="dark"] .icon-delete {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.15);
 }
 
 .menu-icon-wrapper svg { stroke-width: 2px; }

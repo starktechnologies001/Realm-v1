@@ -3328,63 +3328,64 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 /* Input Area */
                 .chat-input-container {
                     padding: 16px 20px;
-                    background: rgba(10, 10, 10, 0.6);
-                    backdrop-filter: blur(10px);
+                    background: #ffffff; /* Force white background */
+                    border-top: 1px solid rgba(0,0,0,0.1); /* Subtle divider */
                     transition: background 0.3s ease;
                     position: relative;
                     z-index: 10;
                 }
                 
-                /* Light theme override for input area */
+                /* Light theme override for input area (Redundant but safe) */
                 .chat-room-container[data-theme-type="light"] .chat-input-container {
-                     background: rgba(255, 255, 255, 0.85);
+                     background: #ffffff;
                      border-top: 1px solid rgba(0,0,0,0.05);
                 }
                 
                 .glass-input-bar {
                     display: flex; align-items: center; gap: 10px;
-                    background: rgba(255,255,255,0.08);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: #f5f5f5; /* Light grey for input field itself */
+                    border: 1px solid #e0e0e0;
                     border-radius: 24px; padding: 6px 6px 6px 16px;
                     transition: all 0.2s;
                 }
                 
                 .chat-room-container[data-theme-type="light"] .glass-input-bar {
-                     background: rgba(0,0,0,0.05);
-                     border-color: rgba(0,0,0,0.1);
+                     background: #f5f5f5;
+                     border-color: #e0e0e0;
                 }
                 
                 .glass-input-bar:focus-within {
-                    background: rgba(255,255,255,0.12);
-                    border-color: rgba(255,255,255,0.2);
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                    background: #ffffff;
+                    border-color: var(--accent-gradient); /* Or accent color */
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
                 }
                 
                 .chat-room-container[data-theme-type="light"] .glass-input-bar:focus-within {
-                    background: rgba(0,0,0,0.08);
+                    background: #ffffff;
                     border-color: rgba(0,0,0,0.15);
                 }
                 
                 .msg-input {
-                    flex: 1; background: transparent; border: none; outline: none;
-                    color: white; font-size: 1rem; padding: 8px 0;
+                    flex: 1; background: transparent !important; border: none; outline: none;
+                    color: #000000 !important; /* Force black text */
+                    font-size: 1rem; padding: 8px 0;
                 }
-                .msg-input::placeholder { color: rgba(255,255,255,0.3); }
+                .msg-input::placeholder { color: #888888; }
                 
                 .chat-room-container[data-theme-type="light"] .msg-input {
-                     color: #333;
+                     color: #000000;
                 }
                 .chat-room-container[data-theme-type="light"] .msg-input::placeholder {
-                     color: rgba(0,0,0,0.4);
+                     color: #888888;
                 }
                 
                 .input-icon-btn {
-                    color: #aaa; background: none; border: none;
+                    color: #555555; background: none; border: none;
                     cursor: pointer; padding: 4px; transition: color 0.2s;
                 }
-                .input-icon-btn:hover { color: var(--theme-accent, white); }
+                .input-icon-btn:hover { color: var(--theme-accent, #000); }
                 
-                .chat-room-container[data-theme-type="light"] .input-icon-btn { color: #666; }
+                .chat-room-container[data-theme-type="light"] .input-icon-btn { color: #555555; }
                 .chat-room-container[data-theme-type="light"] .input-icon-btn:hover { color: var(--theme-accent, #333); }
                 
                 .send-btn { 
