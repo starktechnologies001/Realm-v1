@@ -61,8 +61,8 @@ const generateMockUsers = (centerLat, centerLng) => {
             // Store target for animation (not implemented in this simple mock, but good for structure)
             targetLat: centerLat + latOffset,
             targetLng: centerLng + lngOffset,
-            // Use 'open-peeps' for standing cartoon look (Snap style)
-            avatar: `https://api.dicebear.com/7.x/open-peeps/svg?seed=${i}&size=96`,
+            // Use realistic defaults instead of cartoons
+            avatar: i % 2 === 0 ? '/defaults/male_avatar.jpg' : '/defaults/female_avatar.jpg',
             lastActive: 'Now',
             isLocationOn: Math.random() > 0.2,
             mood: MOODS[Math.floor(Math.random() * MOODS.length)],

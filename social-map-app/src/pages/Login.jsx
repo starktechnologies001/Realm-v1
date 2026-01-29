@@ -1,14 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { generateRandomRPMAvatar } from '../utils/avatarUtils';
-
+import { uploadToStorage } from '../utils/fileUpload';
+import { 
+  DEFAULT_MALE_AVATAR, 
+  DEFAULT_FEMALE_AVATAR, 
+  DEFAULT_GENERIC_AVATAR 
+} from '../utils/avatarUtils';
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Other'];
-
-
 
 export default function Login() {
   // New Reset Password States
@@ -23,11 +25,14 @@ export default function Login() {
   const [resetEmail, setResetEmail] = useState('');
   const [isEmailVerified, setIsEmailVerified] = useState(false);
 
-
   // New Profile Fields
   const [status, setStatus] = useState('');
   const [gender, setGender] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
+  
+  // Real Faces Logic
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -41,6 +46,29 @@ useEffect(() => {
   const checkExistingSession = async () => {
     const { data } = await supabase.auth.getSession();
     if (data.session && mounted) {
+      // Validate that the user actually exists (not deleted from Supabase)
+      const { data: userData, error } = await supabase.auth.getUser();
+      
+      if (error || !userData.user) {
+        // Session is invalid (user was deleted), clear it
+        await supabase.auth.signOut();
+        localStorage.removeItem('currentUser');
+        return;
+      }
+      
+      // Check if OAuth user needs to complete profile setup
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('gender, status')
+        .eq('id', userData.user.id)
+        .single();
+      
+      // If OAuth user is missing required fields, redirect to setup
+      if (profile && (!profile.gender || !profile.status)) {
+        navigate('/oauth-profile-setup');
+        return;
+      }
+      
       navigate('/map');
     }
   };
@@ -61,44 +89,98 @@ useEffect(() => {
     listener.subscription.unsubscribe();
   };
 }, [navigate]);
-useEffect(() => {
-  let mounted = true;
-
-  // 1️⃣ Handle page reload after Google redirect
-  const checkExistingSession = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session && mounted) {
-      navigate('/map');
-    }
-  };
-
-  checkExistingSession();
-
-  // 2️⃣ Handle fresh sign-in event
-  const { data: listener } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      if (event === 'SIGNED_IN' && session && mounted) {
-        navigate('/map');
-      }
-    }
-  );
-
-  return () => {
-    mounted = false;
-    listener.subscription.unsubscribe();
-  };
-}, [navigate]);
-
-
 
   const [error, setError] = useState('');
+  const [messageType, setMessageType] = useState('error'); // 'error' | 'success'
+  const [signupStep, setSignupStep] = useState(1); // 1: Email, 2: Username, 3: Password, 4: Profile
+
+  const showMessage = (msg, type = 'error') => {
+    setError(msg);
+    setMessageType(type);
+    if (type === 'success') {
+        setTimeout(() => setError(''), 5000);
+    }
+  };
+
+  // Step Navigation Handlers
+  const handleNextStep = async () => {
+    setError('');
+    
+    if (signupStep === 1) {
+      // Validate Email Format
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showMessage('Please enter a valid email address', 'error');
+        return;
+      }
+      
+      // Check if email already exists
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('email', email.toLowerCase())
+          .maybeSingle();
+        
+        if (data) {
+          showMessage('This email already exists', 'error');
+          return;
+        }
+      } catch (err) {
+        console.error('Email check error:', err);
+      }
+      
+      setSignupStep(2);
+    } else if (signupStep === 2) {
+      // Validate Username & Check Availability
+      if (!username.trim() || username.length < 3) {
+        showMessage('Username must be at least 3 characters', 'error');
+        return;
+      }
+      if (usernameError) {
+        showMessage('Username already exists', 'error');
+        return;
+      }
+      // Double-check availability before proceeding
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username)
+          .single();
+        
+        if (data) {
+          showMessage('Username already exists', 'error');
+          setUsernameError('Username is already taken');
+          return;
+        }
+      } catch (err) {
+        // No match found, username is available
+      }
+      setSignupStep(3);
+    } else if (signupStep === 3) {
+      // Validate Password
+      if (!validatePassword(password)) {
+        showMessage('Password must be 8+ chars with Upper, Lower, Number & Symbol.', 'error');
+        return;
+      }
+      setSignupStep(4);
+    }
+  };
+
+  const handleBackStep = () => {
+    setError('');
+    if (signupStep > 1) {
+      setSignupStep(signupStep - 1);
+    }
+  };
+
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
 
   // Check Username Availability
   React.useEffect(() => {
     const checkUsername = async () => {
-      if (!username || username.length < 3 || !isSignUp) {
+      if (!username || username.length < 3 || !isSignUp || signupStep !== 2) {
         setUsernameError('');
         return;
       }
@@ -125,10 +207,25 @@ useEffect(() => {
 
     const timeout = setTimeout(checkUsername, 500);
     return () => clearTimeout(timeout);
-  }, [username, isSignUp]);
+  }, [username, isSignUp, signupStep]);
 
-  // ... (rest of code) ...
   const [loading, setLoading] = useState(false);
+
+  // Handle File Selection
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showMessage("File is too large (max 5MB) ⚠️", 'error');
+      return;
+    }
+
+    setAvatarFile(file);
+    // Create local preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+  };
 
 
   const toggleInterest = (interest) => {
@@ -140,8 +237,6 @@ useEffect(() => {
       }
     }
   };
-
-
 
   const validatePassword = (pwd) => {
     const minLength = 8;
@@ -158,7 +253,7 @@ useEffect(() => {
     setLoading(true);
 
     if (isSignUp ? !email.trim() : !username.trim() || !password.trim()) {
-      setError(`Please enter ${isSignUp ? "email" : "username"} and password.`);
+      showMessage(`Please enter ${isSignUp ? "email" : "username"} and password.`, 'error');
       setLoading(false);
       return;
     }
@@ -175,25 +270,35 @@ useEffect(() => {
           throw new Error('Password must be 8+ chars with Upper, Lower, Number & Symbol.');
         }
 
-        // 3. (Selfie Verification Removed)
+        // 3. Upload Avatar FIRST (if file selected)
+        // We upload with a predictable path based on email, which we can use immediately
+        let finalAvatarUrl;
+        
+        // Determine default based on gender
+        let defaultAvatar = DEFAULT_GENERIC_AVATAR;
+        if (gender === 'Male') defaultAvatar = DEFAULT_MALE_AVATAR;
+        else if (gender === 'Female') defaultAvatar = DEFAULT_FEMALE_AVATAR;
+        
+        finalAvatarUrl = defaultAvatar; // Start with default
 
-        // Assign specific default avatar based on gender (User Request)
-        let avatarUrl;
-        if (gender === 'Male') {
-            avatarUrl = '/defaults/male_avatar.jpg';
-        } else if (gender === 'Female') {
-            avatarUrl = '/defaults/female_avatar.jpg';
-        } else {
-            // Fallback for Non-binary/Other to a neutral one or one of the above
-            // Using Male as generic fallback or maybe I should copy a neutral one.
-            // For now, let's use Male as generic default if no other option, or maybe a dicebear backup.
-            // User said: "if female then girl avatar if male then boy avatar". didn't specify others.
-            // I'll use a neutral dicebear for others to be safe, or just default to male.
-            // Let's use DiceBear for others to keep it distinct.
-             avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${username}`;
+        // If user selected a photo, upload it now
+        // We'll use a predictable path that can be accessed later
+        if (avatarFile) {
+            // Create a unique but predictable ID based on email
+            // This will be moved to the proper user folder after signup
+            const tempId = `signup_${email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+            const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, tempId);
+            
+            if (!uploadError && fileUrl) {
+                finalAvatarUrl = fileUrl; // Use uploaded URL in signup metadata
+                console.log('Photo uploaded successfully:', fileUrl);
+            } else {
+                console.error('Photo upload failed:', uploadError);
+                // Continue with default avatar
+            }
         }
 
-        // 4. Sign Up
+        // 4. Sign Up with the correct avatar URL in metadata
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -202,7 +307,7 @@ useEffect(() => {
             data: {
               username: username,
               full_name: username,
-              avatar_url: avatarUrl,
+              avatar_url: finalAvatarUrl,  // This will be used by the profile trigger
               status: status,
               gender: gender,
               interests: selectedInterests
@@ -212,7 +317,35 @@ useEffect(() => {
 
         if (signUpError) throw signUpError;
 
-        setError('✅ Account created! Please check your email to verify your account.');
+        // 5. Move uploaded photo to proper user folder (if uploaded)
+        if (data.user && avatarFile && finalAvatarUrl !== defaultAvatar) {
+            try {
+                // Re-upload with the actual user ID for proper organization
+                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, data.user.id);
+                
+                if (!uploadError && fileUrl) {
+                    // Update user metadata with the final organized URL
+                    await supabase.auth.updateUser({
+                        data: { avatar_url: fileUrl }
+                    });
+                    
+                    // Try to update profile if it exists (for non-email-confirmation setups)
+                    try {
+                        await supabase.from('profiles').update({ avatar_url: fileUrl }).eq('id', data.user.id);
+                    } catch (profileErr) {
+                        // Profile might not exist yet, that's okay
+                        console.log('Profile not yet created, will use metadata');
+                    }
+                    
+                    console.log('Photo moved to user folder:', fileUrl);
+                }
+            } catch (err) {
+                console.error('Avatar re-upload error:', err);
+                // Not critical, the temp URL is already in metadata and accessible
+            }
+        }
+
+        showMessage('✅ Account created! Please check your email to verify your account.', 'success');
         setTimeout(() => navigate("/confirm-email"), 2000);
 
       } else {
@@ -271,10 +404,15 @@ useEffect(() => {
       }
     } catch (err) {
       console.error(err);
-      if (err.message && (err.message.includes('User already registered') || err.message.includes('unique constraint'))) {
-        setError('⚠️ This email is already linked to an account! Please Log In instead.');
+      // Detailed error handling for duplicates
+      if (err.message && (
+          err.message.includes('User already registered') || 
+          err.message.includes('unique constraint') ||
+          err.message.includes('already exists')
+      )) {
+        showMessage('This email already exists', 'error');
       } else {
-        setError(err.message || 'Authentication failed');
+        showMessage(err.message || 'Authentication failed', 'error');
       }
     } finally {
       setLoading(false);
@@ -297,7 +435,7 @@ useEffect(() => {
     });
   } catch (err) {
     console.error("Google Login Error:", err);
-    setError("Failed to initialize Google Login");
+    showMessage("Failed to initialize Google Login", 'error');
   }
 };
 
@@ -312,35 +450,30 @@ useEffect(() => {
         <div className="auth-toggle">
           <button
             className={`toggle-btn ${!isSignUp ? 'active' : ''}`}
-            onClick={() => { navigate('/login'); setError(''); }}
+            onClick={() => { navigate('/login'); setError(''); setSignupStep(1); }}
           >
             Log In
           </button>
           <button
             className={`toggle-btn ${isSignUp ? 'active' : ''}`}
-            onClick={() => { navigate('/signup'); setError(''); }}
+            onClick={() => { navigate('/signup'); setError(''); setSignupStep(1); }}
           >
             Signup
           </button>
         </div>
 
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+            <div className={`alert-message alert-${messageType}`}>
+                <div className="alert-icon">
+                    {messageType === 'success' ? '✅' : '⚠️'}
+                </div>
+                <div className="alert-content">{error}</div>
+            </div>
+        )}
 
         <form onSubmit={handleAuth} className="login-form">
-          {/* Base Credentials */}
-          {isSignUp && (
-            <div className="input-group">
-              <input
-                type="email"
-                className="input-field"
-                placeholder="Email Address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-          )}
+          {/* Login Form */}
           {!isSignUp && (
             <>
               <div className="input-group">
@@ -363,178 +496,258 @@ useEffect(() => {
                   required
                 />
               </div>
+              <div style={{ textAlign: 'right', marginTop: '8px' }}>
+                <span 
+                  onClick={() => setShowForgotPassword(true)}
+                  style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Forgot Password?
+                </span>
+              </div>
+              <button type="submit" disabled={loading} className="btn-primary">
+                {loading ? 'Logging In...' : 'Log In'}
+              </button>
             </>
           )}
 
-
+          {/* Multi-Step Signup Wizard */}
           {isSignUp && (
-          <>
-          <div className="input-group">
-            <input
-              type="text"
-              className="input-field"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              style={usernameError ? { borderColor: '#ff453a' } : {}}
-            />
-            {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
-            {usernameError && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{usernameError}</span>}
-          </div>
-
-          <div className="input-group">
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          </>
-          )}
-          {/* Extended Profile Fields (Sign Up Only) */}
-          {isSignUp && (
-            <div className="signup-fields">
-
-              {/* Selfie Camera Section */}
-
-
-              {/* Avatar Preview */}
-              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                  <div style={{ 
-                      width: '100px', height: '100px', 
-                      borderRadius: '50%', margin: '0 auto 10px',
-                      border: '3px solid rgba(255,255,255,0.2)',
-                      background: 'rgba(255,255,255,0.05)',
-                      overflow: 'hidden',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                      {gender === 'Male' ? (
-                          <img src="/defaults/male_avatar.jpg" alt="Boy Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : gender === 'Female' ? (
-                          <img src="/defaults/female_avatar.jpg" alt="Girl Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                          <span style={{ fontSize: '2rem', opacity: 0.5 }}>👤</span>
-                      )}
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: '#aaa', margin: 0 }}>
-                      {gender ? `Default ${gender} Avatar` : 'Select gender to preview avatar'}
-                  </p>
+            <>
+              {/* Step Indicator */}
+              <div className="step-indicator">
+                <div className={`step ${signupStep >= 1 ? 'active' : ''}`}>1</div>
+                <div className="step-line"></div>
+                <div className={`step ${signupStep >= 2 ? 'active' : ''}`}>2</div>
+                <div className="step-line"></div>
+                <div className={`step ${signupStep >= 3 ? 'active' : ''}`}>3</div>
+                <div className="step-line"></div>
+                <div className={`step ${signupStep >= 4 ? 'active' : ''}`}>4</div>
               </div>
 
-              {/* Gender */}
-              <div className="field-section">
-                <label>Gender</label>
-                <div className="custom-select-wrapper">
-                  <select 
-                    value={gender} 
-                    onChange={e => setGender(e.target.value)}
-                    className="glass-select"
-                  >
-                    <option value="" disabled>Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Non-binary">Non-binary</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <div className="select-arrow">▼</div>
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="field-section">
-                <label>Relationship Status</label>
-                <div className="custom-select-wrapper">
-                  <select 
-                    value={status} 
-                    onChange={e => setStatus(e.target.value)}
-                    className="glass-select"
-                  >
-                    <option value="" disabled>Select Status</option>
-                    {STATUS_OPTIONS.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                  <div className="select-arrow">▼</div>
-                </div>
-              </div>
-
-              {/* Interests */}
-              <div className="field-section">
-                <label>Interests <span className="sub-label">(Type and add up to 5)</span></label>
-                
-                {/* Selected Interests Chips */}
-                <div className="chip-group" style={{ marginBottom: '10px' }}>
-                  {selectedInterests.map(interest => (
-                    <button 
-                      key={interest}
-                      type="button"
-                      className="chip selected"
-                      onClick={() => toggleInterest(interest)}
-                    >
-                      {interest} ✕
-                    </button>
-                  ))}
-                </div>
-                
-                {/* Add Interest Input & Button */}
-                <div className="add-interest-row" style={{ display: 'flex', gap: '8px' }}>
-                    <input 
-                        type="text" 
-                        placeholder="Type interest..." 
-                        className="glass-input-small"
-                        id="interestInput"
-                        onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                document.getElementById('addInterestBtn').click();
-                            }
-                        }}
+              {/* Step 1: Email */}
+              {signupStep === 1 && (
+                <div className="signup-step">
+                  <h3 className="step-title">What's your email?</h3>
+                  <div className="input-group">
+                    <input
+                      type="email"
+                      className="input-field"
+                      placeholder="Email Address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoFocus
                     />
-                    <button 
-                        type="button"
-                        id="addInterestBtn"
-                        className="btn-primary-small"
-                        onClick={() => {
-                            const input = document.getElementById('interestInput');
-                            const val = input.value.trim();
-                            if (val) {
-                                const formatted = val.charAt(0).toUpperCase() + val.slice(1);
-                                if (!selectedInterests.includes(formatted) && selectedInterests.length < 5) {
-                                    setSelectedInterests([...selectedInterests, formatted]);
-                                    input.value = '';
-                                } else if (selectedInterests.length >= 5) {
-                                    alert('Max 5 interests');
-                                }
-                            }
-                        }}
-                        style={{ whiteSpace: 'nowrap', padding: '0 16px', borderRadius: '10px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                        Add +
-                    </button>
+                  </div>
                 </div>
+              )}
+
+              {/* Step 2: Username */}
+              {signupStep === 2 && (
+                <div className="signup-step">
+                  <h3 className="step-title">Choose a username</h3>
+                  <div className="input-group">
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      style={usernameError ? { borderColor: '#ff453a' } : {}}
+                      autoFocus
+                    />
+                    {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
+                    {usernameError && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{usernameError}</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Password */}
+              {signupStep === 3 && (
+                <div className="signup-step">
+                  <h3 className="step-title">Create a secure password</h3>
+                  <div className="input-group">
+                    <input
+                      type="password"
+                      className="input-field"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoFocus
+                    />
+                    <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '8px', marginLeft: '4px' }}>
+                      8+ chars with Upper, Lower, Number & Symbol
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Profile Details */}
+              {signupStep === 4 && (
+                <div className="signup-step">
+                  <h3 className="step-title">Complete your profile</h3>
+                  
+                  {/* Avatar Upload Preview */}
+                  <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                    <div style={{ position: 'relative', width: '100px', height: '100px', margin: '0 auto 12px' }}>
+                      <div style={{ 
+                          width: '100px', height: '100px', 
+                          borderRadius: '50%',
+                          border: '3px solid rgba(255,255,255,0.2)',
+                          background: 'rgba(255,255,255,0.05)',
+                          overflow: 'hidden',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                          {avatarPreview ? (
+                              <img src={avatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                              <img 
+                                  src={gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_MALE_AVATAR} 
+                                  alt="Default Avatar" 
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} 
+                              />
+                          )}
+                      </div>
+                      
+                      <label 
+                          htmlFor="avatar-upload"
+                          style={{
+                              position: 'absolute', bottom: '0', right: '0',
+                              width: '32px', height: '32px',
+                              background: 'var(--brand-blue)',
+                              borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer',
+                              boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                              border: '2px solid #1c1c1e'
+                          }}
+                      >
+                          <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
+                      </label>
+                      <input 
+                          id="avatar-upload" 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleFileChange} 
+                          style={{ display: 'none' }} 
+                      />
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#aaa', margin: 0 }}>
+                        {avatarPreview ? 'Photo selected' : 'Upload a profile photo'}
+                    </p>
+                  </div>
+
+                  {/* Gender */}
+                  <div className="field-section">
+                    <label>Gender</label>
+                    <div className="custom-select-wrapper">
+                      <select 
+                        value={gender} 
+                        onChange={e => setGender(e.target.value)}
+                        className="glass-select"
+                      >
+                        <option value="" disabled>Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Non-binary">Non-binary</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <div className="select-arrow">▼</div>
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className="field-section">
+                    <label>Relationship Status</label>
+                    <div className="custom-select-wrapper">
+                      <select 
+                        value={status} 
+                        onChange={e => setStatus(e.target.value)}
+                        className="glass-select"
+                      >
+                        <option value="" disabled>Select Status</option>
+                        {STATUS_OPTIONS.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <div className="select-arrow">▼</div>
+                    </div>
+                  </div>
+
+                  {/* Interests */}
+                  <div className="field-section">
+                    <label>Interests <span className="sub-label">(Optional, up to 5)</span></label>
+                    
+                    <div className="chip-group" style={{ marginBottom: '10px' }}>
+                      {selectedInterests.map(interest => (
+                        <button 
+                          key={interest}
+                          type="button"
+                          className="chip selected"
+                          onClick={() => toggleInterest(interest)}
+                        >
+                          {interest} ✕
+                        </button>
+                      ))}
+                    </div>
+                    
+                    <div className="add-interest-row" style={{ display: 'flex', gap: '8px' }}>
+                        <input 
+                            type="text" 
+                            placeholder="Type interest..." 
+                            className="glass-input-small"
+                            id="interestInput"
+                            onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    document.getElementById('addInterestBtn').click();
+                                }
+                            }}
+                        />
+                        <button 
+                            type="button"
+                            id="addInterestBtn"
+                            className="btn-primary-small"
+                            onClick={() => {
+                                const input = document.getElementById('interestInput');
+                                const val = input.value.trim();
+                                if (val) {
+                                    const formatted = val.charAt(0).toUpperCase() + val.slice(1);
+                                    if (!selectedInterests.includes(formatted) && selectedInterests.length < 5) {
+                                        setSelectedInterests([...selectedInterests, formatted]);
+                                        input.value = '';
+                                    } else if (selectedInterests.length >= 5) {
+                                        showMessage('Max 5 interests', 'error');
+                                    }
+                                }
+                            }}
+                            style={{ whiteSpace: 'nowrap', padding: '0 16px', borderRadius: '10px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                            Add +
+                        </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Navigation Buttons */}
+              <div className="step-navigation">
+                {signupStep > 1 && (
+                  <button type="button" onClick={handleBackStep} className="btn-back">
+                    ← Back
+                  </button>
+                )}
+                {signupStep < 4 ? (
+                  <button type="button" onClick={handleNextStep} className="btn-next">
+                    Next →
+                  </button>
+                ) : (
+                  <button type="submit" disabled={loading} className="btn-submit">
+                    {loading ? 'Creating Account...' : 'Sign Up'}
+                  </button>
+                )}
               </div>
-
-            </div>
+            </>
           )}
-
-          {/* Forgot Password Link - Only for Login */}
-          {!isSignUp && (
-            <div style={{ textAlign: 'right', marginTop: '8px' }}>
-              <span 
-                onClick={() => setShowForgotPassword(true)}
-                style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Forgot Password?
-              </span>
-            </div>
-          )}
-
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? (isSignUp ? 'Creating Account...' : 'Logging In...') : (isSignUp ? 'Sign Up' : 'Log In')}
-          </button>
         </form>
 
         <div className="auth-separator">
@@ -554,7 +767,7 @@ useEffect(() => {
         </button>
       </div>
 
-      {/* Forgot Password Modal - Placed OUTSIDE main card to avoid stacking issues */}
+      {/* Forgot Password Modal */}
       {showForgotPassword && (
         <div className="modal-backdrop">
           <div className="modal-content">
@@ -572,21 +785,20 @@ useEffect(() => {
                   <button className="btn-sec" onClick={() => { setShowForgotPassword(false); setResetStep(1); }}>Cancel</button>
                   <button className="btn-pri" onClick={async () => {
                     if (!resetEmail) {
-                      alert("Please enter your email");
+                      showMessage("Please enter your email", 'error');
                       return;
                     }
                     setLoading(true);
                     try {
-                      // Send OTP (Sign in with OTP behaves as passwordless login)
                       const { error } = await supabase.auth.signInWithOtp({
                         email: resetEmail,
                         options: { shouldCreateUser: false }
                       });
                       if (error) throw error;
-                      alert("OTP sent to your email! 📧");
+                      showMessage("OTP sent to your email! 📧", 'success');
                       setResetStep(2);
                     } catch (err) {
-                      alert(err.message);
+                      showMessage(err.message, 'error');
                     } finally {
                       setLoading(false);
                     }
@@ -609,7 +821,7 @@ useEffect(() => {
                   <button className="btn-sec" onClick={() => setResetStep(1)}>Back</button>
                   <button className="btn-pri" onClick={async () => {
                     if (!resetOtp) {
-                      alert("Please enter the code");
+                      showMessage("Please enter the code", 'error');
                       return;
                     }
                     setLoading(true);
@@ -622,12 +834,12 @@ useEffect(() => {
                       if (error) throw error;
                       if (data.session) {
                         setResetStep(3);
-                        alert("Code verified! Set your new password.");
+                        showMessage("Code verified! Set your new password.", 'success');
                       } else {
                         throw new Error("Verification failed. Try again.");
                       }
                     } catch (err) {
-                      alert(err.message);
+                      showMessage(err.message, 'error');
                     } finally {
                       setLoading(false);
                     }
@@ -651,7 +863,7 @@ useEffect(() => {
                   <button className="btn-sec" onClick={() => { setShowForgotPassword(false); setResetStep(1); }}>Cancel</button>
                   <button className="btn-pri" onClick={async () => {
                     if (newResetPassword.length < 6) {
-                      alert("Password must be at least 6 characters");
+                      showMessage("Password must be at least 6 characters", 'error');
                       return;
                     }
                     setLoading(true);
@@ -660,15 +872,15 @@ useEffect(() => {
                         password: newResetPassword
                       });
                       if (error) throw error;
-                      alert("Password updated successfully! ✅");
+                      showMessage("Password updated successfully! ✅", 'success');
                       setShowForgotPassword(false);
                       setResetStep(1);
                       setResetEmail('');
                       setResetOtp('');
                       setNewResetPassword('');
-                      setPassword(''); // clear old input
+                      setPassword('');
                     } catch (err) {
-                      alert(err.message);
+                      showMessage(err.message, 'error');
                     } finally {
                       setLoading(false);
                     }
@@ -693,12 +905,11 @@ useEffect(() => {
           min-height: 100vh;
           display: flex;
           background-color: #000;
-          /* Subtle ambient background matching screenshot */
           background-image: 
               radial-gradient(circle at 50% 0%, rgba(0, 122, 255, 0.15) 0%, transparent 50%);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
           padding: 20px;
-          overflow-y: auto; /* Ensure scroll container behavior */
+          overflow-y: auto;
         }
 
         .login-card {
@@ -711,7 +922,7 @@ useEffect(() => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          margin: auto; /* Safe centering for scrolling */
+          margin: auto;
         }
 
         .app-title {
@@ -798,42 +1009,40 @@ useEffect(() => {
         .btn-primary {
           width: 100%;
           padding: 14px;
-          border-radius: 12px;
+          background: linear-gradient(135deg, #007aff 0%, #00c6ff 100%);
           border: none;
-          background: #0099ff;
+          border-radius: 12px;
           color: white;
           font-size: 1rem;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s;
-          margin-top: 10px;
-          box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+          transition: transform 0.1s ease, box-shadow 0.2s;
         }
 
-        .btn-primary:hover {
-          background: #0088cc;
-          transform: translateY(-1px);
-        }
-        
         .btn-primary:active {
           transform: scale(0.98);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
         .auth-separator {
           width: 100%;
           display: flex;
           align-items: center;
-          text-align: center;
-          margin: 25px 0;
-          color: #444;
+          margin: 20px 0;
+          color: #666;
           font-size: 0.9rem;
         }
 
         .auth-separator::before,
         .auth-separator::after {
-          content: '';
+          content: "";
           flex: 1;
-          border-bottom: 1px solid #333;
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
         }
 
         .auth-separator span {
@@ -842,166 +1051,290 @@ useEffect(() => {
 
         .btn-google {
           width: 100%;
-          padding: 14px;
-          border-radius: 12px;
-          border: none;
           background: white;
-          color: #000;
-          font-size: 1rem;
-          font-weight: 600;
-          cursor: pointer;
+          color: #333;
+          font-weight: 500;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 10px;
-          transition: all 0.2s;
+          padding: 12px;
+          border-radius: 12px;
+          border: none;
+          cursor: pointer;
+          font-size: 1rem;
+          transition: background 0.2s;
         }
 
         .btn-google:hover {
           background: #f0f0f0;
         }
 
-        .error-message {
-            background: rgba(255, 69, 58, 0.1);
-            color: #ff453a;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            text-align: center;
-            width: 100%;
-            margin-bottom: 10px;
-            border: 1px solid rgba(255, 69, 58, 0.2);
+        /* Alert Styles */
+        .alert-message {
+          display: flex; align-items: flex-start; gap: 12px;
+          padding: 14px 16px;
+          border-radius: 12px;
+          font-size: 0.9rem;
+          line-height: 1.4;
+          width: 100%;
+          backdrop-filter: blur(10px);
+          animation: slideIn 0.3s ease-out;
+          text-align: left;
+          box-sizing: border-box;
+          margin-bottom: 20px;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Signup Specifics */
-        .signup-fields {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            width: 100%;
+        .alert-error {
+          background: rgba(255, 69, 58, 0.1);
+          border: 1px solid rgba(255, 69, 58, 0.2);
+          color: #ff453a;
+          border-left: 4px solid #ff453a;
+        }
+
+        .alert-success {
+          background: rgba(48, 209, 88, 0.1);
+          border: 1px solid rgba(48, 209, 88, 0.2);
+          color: #30d158;
+          border-left: 4px solid #30d158;
+        }
+        
+        .alert-icon { font-size: 1.1rem; margin-top: -2px; }
+        .alert-content { flex: 1; }
+
+        /* Step Indicator */
+        .step-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 30px;
+          width: 100%;
+        }
+
+        .step {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #2c2c2e;
+          color: #666;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 0.9rem;
+          transition: all 0.3s;
+        }
+
+        .step.active {
+          background: var(--brand-gradient);
+          color: white;
+          box-shadow: 0 0 15px rgba(0, 122, 255, 0.4);
+        }
+
+        .step-line {
+          width: 40px;
+          height: 2px;
+          background: #2c2c2e;
+        }
+
+        /* Signup Step */
+        .signup-step {
+          width: 100%;
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-title {
+          font-size: 1.3rem;
+          font-weight: 600;
+          color: white;
+          margin: 0 0 20px 0;
+          text-align: center;
+        }
+
+        /* Step Navigation */
+        .step-navigation {
+          display: flex;
+          gap: 12px;
+          width: 100%;
+          margin-top: 10px;
+        }
+
+        .btn-back {
+          flex: 1;
+          padding: 14px;
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.8);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 0.95rem;
+          font-weight: 600;
+          transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+          background: rgba(255,255,255,0.1);
+          color: white;
+        }
+
+        .btn-next, .btn-submit {
+          flex: 1;
+          padding: 14px;
+          background: linear-gradient(135deg, #007aff 0%, #00c6ff 100%);
+          border: none;
+          border-radius: 12px;
+          color: white;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-next:hover, .btn-submit:hover {
+          box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn-submit:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        /* Field Sections */
+        .field-section {
+          margin-bottom: 16px;
         }
 
         .field-section label {
-            display: block;
-            color: #aaa;
-            font-size: 0.85rem;
-            margin-bottom: 6px;
-            margin-left: 4px;
+          display: block;
+          color: #aaa;
+          font-size: 0.9rem;
+          margin-bottom: 8px;
+          margin-left: 4px;
+        }
+        
+        .sub-label {
+             font-size: 0.75rem; color: #666; font-weight: 400;
         }
 
         .custom-select-wrapper {
-            position: relative;
+          position: relative;
         }
 
         .glass-select {
-            width: 100%;
-            background: #2c2c2e;
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 14px 16px;
-            border-radius: 12px;
-            appearance: none;
-            font-size: 1rem;
-            outline: none;
-        }
-        
-        .glass-select:focus {
-            border-color: #007aff;
+          width: 100%;
+          background: #2c2c2e;
+          color: white;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 14px 16px;
+          border-radius: 12px;
+          font-size: 1rem;
+          appearance: none;
+          outline: none;
         }
 
         .select-arrow {
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #666;
-            pointer-events: none;
-            font-size: 0.8rem;
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #666;
+          pointer-events: none;
+          font-size: 0.8rem;
         }
 
         .chip-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
         }
 
         .chip {
-            background: #3a3a3c;
-            border: none;
-            color: #white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+          padding: 8px 16px;
+          border-radius: 20px;
+          background: rgba(255, 255, 255, 0.05);
+          color: #ccc;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          cursor: pointer;
+          font-size: 0.9rem;
+          transition: all 0.2s;
+        }
+
+        .chip:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .chip.selected {
+          background: rgba(0, 122, 255, 0.2);
+          border-color: #007aff;
+          color: #007aff;
         }
         
-        .chip.selected {
-            background: rgba(0, 122, 255, 0.2);
-            color: #007aff;
-            border: 1px solid rgba(0, 122, 255, 0.3);
-        }
-
-        .glass-input-small {
+         .glass-input-small {
             flex: 1;
             background: #2c2c2e;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 8px 12px;
-            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             color: white;
-            font-size: 0.9rem;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.95rem;
             outline: none;
         }
-
-        /* Modal */
+        .btn-primary-small {
+            transition: transform 0.1s;
+        }
+        .btn-primary-small:active { transform: scale(0.95); }
+        
+        /* Modal Styles */
         .modal-backdrop {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(5px);
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+          position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(5px);
+          z-index: 1000;
+          display: flex; align-items: center; justify-content: center;
         }
         
         .modal-content {
-            background: #1c1c1e;
-            padding: 30px;
-            border-radius: 20px;
-            width: 100%;
-            max-width: 350px;
-            border: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
+          background: rgba(28, 28, 30, 0.95);
+          width: 90%; max-width: 380px;
+          padding: 32px; border-radius: 24px;
+          border: 1px solid rgba(255,255,255,0.1);
+          text-align: center;
+          color: white;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+          animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         
-        .modal-content h3 { margin-top: 0; color: white; }
+        @keyframes popIn {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .modal-content h3 { margin: 0 0 10px 0; color: white; }
         .modal-content p { color: #aaa; font-size: 0.9rem; margin-bottom: 20px; }
         .modal-content input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 20px;
-            background: #2c2c2e;
-            border: 1px solid #333;
-            color: white;
-            border-radius: 10px;
-            box-sizing: border-box;
+          width: 100%; padding: 12px; border-radius: 10px;
+          background: #2c2c2e; border: 1px solid rgba(255,255,255,0.1);
+          color: white; font-size: 1rem; margin-bottom: 20px;
+          text-align: center;
         }
-        
-        .modal-footer {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
+        .modal-footer { display: flex; gap: 10px; }
+        .btn-sec, .btn-pri {
+          flex: 1; padding: 12px; border-radius: 10px; border: none;
+          font-weight: 600; cursor: pointer; font-size: 0.95rem;
         }
-        
-        .btn-sec { background: transparent; color: #888; border: none; padding: 10px 15px; cursor: pointer; }
-        .btn-pri { background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+        .btn-sec { background: rgba(255,255,255,0.1); color: #ccc; }
+        .btn-pri { background: var(--brand-blue); color: white; }
 
       `}</style>
-
     </div>
   );
 }

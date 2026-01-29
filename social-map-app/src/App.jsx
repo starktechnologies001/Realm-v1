@@ -8,6 +8,7 @@ import Chat from './pages/Chat';
 import Profile from './pages/Profile';
 import ConfirmEmail from './pages/ConfirmEmail';
 import UpdatePassword from './pages/UpdatePassword';
+import OAuthProfileSetup from './pages/OAuthProfileSetup';
 import Layout from './components/Layout';
 import './App.css';
 
@@ -35,6 +36,7 @@ function App() {
 
             <Route path="/confirm-email" element={<ConfirmEmail />} />
             <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </CallProvider>

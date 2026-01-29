@@ -78,17 +78,6 @@ export default function ConfirmEmail() {
       subscription.unsubscribe();
     };
   }, [navigate]);
-  
-  // Helper for manual check button
-  const handleManualCheck = async () => {
-        const { data: { user } } = await supabase.auth.refreshSession();
-        if (user?.email_confirmed_at) {
-            setStatus('success');
-        } else {
-            const { data: { user: dbUser } } = await supabase.auth.getUser();
-            if (dbUser?.email_confirmed_at) setStatus('success');
-        }
-  };
 
   return (
     <div className="confirm-email-container">
@@ -125,9 +114,6 @@ export default function ConfirmEmail() {
             
             <button onClick={() => navigate('/')} className="primary-btn">
               Back to Login
-            </button>
-            <button onClick={handleManualCheck} className="text-btn">
-                I've verified my email
             </button>
           </div>
         )}
@@ -185,12 +171,13 @@ export default function ConfirmEmail() {
 
         .confirm-card {
             width: 100%;
-            max-width: 380px;
-            padding: 40px 32px;
+            max-width: 420px;
+            padding: 48px 36px;
             border-radius: 28px;
-            background: #1c1c1e;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            background: rgba(28, 28, 30, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
             text-align: center;
             animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
@@ -209,19 +196,19 @@ export default function ConfirmEmail() {
         }
 
         .icon-wrapper {
-            width: 72px;
-            height: 72px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
         }
         
         .success-icon {
-            background: rgba(74, 222, 128, 0.1); /* Subtle green bg */
+            background: rgba(74, 222, 128, 0.1);
             border-color: rgba(74, 222, 128, 0.2);
             animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
@@ -253,55 +240,54 @@ export default function ConfirmEmail() {
 
         h2 {
             margin: 0 0 12px 0;
-            font-size: 1.75rem;
+            font-size: 1.85rem;
             font-weight: 700;
             color: #fff;
             letter-spacing: -0.5px;
         }
 
         p {
-            margin: 0 0 24px 0;
-            color: #999;
-            line-height: 1.5;
+            margin: 0 0 28px 0;
+            color: #aaa;
+            line-height: 1.6;
             font-size: 0.95rem;
         }
 
         .info-box {
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid rgba(48, 60, 80, 0.8);
-            border-radius: 14px;
-            padding: 16px;
-            margin-bottom: 24px;
+            background: rgba(15, 25, 42, 0.9);
+            border: 1px solid rgba(94, 234, 212, 0.25);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 28px;
             width: 100%;
             box-sizing: border-box;
         }
 
         .info-box p {
             margin: 0;
-            color: #5eead4; /* Teal text */
-            font-size: 0.9rem;
+            color: #5eead4;
+            font-size: 0.95rem;
             font-weight: 500;
-            line-height: 1.4;
+            line-height: 1.5;
         }
 
         .primary-btn {
-            background: #007aff; /* Fallback */
             background: linear-gradient(135deg, #00d4ff 0%, #0084ff 100%);
             color: white;
             border: none;
-            padding: 16px;
+            padding: 16px 24px;
             border-radius: 14px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             width: 100%;
-            box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+            box-shadow: 0 6px 16px rgba(0, 132, 255, 0.35);
         }
 
         .primary-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 132, 255, 0.4);
+            box-shadow: 0 8px 24px rgba(0, 132, 255, 0.45);
         }
 
         .primary-btn:active {
@@ -309,41 +295,21 @@ export default function ConfirmEmail() {
         }
         
         .success-btn {
-            background: #4ade80;
             background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+            box-shadow: 0 6px 16px rgba(34, 197, 94, 0.35);
         }
         
         .success-btn:hover {
-            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+            box-shadow: 0 8px 24px rgba(34, 197, 94, 0.45);
         }
         
         .error-btn {
-            background: #ff453a;
             background: linear-gradient(135deg, #ff453a 0%, #ff3b30 100%);
-            box-shadow: 0 4px 12px rgba(255, 69, 58, 0.3);
+            box-shadow: 0 6px 16px rgba(255, 69, 58, 0.35);
         }
         
         .error-btn:hover {
-            box-shadow: 0 6px 20px rgba(255, 69, 58, 0.4);
-        }
-
-        .text-btn {
-            background: transparent;
-            color: #00d4ff;
-            border: none;
-            padding: 10px;
-            margin-top: 16px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            text-decoration: underline;
-            opacity: 0.8;
-            transition: all 0.2s;
-        }
-        
-        .text-btn:hover {
-            opacity: 1;
-            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(255, 69, 58, 0.45);
         }
 
       `}</style>

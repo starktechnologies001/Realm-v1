@@ -6,7 +6,8 @@ import Avatar3D from '../components/Avatar3D';
 import AvatarEditor from '../components/AvatarEditor';
 import { useTheme } from '../context/ThemeContext';
 import { useLocationContext } from '../context/LocationContext';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { uploadToStorage } from '../utils/fileUpload';
 import './Profile.css';
 
 export default function Profile() {
@@ -22,6 +23,44 @@ export default function Profile() {
     const { isLocationEnabled, resetPermission, setPermission } = useLocationContext();
     const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
     const wallpaperInputRef = useRef(null);
+    const photoInputRef = useRef(null);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+             showToast("Image too large (Max 5MB) ⚠️");
+             return;
+        }
+
+        setUploadingPhoto(true);
+        try {
+            const { fileUrl, error } = await uploadToStorage(file, user.id);
+            if (error) throw new Error(error);
+
+            // Update profile with new avatar URL
+            await updateProfile({ avatar_url: fileUrl });
+            showToast("Profile photo updated 📸");
+        } catch (error) {
+            console.error('Photo upload failed:', error);
+            showToast("Upload failed ❌");
+        } finally {
+            setUploadingPhoto(false);
+        }
+    };
+
+    const handleRemovePhoto = async () => {
+        if (!window.confirm("Remove current photo?")) return;
+        
+        let defaultAvatar = DEFAULT_GENERIC_AVATAR;
+        if (user.gender === 'Male') defaultAvatar = DEFAULT_MALE_AVATAR;
+        else if (user.gender === 'Female') defaultAvatar = DEFAULT_FEMALE_AVATAR;
+
+        await updateProfile({ avatar_url: defaultAvatar });
+        showToast("Photo removed 🗑️");
+    };
 
     const handleWallpaperUpload = async (e) => {
         const file = e.target.files[0];
@@ -339,21 +378,29 @@ export default function Profile() {
                     {is3DAvatar ? (
                         <div className="avatar-3d-container">
                              <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
-                             {/* Customize button moved to detailed info section */}
                         </div>
                     ) : (
                         <>
                             <img src={(() => {
-                                // Fallback logic for old avatars
-                                const safeName = encodeURIComponent(user.username || user.full_name || 'User');
-                                const gender = user.gender?.toLowerCase();
-                                if (user.avatar_url) return user.avatar_url; // Use existing if not 3D
-                                if (gender === 'male') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                                if (gender === 'female') return `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                                if (user.avatar_url) return user.avatar_url;
+                                // Fallback to realistic defaults
+                                const gender = user.gender;
+                                if (gender === 'Male') return DEFAULT_MALE_AVATAR;
+                                if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
+                                return DEFAULT_GENERIC_AVATAR;
                             })()} alt="Avatar" className="profile-avatar" />
-                            {/* Edit Overlay Removed */}
-                            <div className="status-indicator"></div>
+                            
+                            {/* Round + Overlay Button */}
+                            <div className="avatar-overlay-btn" onClick={() => setActiveModal('photo-options')}>
+                                +
+                            </div>
+                            <input 
+                                type="file" 
+                                ref={photoInputRef} 
+                                style={{ display: 'none' }} 
+                                accept="image/*"
+                                onChange={handlePhotoUpload}
+                            />
                         </>
                     )}
                 </div>
@@ -639,6 +686,30 @@ export default function Profile() {
                                 await updateProfile({ is_public: true });
                                 setShowPublicConfirm(false);
                             }}>Public</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Photo Options Modal */}
+            {activeModal === 'photo-options' && (
+                <div className="modal-backdrop" onClick={() => setActiveModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '0', overflow: 'hidden' }}>
+                        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                            <h3 style={{ margin: 0 }}>Change Photo</h3>
+                        </div>
+                        <div className="action-list">
+                            <button className="action-item" onClick={() => { setActiveModal(null); photoInputRef.current?.click(); }}>
+                                📸 Upload New Photo
+                            </button>
+                            {user.avatar_url && !user.avatar_url.includes('defaults') && (
+                                <button className="action-item danger" onClick={() => { setActiveModal(null); handleRemovePhoto(); }}>
+                                    🗑️ Remove Photo
+                                </button>
+                            )}
+                            <button className="action-item cancel" onClick={() => setActiveModal(null)}>
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>

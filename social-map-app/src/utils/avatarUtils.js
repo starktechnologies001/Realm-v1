@@ -1,32 +1,36 @@
-// Generate a random avatar URL using DiceBear (fast and reliable)
+export const DEFAULT_MALE_AVATAR = '/defaults/male_avatar.jpg';
+export const DEFAULT_FEMALE_AVATAR = '/defaults/female_avatar.jpg';
+export const DEFAULT_GENERIC_AVATAR = '/defaults/male_avatar.jpg'; // Fallback to male for now as generic, or we could add a specific generic one
+
+// OLD: Generate a random avatar URL using DiceBear
+// NEW: Return a realistic default. We no longer want random cartoons.
 export const generateRandomRPMAvatar = () => {
-    // Generate a unique identifier using timestamp and random string
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 15);
-    const uniqueId = `${timestamp}-${randomStr}`;
-    
-    // Use DiceBear avatars which load instantly (no 404 errors)
-    // These are SVG-based and extremely fast
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${uniqueId}`;
+    return DEFAULT_GENERIC_AVATAR;
 };
 
-// Generate a fallback avatar URL using DiceBear
+// Generate a fallback avatar URL
 export const getFallbackAvatar = (identifier = 'default') => {
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(identifier)}`;
+    // Return realistic default instead of cartoon
+    return DEFAULT_GENERIC_AVATAR;
 };
 
 export const getAvatar2D = (url, fallbackSeed) => {
     // Return fallback if no URL provided
     if (!url) {
-        return fallbackSeed ? getFallbackAvatar(fallbackSeed) : '';
+        return getFallbackAvatar(fallbackSeed);
     }
     
-    // DiceBear and other SVG avatars can be used directly
+    // If it's a local default path, return it directly
+    if (url.startsWith('/defaults/')) {
+        return url;
+    }
+
+    // DiceBear and other SVG avatars (legacy support)
     if (url.includes('dicebear.com') || url.includes('avatar.iran.liara.run')) {
         return url;
     }
     
-    // For any GLB models, convert to PNG (though we're not using these anymore)
+    // For any GLB models, convert to PNG (legacy support)
     const [baseUrl, queryString] = url.split('?');
     if (baseUrl.includes('models.readyplayer.me') && baseUrl.endsWith('.glb')) {
         const params = new URLSearchParams(queryString);
@@ -46,7 +50,12 @@ export const getAvatar2D = (url, fallbackSeed) => {
 export const getAvatarHeadshot = (url, fallbackSeed) => {
     // Return fallback if no URL provided
     if (!url) {
-        return fallbackSeed ? getFallbackAvatar(fallbackSeed) : '';
+        return getFallbackAvatar(fallbackSeed);
+    }
+
+    // If it's a local default path, return it directly
+    if (url.startsWith('/defaults/')) {
+        return url;
     }
     
     const [baseUrl, queryString] = url.split('?');
@@ -70,7 +79,8 @@ export const getAvatarHeadshot = (url, fallbackSeed) => {
 
 // Helper to handle image loading errors
 export const handleAvatarError = (event, fallbackSeed) => {
-    if (event.target.src && !event.target.src.includes('dicebear.com')) {
+    // Prevent infinite loops if default also fails
+    if (event.target.src && !event.target.src.includes('defaults')) {
         console.warn('🔴 [avatarUtils] Avatar failed to load, using fallback:', event.target.src);
         event.target.src = getFallbackAvatar(fallbackSeed || 'default');
     }
