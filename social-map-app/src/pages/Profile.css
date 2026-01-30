@@ -45,16 +45,16 @@ html[data-theme="dark"] {
 }
 
 .profile-avatar {
-    width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
-    border: 3px solid #ffffff;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    width: 120px; height: 120px; border-radius: 50%; object-fit: cover;
+    border: 4px solid #ffffff;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
 }
 
 .status-indicator {
-    position: absolute; bottom: 4px; right: 4px;
-    width: 14px; height: 14px; 
+    position: absolute; bottom: 8px; right: 8px;
+    width: 20px; height: 20px; 
     background: #00ff88;
-    border: 2px solid #ffffff;
+    border: 3px solid #ffffff;
     border-radius: 50%;
 }
 
@@ -761,10 +761,10 @@ html[data-theme="dark"] .icon-delete {
 /* New Real Faces UI Styles */
 .avatar-overlay-btn {
     position: absolute; 
-    bottom: 0px; 
-    right: 0px;
-    width: 28px; 
-    height: 28px; 
+    bottom: 4px; 
+    right: 4px;
+    width: 36px; 
+    height: 36px; 
     background: var(--accent-cyan); 
     color: white; 
     border-radius: 50%;
@@ -772,9 +772,9 @@ html[data-theme="dark"] .icon-delete {
     align-items: center; 
     justify-content: center;
     font-weight: bold; 
-    font-size: 1.2rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    border: 2px solid var(--card-bg);
+    font-size: 1.4rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 3px solid var(--card-bg);
     cursor: pointer;
     transition: transform 0.2s;
     z-index: 5;

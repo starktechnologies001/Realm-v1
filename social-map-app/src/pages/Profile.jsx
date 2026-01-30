@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
 import Avatar3D from '../components/Avatar3D';
 import AvatarEditor from '../components/AvatarEditor';
+import ImageCropper from '../components/ImageCropper';
 import { useTheme } from '../context/ThemeContext';
 import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
@@ -26,6 +27,8 @@ export default function Profile() {
     const photoInputRef = useRef(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
+    const [cropImage, setCropImage] = useState(null); // State for cropping
+
     const handlePhotoUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -35,9 +38,29 @@ export default function Profile() {
              return;
         }
 
+        // Open Cropper
+        const reader = new FileReader();
+        reader.addEventListener('load', () => {
+            setCropImage(reader.result);
+        });
+        reader.readAsDataURL(file);
+        
+        // Reset input so same file can be selected again if cancelled
+        e.target.value = null; 
+    };
+
+    const onCropComplete = async (croppedBlob) => {
+        setCropImage(null); // Close cropper
         setUploadingPhoto(true);
+        
+        // Create a File from Blob for uploadToStorage (it expects a File-like object with name/type)
+        const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+
         try {
-            const { fileUrl, error } = await uploadToStorage(file, user.id);
+            // Use 'chat-images' bucket which is known to be public for images
+            const { fileUrl, error } = await uploadToStorage(file, user.id, null, 'chat-images');
+            console.log("📸 [Profile] Upload Result:", { fileUrl, error });
+            
             if (error) throw new Error(error);
 
             // Update profile with new avatar URL
@@ -49,6 +72,10 @@ export default function Profile() {
         } finally {
             setUploadingPhoto(false);
         }
+    };
+
+    const onCropCancel = () => {
+        setCropImage(null);
     };
 
     const handleRemovePhoto = async () => {
@@ -365,6 +392,15 @@ export default function Profile() {
         <div className="profile-page">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
+            {/* Image Cropper Modal */}
+            {cropImage && (
+                <ImageCropper
+                    imageSrc={cropImage}
+                    onCropComplete={onCropComplete}
+                    onCancel={onCropCancel}
+                />
+            )}
+
             {showAvatarEditor && (
                 <AvatarEditor 
                     onSave={handleAvatarSave} 
@@ -374,35 +410,122 @@ export default function Profile() {
 
             {/* Header Card */}
             <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''}`}>
-                <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`}>
+                <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
                     {is3DAvatar ? (
                         <div className="avatar-3d-container">
                              <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
                         </div>
                     ) : (
+                        <img src={(() => {
+                            if (user.avatar_url) return user.avatar_url;
+                            // Fallback to realistic defaults
+                            const gender = user.gender;
+                            if (gender === 'Male') return DEFAULT_MALE_AVATAR;
+                            if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
+                            return DEFAULT_GENERIC_AVATAR;
+                        })()} alt="Avatar" className="profile-avatar" />
+                    )}
+                    
+                    {/* Unified Update Button */}
+                    <div className="avatar-overlay-btn" onClick={(e) => { e.stopPropagation(); setActiveModal('photo-options'); }}>
+                        +
+                    </div>
+                    
+                    {/* Dropdown Menu (Professional Small Box) */}
+                    {activeModal === 'photo-options' && (
                         <>
-                            <img src={(() => {
-                                if (user.avatar_url) return user.avatar_url;
-                                // Fallback to realistic defaults
-                                const gender = user.gender;
-                                if (gender === 'Male') return DEFAULT_MALE_AVATAR;
-                                if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
-                                return DEFAULT_GENERIC_AVATAR;
-                            })()} alt="Avatar" className="profile-avatar" />
-                            
-                            {/* Round + Overlay Button */}
-                            <div className="avatar-overlay-btn" onClick={() => setActiveModal('photo-options')}>
-                                +
-                            </div>
-                            <input 
-                                type="file" 
-                                ref={photoInputRef} 
-                                style={{ display: 'none' }} 
-                                accept="image/*"
-                                onChange={handlePhotoUpload}
+                            {/* Click-away backdrop */}
+                            <div 
+                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
+                                onClick={(e) => { e.stopPropagation(); setActiveModal(null); }}
                             />
+                            
+                            <div style={{
+                                position: 'absolute',
+                                top: '50%', /* Start at the vertical center of the button */
+                                left: '100%',
+                                transform: 'translateY(0)', /* Hangs down from the center */
+                                marginLeft: '10px',
+                                background: 'rgba(255, 255, 255, 0.95)',
+                                backdropFilter: 'blur(12px)',
+                                borderRadius: '12px', /* Slightly smaller radius */
+                                padding: '4px', /* Reduced padding */
+                                boxShadow: '0 8px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                                zIndex: 100,
+                                minWidth: 'max-content',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '1px', /* Minimal gap */
+                                animation: 'fadeIn 0.2s ease-out'
+                            }}>
+                                {/* Arrow pointing left */}
+                                <div style={{
+                                    position: 'absolute',
+                                    left: '-5px',
+                                    top: '14px', /* Aligns with the button center roughly */
+                                    width: '0',
+                                    height: '0',
+                                    borderTop: '5px solid transparent',
+                                    borderBottom: '5px solid transparent',
+                                    borderRight: '5px solid rgba(255, 255, 255, 0.95)'
+                                }} />
+
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setActiveModal(null); photoInputRef.current?.click(); }}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#1d1d1f',
+                                        padding: '8px 12px', /* Smaller padding */
+                                        textAlign: 'left',
+                                        fontSize: '0.85rem', /* Smaller text */
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        borderRadius: '8px',
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        transition: 'all 0.2s',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.06)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <span style={{ fontSize: '1rem' }}>📷</span> Upload Photo
+                                </button>
+                                
+                                {user.avatar_url && !user.avatar_url.includes('defaults') && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setActiveModal(null); handleRemovePhoto(); }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#ff3b30',
+                                            padding: '8px 12px', /* Smaller padding */
+                                            textAlign: 'left',
+                                            fontSize: '0.85rem', /* Smaller text */
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            borderRadius: '8px',
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            transition: 'all 0.2s',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 59, 48, 0.1)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                        <span style={{ fontSize: '1rem' }}>🗑️</span> Remove Photo
+                                    </button>
+                                )}
+                            </div>
                         </>
                     )}
+
+                    <input 
+                        type="file" 
+                        ref={photoInputRef} 
+                        style={{ display: 'none' }} 
+                        accept="image/*"
+                        onChange={handlePhotoUpload}
+                    />
                 </div>
                 
                 <div className="profile-info">
@@ -410,11 +533,11 @@ export default function Profile() {
                     <div className="tags-row">
                         {user.status && !user.hide_status && <span className="tag status">{user.status}</span>}
                         
-                        {/* Edit Avatar Button - Always visible, right of status */}
+                        {/* Edit Avatar Button - Restored for 3D Avatar Editing */}
                         <button 
                             onClick={() => setShowAvatarEditor(true)}
                             className="edit-avatar-btn-inline"
-                            title="Change Avatar"
+                            title="Edit 3D Avatar"
                         >
                             ✏️
                         </button>
@@ -691,32 +814,8 @@ export default function Profile() {
                 </div>
             )}
 
-            {/* Photo Options Modal */}
-            {activeModal === 'photo-options' && (
-                <div className="modal-backdrop" onClick={() => setActiveModal(null)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '0', overflow: 'hidden' }}>
-                        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                            <h3 style={{ margin: 0 }}>Change Photo</h3>
-                        </div>
-                        <div className="action-list">
-                            <button className="action-item" onClick={() => { setActiveModal(null); photoInputRef.current?.click(); }}>
-                                📸 Upload New Photo
-                            </button>
-                            {user.avatar_url && !user.avatar_url.includes('defaults') && (
-                                <button className="action-item danger" onClick={() => { setActiveModal(null); handleRemovePhoto(); }}>
-                                    🗑️ Remove Photo
-                                </button>
-                            )}
-                            <button className="action-item cancel" onClick={() => setActiveModal(null)}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Modals */}
-            {activeModal && (
+            {activeModal && activeModal !== 'photo-options' && (
                 <div className="modal-backdrop">
                     <div className="modal-content">
                         {activeModal === 'edit-name' && (

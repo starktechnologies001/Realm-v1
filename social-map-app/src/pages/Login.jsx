@@ -7,6 +7,7 @@ import {
   DEFAULT_FEMALE_AVATAR, 
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
+import ImageCropper from '../components/ImageCropper';
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
@@ -211,7 +212,9 @@ useEffect(() => {
 
   const [loading, setLoading] = useState(false);
 
-  // Handle File Selection
+  const [cropImage, setCropImage] = useState(null); // State for cropping
+
+  // Handle File Selection -- Updated for Cropping
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -221,10 +224,27 @@ useEffect(() => {
       return;
     }
 
-    setAvatarFile(file);
-    // Create local preview URL
-    const previewUrl = URL.createObjectURL(file);
-    setAvatarPreview(previewUrl);
+    // Instead of setting avatarFile immediately, read it for the cropper
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+        setCropImage(reader.result);
+    });
+    reader.readAsDataURL(file);
+    
+    // Reset input
+    e.target.value = null;
+  };
+
+  const onCropComplete = (croppedBlob) => {
+      setCropImage(null);
+      // Create a File from Blob
+      const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const onCropCancel = () => {
+      setCropImage(null);
   };
 
 
@@ -271,7 +291,6 @@ useEffect(() => {
         }
 
         // 3. Upload Avatar FIRST (if file selected)
-        // We upload with a predictable path based on email, which we can use immediately
         let finalAvatarUrl;
         
         // Determine default based on gender
@@ -279,26 +298,29 @@ useEffect(() => {
         if (gender === 'Male') defaultAvatar = DEFAULT_MALE_AVATAR;
         else if (gender === 'Female') defaultAvatar = DEFAULT_FEMALE_AVATAR;
         
-        finalAvatarUrl = defaultAvatar; // Start with default
+        finalAvatarUrl = defaultAvatar; 
 
-        // If user selected a photo, upload it now
-        // We'll use a predictable path that can be accessed later
+        // Upload if file exists
         if (avatarFile) {
-            // Create a unique but predictable ID based on email
-            // This will be moved to the proper user folder after signup
-            const tempId = `signup_${email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
-            const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, tempId);
+            // Use a temporary ID for the file path since we don't have a user ID yet
+            const tempId = `signup_avatars/${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
-            if (!uploadError && fileUrl) {
-                finalAvatarUrl = fileUrl; // Use uploaded URL in signup metadata
-                console.log('Photo uploaded successfully:', fileUrl);
-            } else {
-                console.error('Photo upload failed:', uploadError);
-                // Continue with default avatar
+            try {
+                // Upload to 'chat-images' (public bucket)
+                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, tempId, null, 'chat-images');
+                
+                if (!uploadError && fileUrl) {
+                    console.log('Pre-signup upload success:', fileUrl);
+                    finalAvatarUrl = fileUrl;
+                } else {
+                    console.error('Pre-signup upload failed:', uploadError);
+                }
+            } catch (err) {
+                 console.error('Pre-signup upload exception:', err);
             }
         }
 
-        // 4. Sign Up with the correct avatar URL in metadata
+        // 4. Sign Up with the FINAL avatar URL
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -307,7 +329,7 @@ useEffect(() => {
             data: {
               username: username,
               full_name: username,
-              avatar_url: finalAvatarUrl,  // This will be used by the profile trigger
+              avatar_url: finalAvatarUrl, 
               status: status,
               gender: gender,
               interests: selectedInterests
@@ -316,35 +338,8 @@ useEffect(() => {
         });
 
         if (signUpError) throw signUpError;
-
-        // 5. Move uploaded photo to proper user folder (if uploaded)
-        if (data.user && avatarFile && finalAvatarUrl !== defaultAvatar) {
-            try {
-                // Re-upload with the actual user ID for proper organization
-                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, data.user.id);
-                
-                if (!uploadError && fileUrl) {
-                    // Update user metadata with the final organized URL
-                    await supabase.auth.updateUser({
-                        data: { avatar_url: fileUrl }
-                    });
-                    
-                    // Try to update profile if it exists (for non-email-confirmation setups)
-                    try {
-                        await supabase.from('profiles').update({ avatar_url: fileUrl }).eq('id', data.user.id);
-                    } catch (profileErr) {
-                        // Profile might not exist yet, that's okay
-                        console.log('Profile not yet created, will use metadata');
-                    }
-                    
-                    console.log('Photo moved to user folder:', fileUrl);
-                }
-            } catch (err) {
-                console.error('Avatar re-upload error:', err);
-                // Not critical, the temp URL is already in metadata and accessible
-            }
-        }
-
+        
+        // 5. Success
         showMessage('✅ Account created! Please check your email to verify your account.', 'success');
         setTimeout(() => navigate("/confirm-email"), 2000);
 
@@ -1335,6 +1330,13 @@ useEffect(() => {
         .btn-pri { background: var(--brand-blue); color: white; }
 
       `}</style>
+      {cropImage && (
+        <ImageCropper
+            imageSrc={cropImage}
+            onCropComplete={onCropComplete}
+            onCancel={onCropCancel}
+        />
+      )}
     </div>
   );
 }

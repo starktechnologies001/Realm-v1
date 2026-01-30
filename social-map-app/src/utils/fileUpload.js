@@ -113,7 +113,10 @@ export const compressImage = async (file, maxWidth = 1920, quality = 0.8) => {
 /**
  * Upload file to Supabase Storage
  */
-export const uploadToStorage = async (file, userId, onProgress) => {
+/**
+ * Upload file to Supabase Storage
+ */
+export const uploadToStorage = async (file, userId, onProgress, bucket = 'chat-attachments') => {
     try {
         const validation = validateFile(file);
         if (!validation.valid) {
@@ -136,7 +139,7 @@ export const uploadToStorage = async (file, userId, onProgress) => {
 
         // Upload to Supabase Storage
         const { data, error } = await supabase.storage
-            .from('chat-attachments')
+            .from(bucket)
             .upload(filePath, fileToUpload, {
                 cacheControl: '3600',
                 upsert: false,
@@ -152,7 +155,7 @@ export const uploadToStorage = async (file, userId, onProgress) => {
 
         // Get public URL
         const { data: urlData } = supabase.storage
-            .from('chat-attachments')
+            .from(bucket)
             .getPublicUrl(filePath);
 
         return {

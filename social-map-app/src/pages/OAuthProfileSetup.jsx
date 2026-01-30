@@ -7,6 +7,7 @@ import {
   DEFAULT_FEMALE_AVATAR, 
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
+import ImageCropper from '../components/ImageCropper';
 
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 
@@ -53,6 +54,8 @@ export default function OAuthProfileSetup() {
     checkAuth();
   }, [navigate]);
 
+  const [cropImage, setCropImage] = useState(null); // State for cropping
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -62,9 +65,29 @@ export default function OAuthProfileSetup() {
       return;
     }
 
-    setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
-    setPhotoChoice('upload');
+    // Open Cropper
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+        setCropImage(reader.result);
+    });
+    reader.readAsDataURL(file);
+    
+    // Reset val
+    e.target.value = null;
+  };
+
+  const onCropComplete = (croppedBlob) => {
+      setCropImage(null);
+      // Create a File from Blob
+      const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+      setPhotoChoice('upload');
+  };
+
+  const onCropCancel = () => {
+      setCropImage(null);
   };
 
   const toggleInterest = (interest) => {
@@ -91,7 +114,7 @@ export default function OAuthProfileSetup() {
       // Determine avatar based on user's choice
       if (photoChoice === 'upload' && avatarFile) {
         // Upload custom photo
-        const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, userId);
+        const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, userId, null, 'chat-images');
         if (uploadError) throw uploadError;
         finalAvatarUrl = fileUrl;
       } else if (photoChoice === 'google' && googlePhotoUrl) {
@@ -220,6 +243,8 @@ export default function OAuthProfileSetup() {
                 />
                 <span>Use Default Avatar</span>
               </label>
+
+
             </div>
 
             {photoChoice === 'upload' && (
@@ -548,6 +573,17 @@ export default function OAuthProfileSetup() {
           cursor: not-allowed;
         }
       `}</style>
+      <style>{`
+        /* ... styles ... */
+      `}</style>
+      
+      {cropImage && (
+        <ImageCropper
+            imageSrc={cropImage}
+            onCropComplete={onCropComplete}
+            onCancel={onCropCancel}
+        />
+      )}
     </div>
   );
 }

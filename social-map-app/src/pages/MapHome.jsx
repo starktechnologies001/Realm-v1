@@ -146,6 +146,24 @@ export default function MapHome() {
     const [showFullProfile, setShowFullProfile] = useState(false);
     const [fullProfileUser, setFullProfileUser] = useState(null);
 
+    // Image Preloader for Instant Rendering
+    useEffect(() => {
+        if (!nearbyUsers || nearbyUsers.length === 0) return;
+        
+        nearbyUsers.forEach(user => {
+            if (user.avatar) {
+                const img = new Image();
+                img.src = getAvatar2D(user.avatar);
+            }
+        });
+        
+        // Also preload current user
+        if (currentUser?.avatar_url) {
+             const img = new Image();
+             img.src = getAvatar2D(currentUser.avatar_url);
+        }
+    }, [nearbyUsers, currentUser?.avatar_url]);
+
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
     const [myThought, setMyThought] = useState('');
@@ -464,9 +482,9 @@ export default function MapHome() {
                     });
                 }
                 
-                // Filter and map users (exclude blocked users)
+                // Filter and map users (exclude blocked users AND current user)
                 const validUsers = profilesResult.data
-                    .filter(u => !allBlockedIds.has(u.id))
+                    .filter(u => !allBlockedIds.has(u.id) && u.id !== currentUser.id)
                     .map(u => {
                         // Use actual avatar if available, otherwise gender-based fallback
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
@@ -598,36 +616,57 @@ export default function MapHome() {
                 if (!newUser.is_ghost_mode) {
                     const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
                     let fallbackAvatar = newUser.avatar_url; // Use real avatar if exists
-                    if (!fallbackAvatar) {
-                        const gender = newUser.gender?.toLowerCase() || 'other';
-                        if (gender === 'male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (gender === 'female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else fallbackAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
-                    }
                     
-                    const renderLat = newUser.latitude + (Math.random() - 0.5) * 0.0002;
-                    const renderLng = newUser.longitude + (Math.random() - 0.5) * 0.0002;
+                    if (!fallbackAvatar || fallbackAvatar.includes('defaults')) {
+                         if (newUser.gender === 'Male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
+                         else if (newUser.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
+                         else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                    }
 
-                    const newUserObj = {
-                        id: newUser.id,
-                        name: newUser.username || 'User',
-                        lat: renderLat,
-                        lng: renderLng,
-                        avatar: unescape(newUser.avatar_url) || fallbackAvatar, // Use real avatar if exists (defensive unescape just in case)
-                        originalAvatar: newUser.avatar_url,
-                        status: newUser.status,
-                        thought: newUser.status_message,
-                        lastActive: newUser.last_active,
-                        isLocationOn: true,
-                        isLocationShared: true,
-                        friendshipStatus: null
-                    };
+                    // Preload Image Immediately
+                    const img = new Image();
+                    img.src = getAvatar2D(fallbackAvatar);
+
+                    const mapAvatar = getAvatar2D(fallbackAvatar);
 
                     setNearbyUsers(prev => {
-                        const exists = prev.find(u => u.id === newUser.id);
-                        return exists ? prev : [...prev, newUserObj];
+                        // Avoid duplicates
+                        if (prev.some(u => u.id === newUser.id)) return prev;
+                        // Add new user
+                         return [...prev, {
+                            id: newUser.id,
+                            name: newUser.username || 'User',
+                            lat: newUser.latitude,
+                            lng: newUser.longitude,
+                            avatar: mapAvatar,
+                            originalAvatar: newUser.avatar_url,
+                            status: newUser.status,
+                            thought: newUser.status_message,
+                            lastActive: newUser.last_active,
+                            isLocationOn: true,
+                            isLocationShared: true,
+                            is_public: newUser.is_public,
+                            friendshipStatus: null, // Default
+                            hasStory: false,
+                            hasUnseenStory: false
+                        }];
                     });
                 }
+            })
+            // Real-time Story Updates (Ring Indicator)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stories' }, (payload) => {
+                const story = payload.new;
+                setNearbyUsers(prev => prev.map(u => {
+                    if (u.id === story.user_id) {
+                         // Check privacy before showing ring
+                        const isFriend = u.friendshipStatus === 'accepted';
+                        const isPublic = u.is_public !== false;
+                        if (isFriend || isPublic) {
+                            return { ...u, hasStory: true, hasUnseenStory: true };
+                        }
+                    }
+                    return u;
+                }));
             })
             .subscribe();
 
@@ -836,10 +875,17 @@ export default function MapHome() {
             );
 
             // Watcher
+            // Watcher to keep location live
             watchIdRef.current = navigator.geolocation.watchPosition(
                 async (position) => {
                     const { latitude, longitude } = position.coords;
                     setLocation({ lat: latitude, lng: longitude });
+                    
+                    // If we successfully get a location, ensure permission is 'granted'
+                    if (permissionStatus !== 'granted') {
+                        setPermission('granted', false);
+                    }
+
                      // Throttle DB updates (15s)
                     const now = Date.now();
                     const lastUpdate = window.lastLocationUpdate || 0;
@@ -853,22 +899,44 @@ export default function MapHome() {
                     }
                 },
                 (error) => {
-                     // Fallback
+                     console.error('[MapHome] WatchPosition Error:', error);
+                     // If permission is denied or position unavailable (e.g. turned off), force Ghost screen
+                     if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
+                         setPermission('denied', false); // Don't persist denial if it's just switched off temporarily
+                     }
+
+                     // Fallback if no location ever found
                      if (!location) {
-                         setLocation({ lat: 37.7749, lng: -122.4194 }); // SF Default
                          setLoading(false);
+                         // Don't set default SF location if we want to force the denied screen
                      }
                 },
-                { enableHighAccuracy: true }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         };
+
+        // Listen for system permission changes (e.g. toggling in browser/settings)
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                result.onchange = () => {
+                    console.log('[MapHome] Permission changed:', result.state);
+                    if (result.state === 'granted') {
+                        setPermission('granted', true);
+                    } else if (result.state === 'denied') {
+                        setPermission('denied', true);
+                    } else if (result.state === 'prompt') {
+                        setPermission('prompt', true);
+                    }
+                };
+            });
+        }
 
         // Run Init
         initLocation();
 
         return () => {
             if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
-            supabase.removeChannel(profileSub);
+            if (profileSub) supabase.removeChannel(profileSub);
             window.removeEventListener('local-user-update', handleLocalUpdate);
         };
     }, [navigate, permissionStatus]); // Depend on permissionStatus
@@ -1793,7 +1861,20 @@ export default function MapHome() {
                 <StoryViewer 
                     userStories={viewingStoryUser} 
                     currentUser={currentUser}
-                    onClose={() => setViewingStoryUser(null)}
+                    onClose={() => {
+                        const viewedUserId = viewingStoryUser.user.id;
+                        setViewingStoryUser(null);
+                        
+                        // Optimistically mark as seen for map ring
+                        setNearbyUsers(prev => prev.map(u => 
+                            u.id === viewedUserId 
+                                ? { ...u, hasUnseenStory: false } 
+                                : u
+                        ));
+                        
+                        // Also update the global set to prevent it from reappearing on next fetch
+                        // (Though fetches usually refresh this based on DB)
+                    }}
                 />
             )}
 
@@ -2041,16 +2122,16 @@ export default function MapHome() {
                 }
                 
                 .onboarding-card {
-                    background: rgba(30, 30, 35, 0.7);
-                    backdrop-filter: blur(30px);
-                    -webkit-backdrop-filter: blur(30px);
-                    padding: 40px; 
-                    border-radius: 32px;
-                    width: 90%; max-width: 420px; 
+                    background: rgba(20, 20, 25, 0.95);
+                    backdrop-filter: blur(40px);
+                    -webkit-backdrop-filter: blur(40px);
+                    padding: 30px 24px; 
+                    border-radius: 24px;
+                    width: 90%; max-width: 380px; 
                     color: white;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
                     box-shadow: 
-                        0 20px 60px rgba(0, 0, 0, 0.5),
+                        0 20px 60px rgba(0, 0, 0, 0.6),
                         0 0 0 1px rgba(255, 255, 255, 0.05) inset;
                     max-height: 90vh; overflow-y: auto;
                     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2063,39 +2144,39 @@ export default function MapHome() {
 
                 .onboarding-card h2 { 
                     margin-top: 0; 
-                    margin-bottom: 8px;
-                    font-size: 2rem;
+                    margin-bottom: 4px;
+                    font-size: 1.5rem;
                     background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); 
                     -webkit-background-clip: text; 
                     -webkit-text-fill-color: transparent; 
                     text-align: center;
-                    letter-spacing: -1px;
+                    letter-spacing: -0.5px;
                 }
                 
                 .onboarding-subtitle {
                     text-align: center;
                     color: rgba(255,255,255,0.6);
-                    font-size: 0.95rem;
-                    margin-bottom: 30px;
+                    font-size: 0.85rem;
+                    margin-bottom: 20px;
                 }
 
-                .ob-section { margin-bottom: 24px; }
+                .ob-section { margin-bottom: 16px; }
                 .ob-section label { 
                     display: block; 
-                    margin-bottom: 10px; 
+                    margin-bottom: 6px; 
                     font-weight: 600; 
                     color: rgba(255,255,255,0.9);
-                    font-size: 0.95rem;
+                    font-size: 0.85rem;
                     letter-spacing: 0.3px;
                 }
 
                 .ob-input {
-                    width: 100%; padding: 14px 16px;
+                    width: 100%; padding: 12px 14px;
                     background: rgba(255, 255, 255, 0.05);
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px; 
+                    border-radius: 12px; 
                     color: white;
-                    font-size: 1rem; 
+                    font-size: 0.9rem; 
                     outline: none;
                     transition: all 0.2s ease;
                 }
@@ -2105,76 +2186,81 @@ export default function MapHome() {
                     box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15);
                 }
 
-                .chip-group { display: flex; flex-wrap: wrap; gap: 10px; }
+                .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
                 .chip {
                     background: rgba(255, 255, 255, 0.05); 
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    color: rgba(255,255,255,0.8); 
-                    padding: 10px 18px; 
-                    border-radius: 20px; 
+                    color: rgba(255,255,255,0.7); 
+                    padding: 8px 14px; 
+                    border-radius: 14px; 
                     cursor: pointer;
-                    font-size: 0.9rem;
+                    font-size: 0.8rem;
                     font-weight: 500;
                     transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
                 }
                 .chip:hover {
                     background: rgba(255, 255, 255, 0.1);
                     transform: translateY(-1px);
+                    color: white;
                 }
                 .chip.selected { 
                     background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); 
                     color: white; 
                     border-color: transparent; 
                     font-weight: 600; 
-                    box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);
+                    box-shadow: 0 4px 12px rgba(0, 114, 255, 0.3);
                     transform: translateY(-1px);
                 }
                 
                 .complete-btn {
-                    width: 100%; padding: 16px; 
+                    width: 100%; padding: 14px; 
                     background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
                     color: white; 
                     font-weight: 700; 
-                    font-size: 1.1rem; 
+                    font-size: 1rem; 
                     border: none; 
-                    border-radius: 18px; 
+                    border-radius: 14px; 
                     cursor: pointer;
-                    margin-top: 10px;
+                    margin-top: 8px;
                     transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-                    box-shadow: 0 8px 25px rgba(0, 114, 255, 0.3);
+                    box-shadow: 0 8px 20px rgba(0, 114, 255, 0.3);
                 }
                 .complete-btn:hover {
-                    transform: translateY(-2px) scale(1.02);
-                    box-shadow: 0 12px 30px rgba(0, 114, 255, 0.5);
+                    transform: translateY(-2px) scale(1.01);
+                    box-shadow: 0 12px 25px rgba(0, 114, 255, 0.5);
                 }
                 .complete-btn:active { transform: scale(0.98); }
 
                 .avatar-preview-box {
                     text-align: center; 
-                    padding: 24px; 
-                    background: rgba(255, 255, 255, 0.05); 
-                    border-radius: 24px;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    margin-top: 5px;
+                    padding: 16px; 
+                    background: rgba(255, 255, 255, 0.03); 
+                    border-radius: 18px;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
                 }
                 .avatar-preview-box img {
-                    width: 120px; height: 120px; 
+                    width: 80px; height: 80px; 
                     border-radius: 50%; 
-                    border: 4px solid rgba(255, 255, 255, 0.2); 
-                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                    border: 3px solid rgba(255, 255, 255, 0.15); 
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
                     object-fit: cover;
                     transition: all 0.3s ease;
                 }
                 .avatar-preview-box img:hover {
-                    transform: scale(1.05) rotate(2deg);
+                    transform: scale(1.05);
                     border-color: #00C6FF;
-                    box-shadow: 0 15px 40px rgba(0, 198, 255, 0.3);
                 }
                 .avatar-hint {
-                    margin-top: 16px; 
-                    font-size: 0.9rem; 
-                    color: rgba(255, 255, 255, 0.6);
-                    line-height: 1.5;
+                    margin-top: 10px; 
+                    font-size: 0.8rem; 
+                    color: rgba(255, 255, 255, 0.5);
+                    line-height: 1.4;
+                    max-width: 90%;
                 }
 
                 .map-container {

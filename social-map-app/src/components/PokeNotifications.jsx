@@ -67,9 +67,39 @@ export default function PokeNotifications({ currentUser }) {
                 schema: 'public',
                 table: 'friendships',
                 filter: `receiver_id=eq.${currentUser.id}`
-            }, (payload) => {
-                // Remove from list if accepted or declined
-                if (payload.new.status !== 'pending') {
+            }, async (payload) => {
+                console.log('Poke Update Payload:', payload);
+                if (payload.new.status === 'pending') {
+                    // It's a new poke (re-poke via update)! 
+                    // Check if we already have it to avoid duplicates
+                    setPendingPokes(prev => {
+                        if (prev.find(p => p.id === payload.new.id)) return prev;
+                        return prev; // We need to fetch details first, so handled below
+                    });
+
+                    // Fetch requester details
+                    const { data: requester } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, username, avatar_url, gender')
+                        .eq('id', payload.new.requester_id)
+                        .single();
+
+                    if (requester) {
+                         const newPoke = { ...payload.new, requester };
+                         
+                         setPendingPokes(prev => {
+                             // Double check uniqueness
+                             if (prev.find(p => p.id === newPoke.id)) return prev;
+                             return [newPoke, ...prev];
+                         });
+                         setShowNotifications(true);
+                         
+                         // Play sound
+                         const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+                         audio.play().catch(e => console.log(e));
+                    }
+                } else {
+                    // Remove from list if accepted or declined
                     setPendingPokes(prev => prev.filter(p => p.id !== payload.new.id));
                 }
             })
