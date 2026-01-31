@@ -256,13 +256,8 @@ export default function Chat() {
 
             // Avatar Logic: Prefer stored avatar, else generate consistent one
             // similar to MapHome logic
-            let genderAvatar = getAvatarHeadshot(partner.avatar_url);
-            if (!genderAvatar) {
-                 const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
-                 if (partner.gender === 'Male') genderAvatar = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                 else if (partner.gender === 'Female') genderAvatar = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                 else genderAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
-            }
+            // Avatar Logic: Prefer stored avatar, using unified utility
+            const genderAvatar = getAvatarHeadshot(partner.avatar_url);
 
             return {
                 id: partner.id,
@@ -2387,17 +2382,7 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
                     <div className="header-user">
-                        <img src={(() => {
-                            // Priority 1: Stored avatar
-                            if (partner.avatar_url) return getAvatarHeadshot(partner.avatar_url);
-
-                            // Priority 2: Consistent generation
-                            const safeName = encodeURIComponent(partner.username || partner.full_name || 'User');
-                            const g = partner.gender?.toLowerCase();
-                            if (g === 'male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                            if (g === 'female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                            return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                        })()} className="header-avatar" alt="avatar" />
+                        <img src={getAvatarHeadshot(partner.avatar_url)} className="header-avatar" alt="avatar" />
                         <div className="header-text">
                             <h3>{partner.username || partner.full_name}</h3>
                             {presence.displayStatus && (

@@ -13,8 +13,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
     console.log('🔵 [MapProfileCard] Avatar URL:', user.avatar_url);
 
     // Get the avatar URL and convert GLB to PNG if needed
-    const avatarUrl = user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`;
-    const displayAvatar = getAvatar2D(avatarUrl);
+    // Use unified utility - user.avatar (from MapHome) should already be processed, but double checking doesn't hurt.
+    const displayAvatar = getAvatar2D(user.avatar || user.avatar_url);
     console.log('🔵 [MapProfileCard] Display Avatar:', displayAvatar);
     console.log('🔵 [MapProfileCard] hide_status:', user.hide_status);
     console.log('🔵 [MapProfileCard] FULL USER OBJECT:', user);

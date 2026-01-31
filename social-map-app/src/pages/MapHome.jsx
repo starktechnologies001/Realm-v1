@@ -14,6 +14,9 @@ import { useLocationContext } from '../context/LocationContext';
 import LocationPermissionModal from '../components/LocationPermissionModal';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import StoryViewer from '../components/StoryViewer';
+import { uploadToStorage } from '../utils/fileUpload';
+import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import ImageCropper from '../components/ImageCropper';
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -171,6 +174,10 @@ export default function MapHome() {
     // --- Onboarding State ---
     const [showProfileSetup, setShowProfileSetup] = useState(false);
     const [setupData, setSetupData] = useState({ gender: '', status: '', username: '' });
+    // New state for modal upload
+    const [avatarFile, setAvatarFile] = useState(null);
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const [cropImage, setCropImage] = useState(null); // State for cropping
     const [onboardingImage, setOnboardingImage] = useState(null);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const videoRef = React.useRef(null);
@@ -554,14 +561,7 @@ export default function MapHome() {
 
                     if (isVisible) {
                         // Prepare consistent avatar logic
-                        let mapAvatar = updatedUser.avatar_url;
-                        if (!mapAvatar) {
-                            const safeName = encodeURIComponent(updatedUser.username || updatedUser.full_name || 'User');
-                            const gender = updatedUser.gender?.toLowerCase();
-                            if (gender === 'male') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                            else if (gender === 'female') mapAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                            else mapAvatar = `https://avatar.iran.liara.run/public?username=${safeName}`;
-                        }
+                        let mapAvatar = getAvatar2D(updatedUser.avatar_url);
 
                         // Jitter coordinates slightly
                         const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
@@ -614,20 +614,12 @@ export default function MapHome() {
                 
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
-                    const safeName = encodeURIComponent(newUser.username || newUser.full_name || 'User');
-                    let fallbackAvatar = newUser.avatar_url; // Use real avatar if exists
-                    
-                    if (!fallbackAvatar || fallbackAvatar.includes('defaults')) {
-                         if (newUser.gender === 'Male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                         else if (newUser.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                         else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-                    }
+                    // Preload Image Immediately
+                    const mapAvatar = getAvatar2D(newUser.avatar_url);
 
                     // Preload Image Immediately
                     const img = new Image();
-                    img.src = getAvatar2D(fallbackAvatar);
-
-                    const mapAvatar = getAvatar2D(fallbackAvatar);
+                    img.src = mapAvatar;
 
                     setNearbyUsers(prev => {
                         // Avoid duplicates
@@ -993,31 +985,41 @@ export default function MapHome() {
             showToast("Please select Gender and Status!");
             return;
         }
-        // Selfie check REMOVED
-        
+
         try {
             showToast("Saving profile... ⏳");
 
             let userId = currentUser?.id;
-            // Fallback: Check auth if currentUser state is not ready (which shouldn't happen but defensive coding)
             if (!userId) {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) throw new Error("No authenticated user found.");
                 userId = user.id;
             }
 
-
+            // 1. Determine Avatar URL (Upload > Gender Default)
+            let finalAvatarUrl;
+            
+            // Priority 1: Uploaded File
+            if (avatarFile) {
+                // Upload to 'chat-images' using userId as folder prefix if possible, or just unique name
+                // Using existing uploadToStorage utility
+                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, userId, null, 'chat-images'); // Using chat-images as it's public
+                if (uploadError) throw new Error("Image upload failed: " + uploadError.message);
+                finalAvatarUrl = fileUrl;
+            } else {
+                // Priority 2: Gender Default
+                if (setupData.gender === 'Male') finalAvatarUrl = DEFAULT_MALE_AVATAR;
+                else if (setupData.gender === 'Female') finalAvatarUrl = DEFAULT_FEMALE_AVATAR;
+                else finalAvatarUrl = DEFAULT_GENERIC_AVATAR;
+            }
 
             // Update Profile
             const updates = {
                 gender: setupData.gender,
                 status: setupData.status,
-                username: setupData.username
+                username: setupData.username,
+                avatar_url: finalAvatarUrl
             };
-            
-            // FORCE Avatar Update
-            if (setupData.gender === 'Male') updates.avatar_url = '/defaults/male_avatar.jpg';
-            else if (setupData.gender === 'Female') updates.avatar_url = '/defaults/female_avatar.jpg';
             
             // Validate username
             if (!updates.username) {
@@ -1045,15 +1047,13 @@ export default function MapHome() {
                 ...updates
             }));
 
-            // Sync to LocalStorage so refresh works
+            // Sync to LocalStorage
             const updatedUser = {
                 ...currentUser,
                 id: userId,
                 ...updates
             };
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-            
-            // FORCE SUPPRESSION: Prevent modal from showing again in this session/browser
             localStorage.setItem('setup_complete', 'true');
 
         } catch (error) {
@@ -1575,29 +1575,93 @@ export default function MapHome() {
 
                         <div className="ob-section">
                             <label>Your Avatar 👤</label>
-                            <div className="avatar-preview-box">
-                                <img 
-                                    src={(() => {
-                                        // Dynamic preview based on selection
-                                        if (setupData.gender === 'Male') return '/defaults/male_avatar.jpg';
-                                        if (setupData.gender === 'Female') return '/defaults/female_avatar.jpg';
-                                        // Fallback to existing or random
-                                        return currentUser?.avatar_url || `https://api.dicebear.com/9.x/adventurer/svg?seed=${setupData.username || 'preview'}`;
-                                    })()}
-                                    alt="Your Avatar" 
-                                />
-                                <p className="avatar-hint">
-                                    We've assigned you separate look based on gender! <br/>
-                                    You can customize this later in your profile.
-                                </p>
-                            </div>
+                            <div className="avatar-preview-box" style={{ position: 'relative', width: '100px', margin: '0 auto' }}>
+                                <div style={{ 
+                                    width: '100px', height: '100px', 
+                                    borderRadius: '50%', overflow: 'hidden',
+                                    border: '3px solid rgba(255,255,255,0.2)',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <img 
+                                        src={(() => {
+                                            // Priority 1: Uploaded Preview
+                                            if (avatarPreview) return avatarPreview;
+                                            
+                                            // Priority 2: Gender Default
+                                            const g = setupData.gender;
+                                            if (g === 'Male') return DEFAULT_MALE_AVATAR;
+                                            if (g === 'Female') return DEFAULT_FEMALE_AVATAR;
+                                            
+                                            // Fallback
+                                            return DEFAULT_GENERIC_AVATAR;
+                                        })()}
+                                        alt="Avatar Preview" 
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                </div>
+                                
+                                {/* Upload Button Overlay */}
+                                <label 
+                                    htmlFor="modal-avatar-upload"
+                                    style={{
+                                        position: 'absolute', bottom: '0', right: '0',
+                                        width: '32px', height: '32px',
+                                        background: 'var(--brand-blue, #0084ff)',
+                                        borderRadius: '50%',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                                        border: '2px solid #1c1c1e',
+                                        zIndex: 10
+                                    }}
+                                >
+                                    <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
+                                </label>
+                                <input 
+                                    id="modal-avatar-upload" 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={(e) => {
+                                        const file = e.target.files[0];
+                                    if (file) {
+                                        // Read file for cropping
+                                        const reader = new FileReader();
+                                        reader.onload = () => setCropImage(reader.result);
+                                        reader.readAsDataURL(file);
+                                        
+                                        // Clear input so same file can be selected again
+                                        e.target.value = '';
+                                    }
+                                }} 
+                                style={{ display: 'none' }} 
+                            />
                         </div>
-
-                        <button className="complete-btn" onClick={handleCompleteSetup}>
-                            Complete Setup & Enter Map 🚀
-                        </button>
+                        <p className="avatar-hint" style={{ marginTop: '12px' }}>
+                            {avatarFile ? 'Photo selected! Ready to join.' : "We've assigned you a look based on gender. Tap + to upload your own!"}
+                        </p>
                     </div>
+
+                    <button className="complete-btn" onClick={handleCompleteSetup}>
+                        Complete Setup & Enter Map 🚀
+                    </button>
                 </div>
+            </div>
+            )}
+
+            {/* Cropper Modal */}
+            {cropImage && (
+                <ImageCropper
+                    imageSrc={cropImage}
+                    zIndex={10000000}
+                    onCancel={() => setCropImage(null)}
+                    onCropComplete={(croppedBlob) => {
+                        const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                        setAvatarFile(file);
+                        setAvatarPreview(URL.createObjectURL(file));
+                        setCropImage(null);
+                    }}
+                />
             )}
 
             <MapContainer

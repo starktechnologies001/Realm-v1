@@ -27,7 +27,7 @@ export default function OAuthProfileSetup() {
   const [selectedInterests, setSelectedInterests] = useState([]);
   
   // Photo selection
-  const [photoChoice, setPhotoChoice] = useState('google'); // 'google', 'upload', 'default'
+  // Photo selection
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
@@ -83,7 +83,6 @@ export default function OAuthProfileSetup() {
       
       setAvatarFile(file);
       setAvatarPreview(URL.createObjectURL(file));
-      setPhotoChoice('upload');
   };
 
   const onCropCancel = () => {
@@ -111,13 +110,13 @@ export default function OAuthProfileSetup() {
 
       let finalAvatarUrl;
 
-      // Determine avatar based on user's choice
-      if (photoChoice === 'upload' && avatarFile) {
+      // Priority: 1. Uploaded File, 2. Google Photo, 3. Gender Default
+      if (avatarFile) {
         // Upload custom photo
         const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, userId, null, 'chat-images');
         if (uploadError) throw uploadError;
         finalAvatarUrl = fileUrl;
-      } else if (photoChoice === 'google' && googlePhotoUrl) {
+      } else if (googlePhotoUrl) {
         // Keep Google photo
         finalAvatarUrl = googlePhotoUrl;
       } else {
@@ -185,82 +184,54 @@ export default function OAuthProfileSetup() {
         <form onSubmit={handleSubmit} className="setup-form">
           {/* Photo Selection */}
           <div className="photo-section">
-            <h3>Profile Photo</h3>
-            
-            <div className="photo-preview">
-              <div className="avatar-circle">
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="Preview" />
-                ) : (
-                  <div className="placeholder-avatar">
-                    <span>📷</span>
+             <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 12px' }}>
+                  <div style={{ 
+                      width: '120px', height: '120px', 
+                      borderRadius: '50%',
+                      border: '3px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(255,255,255,0.05)',
+                      overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                      {avatarPreview ? (
+                          <img src={avatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                          <img 
+                              src={gender === 'Female' ? DEFAULT_FEMALE_AVATAR : (gender === 'Male' ? DEFAULT_MALE_AVATAR : DEFAULT_GENERIC_AVATAR)} 
+                              alt="Default Avatar" 
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} 
+                          />
+                      )}
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="photo-options">
-              {googlePhotoUrl && (
-                <label className="photo-option">
-                  <input
-                    type="radio"
-                    name="photoChoice"
-                    value="google"
-                    checked={photoChoice === 'google'}
-                    onChange={() => {
-                      setPhotoChoice('google');
-                      setAvatarPreview(googlePhotoUrl);
-                    }}
+                  
+                  <label 
+                      htmlFor="avatar-upload"
+                      style={{
+                          position: 'absolute', bottom: '5px', right: '5px',
+                          width: '36px', height: '36px',
+                          background: '#0a84ff', // Brand blue
+                          borderRadius: '50%',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                          border: '2px solid #1c1c1e'
+                      }}
+                  >
+                      <span style={{ fontSize: '1.4rem', color: 'white', marginTop: '-3px' }}>+</span>
+                  </label>
+                  <input 
+                      id="avatar-upload" 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileChange} 
+                      style={{ display: 'none' }} 
                   />
-                  <span>Use Google Photo</span>
-                </label>
-              )}
-
-              <label className="photo-option">
-                <input
-                  type="radio"
-                  name="photoChoice"
-                  value="upload"
-                  checked={photoChoice === 'upload'}
-                  onChange={() => setPhotoChoice('upload')}
-                />
-                <span>Upload Custom Photo</span>
-              </label>
-
-              <label className="photo-option">
-                <input
-                  type="radio"
-                  name="photoChoice"
-                  value="default"
-                  checked={photoChoice === 'default'}
-                  onChange={() => {
-                    setPhotoChoice('default');
-                    const defaultAvatar = gender === 'Male' ? DEFAULT_MALE_AVATAR : 
-                                        gender === 'Female' ? DEFAULT_FEMALE_AVATAR : 
-                                        DEFAULT_GENERIC_AVATAR;
-                    setAvatarPreview(defaultAvatar);
-                  }}
-                />
-                <span>Use Default Avatar</span>
-              </label>
-
-
-            </div>
-
-            {photoChoice === 'upload' && (
-              <div className="upload-section">
-                <input
-                  type="file"
-                  id="photo-upload"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                />
-                <label htmlFor="photo-upload" className="upload-btn">
-                  Choose Photo
-                </label>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: '#aaa', margin: 0 }}>
+                    {avatarFile ? 'New photo selected' : (googlePhotoUrl ? 'Using Google Photo' : 'Upload a photo')}
+                </p>
               </div>
-            )}
           </div>
 
           {/* Gender */}
@@ -270,7 +241,8 @@ export default function OAuthProfileSetup() {
               value={gender} 
               onChange={e => {
                 setGender(e.target.value);
-                if (photoChoice === 'default') {
+                // Only update preview if no custom/google photo is active
+                if (!avatarFile && !googlePhotoUrl) {
                   const defaultAvatar = e.target.value === 'Male' ? DEFAULT_MALE_AVATAR : 
                                       e.target.value === 'Female' ? DEFAULT_FEMALE_AVATAR : 
                                       DEFAULT_GENERIC_AVATAR;
