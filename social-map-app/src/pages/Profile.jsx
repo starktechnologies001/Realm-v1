@@ -783,7 +783,7 @@ export default function Profile() {
                     />
                 </div>
 
-                <button className="logout-btn" onClick={handleLogout}>
+                <button className="logout-btn" onClick={() => setActiveModal('logout-confirm')}>
                     Log Out
                 </button>
 
@@ -906,6 +906,17 @@ export default function Profile() {
                                 <div className="modal-footer">
                                     <button onClick={() => setActiveModal(null)} className="btn-sec">Keep</button>
                                     <button onClick={handleDeleteAccount} className="btn-danger">Delete</button>
+                                </div>
+                            </>
+                        )}
+                        {activeModal === 'logout-confirm' && (
+                            <>
+                                <div className="icon-warn">⚠️</div>
+                                <h3 style={{ color: 'white' }}>Log Out?</h3>
+                                <p>Are you sure you want to log out?</p>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                    <button onClick={handleLogout} className="btn-danger">Yes, Log Out</button>
                                 </div>
                             </>
                         )}

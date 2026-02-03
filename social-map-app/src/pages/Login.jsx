@@ -60,17 +60,46 @@ useEffect(() => {
       // Check if OAuth user needs to complete profile setup
       const { data: profile } = await supabase
         .from('profiles')
-        .select('gender, status')
+        .select('id, gender, status, avatar_url')
         .eq('id', userData.user.id)
         .single();
       
+      // Avatar Self-Healing for OAuth/Auto-Login
+      if (profile && userData.user.user_metadata?.avatar_url) {
+          const metaAvatar = userData.user.user_metadata.avatar_url;
+          const profileAvatar = profile.avatar_url;
+          
+          if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
+               console.log("🚑 [AutoLogin] Healing avatar...", { metaAvatar, profileAvatar });
+               await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+               // Also update local object if we use it later, though MapHome refetches
+               profile.avatar_url = metaAvatar;
+          }
+      }
+
       // If OAuth user is missing required fields, redirect to setup
       if (profile && (!profile.gender || !profile.status)) {
         navigate('/oauth-profile-setup');
         return;
       }
       
-      navigate('/map');
+      // Ensure LocalStorage is synced (MapHome uses it for optimistic loading)
+      if (profile) {
+          const currentStored = localStorage.getItem('currentUser');
+          if (!currentStored) {
+              localStorage.setItem('currentUser', JSON.stringify({
+                  id: profile.id,
+                  // We might not have all fields here due to limited select, but ID is critical
+                  // Actually, MapHome fetches fresh profile, so ID is enough to start.
+                  // But to be safe let's trust MapHome's fetch.
+                  // However, if we want strict optimistic load, we might want more data.
+                  // For now, let's just let MapHome handle the full fetch.
+                  // BUT we must ensure the HEALED avatar is in DB, which we just did.
+              }));
+          }
+      }
+      
+      navigate('/map', { state: { preloadedAvatar: profile?.avatar_url || userData.user.user_metadata?.avatar_url } });
     }
   };
 
@@ -80,7 +109,8 @@ useEffect(() => {
   const { data: listener } = supabase.auth.onAuthStateChange(
     (event, session) => {
       if (event === 'SIGNED_IN' && session && mounted) {
-        navigate('/map');
+        const avatar = session.user?.user_metadata?.avatar_url;
+        navigate('/map', { state: { preloadedAvatar: avatar } });
       }
     }
   );
@@ -291,33 +321,40 @@ useEffect(() => {
         }
 
         // 3. Upload Avatar FIRST (if file selected)
+        // 3. Upload Avatar FIRST (if file selected)
         let finalAvatarUrl;
         
-        // Determine default based on gender
-        let defaultAvatar = DEFAULT_GENERIC_AVATAR;
-        if (gender === 'Male') defaultAvatar = DEFAULT_MALE_AVATAR;
-        else if (gender === 'Female') defaultAvatar = DEFAULT_FEMALE_AVATAR;
-        
-        finalAvatarUrl = defaultAvatar; 
-
-        // Upload if file exists
+        // Priority 1: Uploaded File
         if (avatarFile) {
-            // Use a temporary ID for the file path since we don't have a user ID yet
-            const tempId = `signup_avatars/${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            // Use 'public' folder to ensure anonymous uploads are allowed
+            const publicFolder = 'public';
             
             try {
                 // Upload to 'chat-images' (public bucket)
-                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, tempId, null, 'chat-images');
+                const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, publicFolder, null, 'chat-images');
                 
                 if (!uploadError && fileUrl) {
                     console.log('Pre-signup upload success:', fileUrl);
                     finalAvatarUrl = fileUrl;
                 } else {
                     console.error('Pre-signup upload failed:', uploadError);
+                     // Fallback to default if upload fails
+                     if (gender === 'Male') finalAvatarUrl = DEFAULT_MALE_AVATAR;
+                     else if (gender === 'Female') finalAvatarUrl = DEFAULT_FEMALE_AVATAR;
+                     else finalAvatarUrl = DEFAULT_GENERIC_AVATAR;
                 }
             } catch (err) {
                  console.error('Pre-signup upload exception:', err);
+                 // Fallback to default
+                 if (gender === 'Male') finalAvatarUrl = DEFAULT_MALE_AVATAR;
+                 else if (gender === 'Female') finalAvatarUrl = DEFAULT_FEMALE_AVATAR;
+                 else finalAvatarUrl = DEFAULT_GENERIC_AVATAR;
             }
+        } else {
+            // Priority 2: Gender Default (No file uploaded)
+            if (gender === 'Male') finalAvatarUrl = DEFAULT_MALE_AVATAR;
+            else if (gender === 'Female') finalAvatarUrl = DEFAULT_FEMALE_AVATAR;
+            else finalAvatarUrl = DEFAULT_GENERIC_AVATAR;
         }
 
         // 4. Sign Up with the FINAL avatar URL
@@ -393,6 +430,30 @@ useEffect(() => {
               status: profile.status || 'Online',
               interests: profile.interests
             }));
+
+            // SELF-HEALING: Check if Auth Metadata has a photo but Profile is default
+            // This fixes cases where the DB Trigger failed to copy the signup photo
+            const metaAvatar = data.session.user.user_metadata.avatar_url;
+            const profileAvatar = profile.avatar_url;
+            
+            if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
+                 console.log("🚑 Avatar Mismatch Detected! Healing profile...", { metaAvatar, profileAvatar });
+                 // Force update profile
+                 await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+                 
+                 // Update local storage to reflect the fix immediately
+                 const healedUser = JSON.parse(localStorage.getItem('currentUser'));
+                 healedUser.avatar_url = metaAvatar;
+                 localStorage.setItem('currentUser', JSON.stringify(healedUser));
+                 
+                 // Navigate with healed avatar
+                 navigate('/map', { state: { preloadedAvatar: metaAvatar } });
+            } else {
+                 navigate('/map', { state: { preloadedAvatar: profile.avatar_url } });
+            }
+
+            // Mark setup as complete since they are logging in with a valid profile
+            localStorage.setItem('setup_complete', 'true');
           }
           navigate('/map');
         }

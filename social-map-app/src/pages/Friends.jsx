@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import UserProfileCard from '../components/UserProfileCard';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
@@ -196,7 +196,7 @@ export default function Friends() {
         const userObj = {
             id: friend.id,
             name: friend.username,
-            avatar: friend.avatar_url || (friend.gender === 'Male' ? `https://avatar.iran.liara.run/public/boy?username=${encodeURIComponent(friend.username)}` : friend.gender === 'Female' ? `https://avatar.iran.liara.run/public/girl?username=${encodeURIComponent(friend.username)}` : `https://avatar.iran.liara.run/public?username=${encodeURIComponent(friend.username)}`),
+            avatar: friend.avatar_url || (friend.gender === 'Male' ? DEFAULT_MALE_AVATAR : friend.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR),
             status: friend.status,
             hide_status: friend.hide_status,
             show_last_seen: friend.show_last_seen,
@@ -261,15 +261,11 @@ export default function Friends() {
                                         <div className="avatar-container">
                                             <img 
                                                 src={(() => {
-                                                let avatarUrl;
-                                                if (req.avatar_url) {
-                                                    avatarUrl = req.avatar_url;
-                                                } else {
-                                                    const safeName = encodeURIComponent(req.username || req.full_name || 'User');
-                                                    const g = req.gender?.toLowerCase();
-                                                    if (g === 'male') avatarUrl = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                                    else if (g === 'female') avatarUrl = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                                    else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                let avatarUrl = req.avatar_url;
+                                                if (!avatarUrl) {
+                                                    if (req.gender === 'Male') avatarUrl = DEFAULT_MALE_AVATAR;
+                                                    else if (req.gender === 'Female') avatarUrl = DEFAULT_FEMALE_AVATAR;
+                                                    else avatarUrl = DEFAULT_GENERIC_AVATAR;
                                                 }
                                                 return getAvatar2D(avatarUrl);
                                             })()} 
@@ -318,15 +314,11 @@ export default function Friends() {
                                         <div className="avatar-container">
                                             <img 
                                                 src={(() => {
-                                                let avatarUrl;
-                                                if (friend.avatar_url) {
-                                                    avatarUrl = friend.avatar_url;
-                                                } else {
-                                                    const safeName = encodeURIComponent(friend.username || friend.full_name || 'User');
-                                                    const g = friend.gender?.toLowerCase();
-                                                    if (g === 'male') avatarUrl = `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                                    else if (g === 'female') avatarUrl = `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                                    else avatarUrl = `https://avatar.iran.liara.run/public?username=${safeName}`;
+                                                let avatarUrl = friend.avatar_url;
+                                                if (!avatarUrl) {
+                                                    if (friend.gender === 'Male') avatarUrl = DEFAULT_MALE_AVATAR;
+                                                    else if (friend.gender === 'Female') avatarUrl = DEFAULT_FEMALE_AVATAR;
+                                                    else avatarUrl = DEFAULT_GENERIC_AVATAR;
                                                 }
                                                 return getAvatar2D(avatarUrl);
                                             })()} 

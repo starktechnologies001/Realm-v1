@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { supabase } from '../supabaseClient';
 
 // Helper to format date
@@ -48,7 +48,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
         }
     };
 
-    const avatarUrl = user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`;
+    const avatarUrl = user.avatar || user.avatar_url || (user.gender === 'Male' ? DEFAULT_MALE_AVATAR : user.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR);
     const displayAvatar = getAvatar2D(avatarUrl);
 
     // Fields

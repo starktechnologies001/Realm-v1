@@ -108,15 +108,24 @@ export default function Layout() {
             
             if (mounted) setFriendRequestCount(friendCount || 0);
 
-            // Fetch unread message count (excluding system messages)
-            const { count: msgCount } = await supabase
+            // Fetch unread messages to count unique conversations (senders)
+            const { data: unreadMsgs } = await supabase
                 .from('messages')
-                .select('id', { count: 'exact', head: true })
+                .select('sender_id, deleted_for')
                 .eq('receiver_id', session.user.id)
                 .eq('is_read', false)
                 .neq('message_type', 'system');
             
-            if (mounted) setUnreadMessageCount(msgCount || 0);
+            if (mounted && unreadMsgs) {
+                // 1. Filter out deleted messages
+                const activeUnread = unreadMsgs.filter(msg => 
+                    !msg.deleted_for || !msg.deleted_for.includes(session.user.id)
+                );
+                
+                // 2. Count unique senders (Conversations)
+                const uniqueSenders = new Set(activeUnread.map(m => m.sender_id));
+                setUnreadMessageCount(uniqueSenders.size);
+            }
         };
 
         // Initial updates

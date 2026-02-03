@@ -120,7 +120,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     <div className="fp-header">
                         <div className="fp-avatar-container">
                             <img 
-                                src={getAvatar2D(user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`)} 
+                                src={getAvatar2D(user.avatar || user.avatar_url)} 
                                 alt={user.name} 
                                 className="fp-avatar" 
                             />

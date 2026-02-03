@@ -2,7 +2,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMap, LayersControl, LayerGr
 import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import MapProfileCard from '../components/MapProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
@@ -140,7 +140,23 @@ export default function MapHome() {
     const [loading, setLoading] = useState(!localStorage.getItem('lastLocation')); // Only load if no cache
     const [isGhostMode, setGhostMode] = useState(false);
     const navigate = useNavigate();
-    const [currentUser, setCurrentUser] = useState(null);
+    const routeLocation = useLocation();
+
+    // Initialize from LocalStorage + Nav State for Zero Latency
+    const [currentUser, setCurrentUser] = useState(() => {
+        try {
+            const stored = localStorage.getItem('currentUser');
+            let user = stored ? JSON.parse(stored) : null;
+            
+            // Instant Override from Login Navigation (Healing)
+            if (routeLocation?.state?.preloadedAvatar && user) {
+                user.avatar_url = routeLocation.state.preloadedAvatar;
+            }
+            return user;
+        } catch (e) {
+            return null;
+        }
+    });
     const [toastMsg, setToastMsg] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportTarget, setReportTarget] = useState(null);
@@ -196,7 +212,26 @@ export default function MapHome() {
                 .single();
             
             // Bypass if locally flagged as complete (immediate fix for loop)
-            if (localStorage.getItem('setup_complete') === 'true') {
+            const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
+
+            if (profile) {
+                // Safety Net: Trigger modal ONLY if critical info is missing (Gender/Status)
+                // This covers OAuth users who haven't set up.
+                // Manual signup users (who have gender/status) are skipped, even if they have default avatar.
+                if (!profile.gender || !profile.status) {
+                     console.log("⚠️ Incomplete profile detected (missing gender/status), opening setup modal.");
+                     setSetupData({
+                        username: profile.username,
+                        gender: profile.gender || '',
+                        status: profile.status || ''
+                     });
+                     setShowProfileSetup(true);
+                }
+
+                setCurrentUser(profile);
+            }
+
+            if (setupCompleteLocal) {
                  // Still potentially fix critical data silently, but don't block
             } else if (profile) {
                 // 1. Silently fix missing username (common with OAuth)
@@ -229,6 +264,26 @@ export default function MapHome() {
                     setShowProfileSetup(true);
                     setLoading(false); 
                 }
+
+                // 2.5 Priority Self-Healing: Restore uploaded avatar if Profile reverted to default
+                const metaAvatar = user.user_metadata?.avatar_url;
+                const profileAvatar = profile.avatar_url;
+                
+                if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
+                     console.log("🚑 [MapHome] Healing avatar mismatch...", { metaAvatar, profileAvatar });
+                     
+                     // Update DB
+                     await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+                     
+                     // Update Local immediately so UI reflects it
+                     profile.avatar_url = metaAvatar;
+                     if (profile.id === currentUser?.id) {
+                         const updated = { ...currentUser, avatar_url: metaAvatar };
+                         setCurrentUser(updated);
+                         localStorage.setItem('currentUser', JSON.stringify(updated));
+                     }
+                }
+
                 // Check if user needs a new avatar
                 // Assign avatar if:
                 // 1. No avatar exists
@@ -247,7 +302,7 @@ export default function MapHome() {
                     } else if (gender === 'Female') {
                          newAvatar = '/defaults/female_avatar.jpg';
                     } else {
-                         const baseName = (profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
+                         const baseName = (profile.username || profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
                          newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${baseName}_${Math.floor(Math.random() * 1000)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
                     }
                     
@@ -495,10 +550,11 @@ export default function MapHome() {
                     .map(u => {
                         // Use actual avatar if available, otherwise gender-based fallback
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
+                        // Standardized Fallback Logic (No DiceBear)
                         let fallbackAvatar;
-                        if (u.gender === 'Male') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-                        else if (u.gender === 'Female') fallbackAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-                        else fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
+                        if (u.gender === 'Male') fallbackAvatar = DEFAULT_MALE_AVATAR;
+                        else if (u.gender === 'Female') fallbackAvatar = DEFAULT_FEMALE_AVATAR;
+                        else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
 
                         // Micro-jitter for initial load
                         const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
@@ -795,9 +851,15 @@ export default function MapHome() {
                 // Ensure we map snake_case DB fields to camelCase if needed, 
                 // but looks like we use mixed. Let's standardize on DB structure + local adds
 
+                // Optimistically set location from DB to prevent "Acquiring Location" lag
+                if (freshProfile.latitude && freshProfile.longitude) {
+                    setLocation(prev => prev || { lat: freshProfile.latitude, lng: freshProfile.longitude });
+                }
+
                 setCurrentUser(mergedUser);
                 localStorage.setItem('currentUser', JSON.stringify(mergedUser));
             }
+            setLoading(false); // Fix: dismiss loading screen as soon as profile is handled
         };
         refreshProfile();
 
@@ -1456,9 +1518,9 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [60, 60], 
-            iconAnchor: [30, 30], 
-            popupAnchor: [0, -35]
+            iconSize: [55, 55], 
+            iconAnchor: [27.5, 27.5], 
+            popupAnchor: [0, -30]
         });
     };
 
@@ -1470,14 +1532,10 @@ export default function MapHome() {
         if (currentUser.avatar_url) {
             avatarUrl = getAvatar2D(currentUser.avatar_url);
         } else {
-            const safeName = encodeURIComponent(currentUser.username || currentUser.full_name || 'User');
-            if (currentUser.gender === 'Male') {
-                avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&hair=short01,short02,short03,short04,short05,short06,short07,short08&earringsProbability=0`;
-            } else if (currentUser.gender === 'Female') {
-                avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${safeName}&glassesProbability=0&mustacheProbability=0&beardProbability=0&hair=long01,long02,long03,long04,long05,long10,long12`;
-            } else {
-                avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
-            }
+            // Strict Gender Fallback (No DiceBear)
+            if (currentUser.gender === 'Male') avatarUrl = DEFAULT_MALE_AVATAR;
+            else if (currentUser.gender === 'Female') avatarUrl = DEFAULT_FEMALE_AVATAR;
+            else avatarUrl = DEFAULT_GENERIC_AVATAR;
         }
 
         return (
@@ -1719,31 +1777,52 @@ export default function MapHome() {
 
                 {(() => {
                     // Process users to handle overlap (Spiderfy / Separation)
-                    const processedUsers = nearbyUsers.map((u, i, all) => {
-                        // Simple Collision Detection
-                        // Group users that are within threshold (approx 3-4 meters)
-                        const THRESHOLD = 0.00004; 
-                        const collidingUsers = all.filter(other => 
-                            Math.abs(other.lat - u.lat) < THRESHOLD && 
-                            Math.abs(other.lng - u.lng) < THRESHOLD
-                        );
+                    // Density-Based Clustering & Spiral Layout
+                    // 1. Sort for stability
+                    const sortedUsers = [...nearbyUsers].sort((a,b) => a.id.localeCompare(b.id));
+                    const clusters = [];
+                    const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
 
-                        if (collidingUsers.length <= 1) return u; // No collision
+                    // 2. Cluster Users
+                    sortedUsers.forEach(u => {
+                        let placed = false;
+                        for (let cluster of clusters) {
+                            // Check distance to cluster center (using first user as anchor for stability)
+                            const anchor = cluster[0];
+                            if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD && 
+                                Math.abs(u.lng - anchor.lng) < CLUSTER_THRESHOLD) {
+                                cluster.push(u);
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (!placed) clusters.push([u]);
+                    });
 
-                        // Calculate index in this specific group
-                        // Sort by ID to ensure consistent ordering (so they don't jump around)
-                        collidingUsers.sort((a,b) => a.id.localeCompare(b.id));
-                        const indexInGroup = collidingUsers.findIndex(cu => cu.id === u.id);
+                    // 3. Apply Spiral Layout
+                    const processedUsers = [];
+                    const SPIRAL_SPACING = 0.0005; // Aggressive separation to ensure zero overlap
 
-                        // Apply Offset (Circle formation)
-                        const angle = (indexInGroup / collidingUsers.length) * 2 * Math.PI;
-                        const radius = 0.00015; // Separation radius (approx 15-20 meters visually)
+                    clusters.forEach(cluster => {
+                        if (cluster.length === 1) {
+                            processedUsers.push(cluster[0]);
+                        } else {
+                            // Calculate center of mass for the group
+                            const avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
+                            const avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
 
-                        return {
-                            ...u,
-                            lat: u.lat + (Math.cos(angle) * radius),
-                            lng: u.lng + (Math.sin(angle) * radius)
-                        };
+                            cluster.forEach((u, i) => {
+                                // Archimedean Spiral / Golden Angle Packing
+                                const angle = i * 2.4; // ~137.5 degrees
+                                const radius = SPIRAL_SPACING * Math.sqrt(i);
+                                
+                                processedUsers.push({
+                                    ...u,
+                                    lat: avgLat + (Math.cos(angle) * radius),
+                                    lng: avgLng + (Math.sin(angle) * radius)
+                                });
+                            });
+                        }
                     });
 
                     return processedUsers.map(u => {
@@ -1759,6 +1838,7 @@ export default function MapHome() {
                                 key={`${u.id}-${u.avatar}`}
                                 position={[u.lat, u.lng]}
                                 icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
+                                riseOnHover={true}
                                 eventHandlers={{
                                     click: async () => {
 

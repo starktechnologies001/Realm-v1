@@ -132,7 +132,7 @@ export default function PokeNotifications({ currentUser }) {
 
             // Show success message
             const toast = document.createElement('div');
-            toast.textContent = `🎉 You're now friends with ${poke.requester.full_name || poke.requester.username}!`;
+            toast.textContent = `🎉 You're now friends with ${poke.requester.username || poke.requester.full_name}!`;
             toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#00ff99;color:#000;padding:12px 20px;border-radius:10px;font-weight:bold;z-index:10000;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
@@ -185,7 +185,7 @@ export default function PokeNotifications({ currentUser }) {
                                         if (poke.requester.gender === 'Female') return `https://api.dicebear.com/7.x/avataaars/svg?seed=female-${safeName}`;
                                         return `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`;
                                     })()} 
-                                    alt={poke.requester.full_name} 
+                                    alt={poke.requester.username || poke.requester.full_name} 
                                     className="poke-avatar"
                                     onError={(e) => {
                                         const safeName = encodeURIComponent(poke.requester.username || poke.requester.full_name || 'User');
@@ -193,7 +193,7 @@ export default function PokeNotifications({ currentUser }) {
                                     }}
                                 />
                                 <div className="poke-info">
-                                    <strong>{poke.requester.full_name || poke.requester.username}</strong>
+                                    <strong>{poke.requester.username || poke.requester.full_name}</strong>
                                     <span>sent you a poke!</span>
                                 </div>
                                 <div className="poke-actions">

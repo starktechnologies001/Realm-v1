@@ -8,8 +8,8 @@
 
 .avatar-group {
     position: relative;
-    width: 60px;
-    height: 60px;
+    width: 55px;
+    height: 55px;
     overflow: visible;
     /* CRITICAL: Ensure bubble isn't clipped */
 }
@@ -88,13 +88,13 @@
     background-position: center;
     border-radius: 50%;
     border: 3px solid #FFFFFF; /* Crisp White Border */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 0 4px rgba(0,0,0,0.2); /* Depth */
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 4px rgba(0,0,0,0.2); /* Depth */
     transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     background-color: #333; /* Fallback bg */
 }
 
 .avatar-marker:hover {
-    transform: scale(1.15) translateY(-5px);
+    transform: scale(1.2) translateY(-5px);
     z-index: 10001 !important;
     border-color: #f0f0f0;
 }

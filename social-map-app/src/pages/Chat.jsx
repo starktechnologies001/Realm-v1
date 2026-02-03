@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
-import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getBlockedUserIds } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
 import AttachmentPreview from '../components/AttachmentPreview';
@@ -256,8 +256,14 @@ export default function Chat() {
 
             // Avatar Logic: Prefer stored avatar, else generate consistent one
             // similar to MapHome logic
-            // Avatar Logic: Prefer stored avatar, using unified utility
-            const genderAvatar = getAvatarHeadshot(partner.avatar_url);
+            // Avatar Logic: Prefer stored avatar, else strict constant based on gender
+            let rawAvatar = partner.avatar_url;
+            if (!rawAvatar) {
+                 if (partner.gender === 'Male') rawAvatar = DEFAULT_MALE_AVATAR;
+                 else if (partner.gender === 'Female') rawAvatar = DEFAULT_FEMALE_AVATAR;
+                 else rawAvatar = DEFAULT_GENERIC_AVATAR;
+            }
+            const genderAvatar = getAvatarHeadshot(rawAvatar);
 
             return {
                 id: partner.id,
@@ -272,14 +278,7 @@ export default function Chat() {
             };
         }));
         return chatsWithDetails.sort((a, b) => {
-            // 1. Prioritize unread chats
-            const aHasUnread = (a.unread || 0) > 0;
-            const bHasUnread = (b.unread || 0) > 0;
-            if (aHasUnread !== bHasUnread) {
-                return bHasUnread ? 1 : -1; // Unread chats first
-            }
-            
-            // 2. Sort by time (newest first)
+            // Sort by time (newest first)
             const timeA = new Date(a.rawTime || 0);
             const timeB = new Date(b.rawTime || 0);
             return timeB - timeA;
@@ -322,7 +321,7 @@ export default function Chat() {
                 const newChat = {
                     id: profile.id,
                     name: profile.username || 'User',
-                    avatar: getAvatarHeadshot(profile.avatar_url), // Use existing util
+                    avatar: getAvatarHeadshot(profile.avatar_url || (profile.gender === 'Male' ? DEFAULT_MALE_AVATAR : profile.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR)),
                     lastMsg: lastMsg,
                     time: time,
                     rawTime: rawTime,
@@ -565,6 +564,7 @@ export default function Chat() {
             <ChatRoom
                 currentUser={currentUser}
                 targetUser={activeChatUser}
+                allChats={chats} // Pass chats for forwarding
                 onBack={() => {
                     setActiveChatUser(null);
                     // Refresh chat list to show latent changes if any
@@ -1042,7 +1042,7 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
 
 
 
-function ChatRoom({ currentUser, targetUser, onBack }) {
+function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
@@ -1130,14 +1130,20 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
     };
 
     // Selection Mode Handlers
-    const toggleSelection = (msgId) => {
+    const toggleSelection = (msgId, forceState = null) => {
         setSelectedMessages(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(msgId)) {
-                newSet.delete(msgId);
-            } else {
+            
+            let shouldAdd = !newSet.has(msgId);
+            if (forceState !== null) shouldAdd = forceState;
+            
+            if (shouldAdd) {
                 newSet.add(msgId);
+                setIsSelectionMode(true); // Always enable selection mode when adding
+            } else {
+                newSet.delete(msgId);
             }
+            
             if (newSet.size === 0) {
                 setIsSelectionMode(false);
             }
@@ -1150,26 +1156,87 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         setIsSelectionMode(false);
     };
 
+    // Delete Message Modal State
+    const [showDeleteMessageModal, setShowDeleteMessageModal] = useState(false);
+
+    const executeDeleteForMe = async () => {
+        const selectedIds = Array.from(selectedMessages);
+        if (selectedIds.length === 0) return;
+        
+        // Optimistic update
+        setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)));
+        setShowDeleteMessageModal(false);
+        clearSelection();
+
+        // DB Update
+        for (const id of selectedIds) {
+            const msg = messages.find(m => m.id === id);
+            if (msg) {
+                const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
+                await supabase.from('messages').update({ deleted_for: updatedDeletedFor }).eq('id', id);
+            }
+        }
+        showToast('Messages deleted for you');
+    };
+
+    const executeDeleteForEveryone = async () => {
+        const selectedIds = Array.from(selectedMessages);
+        if (selectedIds.length === 0) return;
+        
+        // Optimistic Update
+        setMessages(prev => prev.map(m => {
+            if (selectedMessages.has(m.id)) {
+                return { 
+                    ...m, 
+                    content: '🚫 This message was deleted', 
+                    message_type: 'text',
+                    image_url: null, 
+                    media_url: null 
+                };
+            }
+            return m;
+        }));
+        
+        setShowDeleteMessageModal(false);
+        clearSelection();
+
+        // DB Update
+        // Note: We only update content/type. 'image_url'/'media_url' seem to be not directly on messages 
+        // or are legacy. Attachments are in 'message_attachments' table usually.
+        // We set has_attachment to false to ensure UI doesn't try to load them.
+        const updates = {
+            content: '🚫 This message was deleted',
+            message_type: 'text',
+            has_attachment: false
+        };
+        
+        // We can do this in one query for all IDs
+        const { data, error } = await supabase
+            .from('messages')
+            .update(updates)
+            .in('id', selectedIds)
+            .select('id');
+            
+        if (error) {
+            console.error('❌ Delete for everyone failed (SQL Error):', error);
+            showToast('Failed to delete for everyone ❌');
+        } else if (data.length === 0) {
+            console.error('❌ Delete for everyone failed (RLS blocked): No rows updated. Check RLS policies.');
+            console.log('Attempted IDs:', selectedIds);
+            console.log('Current User:', currentUser.id);
+            showToast('Failed: Permission denied (RLS) 🔒');
+        } else {
+            console.log(`✅ Successfully deleted ${data.length} messages for everyone.`);
+            showToast('Messages deleted for everyone');
+        }
+    };
+
     const handleMessageAction = async (action) => {
         const selectedIds = Array.from(selectedMessages);
         if (selectedIds.length === 0) return;
 
         if (action === 'delete') {
-            if (!confirm(`Delete ${selectedIds.length} message(s)?`)) return;
-            
-            // Optimistic update
-            setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)));
-            clearSelection();
-
-            // DB Update
-            for (const id of selectedIds) {
-                const msg = messages.find(m => m.id === id);
-                if (msg) {
-                    const updatedDeletedFor = [...(msg.deleted_for || []), currentUser.id];
-                    await supabase.from('messages').update({ deleted_for: updatedDeletedFor }).eq('id', id);
-                }
-            }
-            showToast('Messages deleted');
+            setShowDeleteMessageModal(true);
         } else if (action === 'reply') {
             if (selectedIds.length !== 1) return;
             const msg = messages.find(m => m.id === selectedIds[0]);
@@ -1178,8 +1245,8 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 clearSelection();
             }
         } else if (action === 'forward') {
-            showToast('Forwarding feature coming soon!');
-            clearSelection();
+            setShowForwardMenu(true);
+            // Don't clear selection yet
         } else if (action === 'copy') {
              const texts = selectedIds.map(id => messages.find(m => m.id === id)?.content).filter(Boolean).join('\n');
              if (texts) {
@@ -1225,9 +1292,13 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
 
     const [showChatThemeSelector, setShowChatThemeSelector] = useState(false);
 
-    // Wallpaper State
+    // WallPaper State (Restored)
     const [chatBackground, setChatBackground] = useState(null);
     const [showWallpaperMenu, setShowWallpaperMenu] = useState(false);
+
+    // Forward Message State
+    const [showForwardMenu, setShowForwardMenu] = useState(false);
+    const [forwarding, setForwarding] = useState(false);
 
     // Delete chat for current user only (Delete for Me)
     const handleDeleteChat = async () => {
@@ -1262,7 +1333,49 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
         }
     };
 
-    // Subscribe to shared_themes changes for real-time theme sync
+    // Handle Forwarding
+    const handleForwardMessage = async (selectedChatIds) => {
+        if (!selectedChatIds.length) return;
+        setForwarding(true);
+        
+        const selectedIds = Array.from(selectedMessages);
+        const messagesToForward = selectedIds.map(id => messages.find(m => m.id === id)).filter(Boolean);
+        
+        try {
+            const promises = [];
+            
+            for (const chatId of selectedChatIds) {
+                const partnerId = chatId; // In our list, chat.id IS the partner ID
+                
+                for (const msg of messagesToForward) {
+                    // Create new message object
+                    const newMessage = {
+                        sender_id: currentUser.id,
+                        receiver_id: partnerId,
+                        content: msg.content,
+                        message_type: msg.message_type,
+                        image_url: msg.image_url, // or media_url
+                        media_url: msg.media_url,
+                        is_read: false,
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    promises.push(supabase.from('messages').insert(newMessage));
+                }
+            }
+            
+            await Promise.all(promises);
+            
+            showToast(`Forwarded to ${selectedChatIds.length} chat(s) ✅`);
+            setShowForwardMenu(false);
+            clearSelection();
+        } catch (error) {
+            console.error('Forward error:', error);
+            showToast('Failed to forward ❌');
+        } finally {
+            setForwarding(false);
+        }
+    };
     useEffect(() => {
         if (!currentUser?.id || !targetUser?.id) return;
 
@@ -1690,16 +1803,16 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 console.log('💬 [Chat] UPDATE event received:', payload.new.id, payload.new.message_type);
                 
                 // Filter: check if it concerns this chat
-                const isMySentMessage = String(payload.new.sender_id) === String(currentUser.id);
-                const isCallLogInThisChat = payload.new.message_type === 'call_log' && (
-                    (String(payload.new.sender_id) === String(currentUser.id) && String(payload.new.receiver_id) === String(targetUser.id)) ||
-                    (String(payload.new.sender_id) === String(targetUser.id) && String(payload.new.receiver_id) === String(currentUser.id))
-                );
+                const senderId = String(payload.new.sender_id);
+                const receiverId = String(payload.new.receiver_id);
+                const currentId = String(currentUser.id);
+                const partnerId = String(targetUser.id);
 
-                console.log('💬 [Chat] isMySentMessage:', isMySentMessage, 'isCallLogInThisChat:', isCallLogInThisChat);
+                const isRelevantMessage = 
+                    (senderId === currentId && receiverId === partnerId) || 
+                    (senderId === partnerId && receiverId === currentId);
 
-                // Only process if it's my sent message OR a call log in this chat
-                if (!isMySentMessage && !isCallLogInThisChat) {
+                if (!isRelevantMessage) {
                     console.log('💬 [Chat] UPDATE ignored - not relevant to this chat');
                     return;
                 }
@@ -2506,9 +2619,9 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         </div>
 
                         {/* Title and Description */}
-                        <h3 className="delete-title">Delete Chat?</h3>
+                        <h3 className="delete-title">Delete for Me?</h3>
                         <p className="delete-description">
-                            All messages with <strong>{partner?.username || 'this user'}</strong> will be permanently deleted. This action cannot be undone.
+                            This will clear the chat history <strong>for you only</strong>. The other user will still see the messages.
                         </p>
 
                         {/* Action Buttons */}
@@ -2536,6 +2649,16 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Forward Message Modal */}
+            {showForwardMenu && (
+                <ForwardModal 
+                    chats={allChats} 
+                    onClose={() => setShowForwardMenu(false)}
+                    onSend={handleForwardMessage}
+                    loading={forwarding}
+                />
             )}
 
             {/* Chat Theme Selector Modal */}
@@ -4091,6 +4214,11 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                     from { transform: translateY(20px); opacity: 0; }
                     to { transform: translateY(0); opacity: 1; }
                 }
+                
+                @keyframes scaleIn {
+                    from { transform: scale(0.95); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
 
                 .reply-preview-content {
                     flex: 1;
@@ -4193,10 +4321,139 @@ function ChatRoom({ currentUser, targetUser, onBack }) {
                 uploadProgress={uploadProgress}
             />
 
+            {/* Delete Message Modal */}
+            {showDeleteMessageModal && (
+                <MessageDeleteModal 
+                    selectedMessages={Array.from(selectedMessages).map(id => messages.find(m => m.id === id)).filter(Boolean)}
+                    currentUser={currentUser}
+                    onDeleteForMe={executeDeleteForMe}
+                    onDeleteForEveryone={executeDeleteForEveryone}
+                    onCancel={() => setShowDeleteMessageModal(false)}
+                />
+            )}
+
             {/* Global Menu Overlay for Click-Outside */}
             {showMenu && (
                 <div className="menu-overlay" onClick={() => setShowMenu(false)} />
             )}
+        </div>
+    );
+}
+
+// --- Modal Components ---
+
+function ForwardModal({ chats, onClose, onSend, loading }) {
+    const [selected, setSelected] = useState(new Set());
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredChats = chats.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const toggleChat = (id) => {
+        setSelected(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
+    };
+
+    return (
+        <div className="mute-menu-modal" onClick={onClose}>
+            <div className="mute-menu-content glass-panel" onClick={e => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: '20px' }}>
+                <h3 style={{ marginBottom: '15px' }}>Forward to...</h3>
+                
+                {/* Search */}
+                <div className="glass-input-bar" style={{ marginBottom: '15px', padding: '8px 12px' }}>
+                    <input 
+                        className="msg-input" 
+                        placeholder="Search..." 
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        autoFocus
+                    />
+                </div>
+
+                <div className="forward-list" style={{ overflowY: 'auto', flex: 1, marginBottom: '20px' }}>
+                    {filteredChats.map(chat => (
+                        <div 
+                            key={chat.id} 
+                            className={`chat-item ${selected.has(chat.id) ? 'selected' : ''}`}
+                            onClick={() => toggleChat(chat.id)}
+                            style={{ padding: '10px', borderRadius: '12px', background: selected.has(chat.id) ? 'rgba(0,240,255,0.15)' : 'transparent', border: '1px solid', borderColor: selected.has(chat.id) ? 'rgba(0,240,255,0.3)' : 'transparent' }}
+                        >
+                            <img src={chat.avatar} className="header-avatar" alt="" style={{ width: '40px', height: '40px' }} />
+                            <span style={{ marginLeft: '12px', fontWeight: 500, color: 'white', flex: 1 }}>{chat.name}</span>
+                            {selected.has(chat.id) && <span style={{ color: '#00f0ff' }}>✓</span>}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="forward-actions" style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={onClose} className="cancel-btn" style={{ flex: 1 }}>Cancel</button>
+                    <button 
+                        onClick={() => onSend(Array.from(selected))} 
+                        className="mute-option active"
+                        style={{ flex: 1, justifyContent: 'center', background: 'var(--accent-gradient)' }}
+                        disabled={loading || selected.size === 0}
+                    >
+                        {loading ? 'Sending...' : `Send (${selected.size})`}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function MessageDeleteModal({ selectedMessages, currentUser, onDeleteForMe, onDeleteForEveryone, onCancel }) {
+    // Check eligibility: All messages must be sent by Me AND be less than 5 minutes old
+    const canDeleteForEveryone = selectedMessages.every(msg => {
+        const isMine = msg.sender_id === currentUser.id;
+        const diff = Date.now() - new Date(msg.created_at).getTime();
+        const isRecent = diff < 5 * 60 * 1000; // 5 minutes
+        return isMine && isRecent;
+    });
+
+    return (
+        <div className="delete-confirm-overlay" onClick={onCancel}>
+            <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ padding: '24px' }}>
+                <h3 className="delete-title">Delete Message?</h3>
+                <p className="delete-description" style={{ marginBottom: '24px' }}>
+                    {canDeleteForEveryone 
+                        ? "You sent this recently. You can remove it for everyone or just yourself."
+                        : "This will remove the message from your device only."
+                    }
+                </p>
+
+                <div className="delete-actions" style={{ flexDirection: 'column', gap: '10px' }}>
+                    {canDeleteForEveryone && (
+                        <button 
+                            onClick={onDeleteForEveryone} 
+                            className="delete-btn-confirm"
+                            style={{ width: '100%', justifyContent: 'center' }}
+                        >
+                            Delete for Everyone
+                        </button>
+                    )}
+                    
+                    <button 
+                        onClick={onDeleteForMe} 
+                        className="delete-btn-cancel"
+                        style={{ width: '100%', justifyContent: 'center', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                        Delete for Me
+                    </button>
+                    
+                    <button 
+                        onClick={onCancel} 
+                        className="cancel-btn"
+                        style={{ width: '100%', marginTop: '5px' }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

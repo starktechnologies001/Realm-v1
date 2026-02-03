@@ -18,8 +18,10 @@ const MessageBubble = memo(({
         startY: 0,
         currentX: 0,
         touchMoved: false,
-        longPressTimer: null
+        longPressTimer: null,
+        hapticTriggered: false
     });
+    const iconRef = useRef(null);
 
     const isMe = msg.sender_id === userId;
     const isImage = msg.message_type === 'image' || msg.type === 'image';
@@ -73,9 +75,27 @@ const MessageBubble = memo(({
         if (isSelectionMode) return;
         
         if (diffX > 0) {
-            state.currentX = diffX;
-            const translateX = Math.min(diffX, 80);
+            // Logarithmic resistance
+            const resistance = 0.5;
+            const translateX = Math.min(diffX * resistance, 100);
+            state.currentX = translateX;
+            
             e.currentTarget.style.transform = `translateX(${translateX}px)`;
+            
+            // Icon Animation
+            if (iconRef.current) {
+                const progress = Math.max(0, Math.min(1, (translateX - 10) / 40));
+                iconRef.current.style.transform = `translateY(-50%) scale(${progress})`;
+                iconRef.current.style.opacity = progress;
+                
+                // Haptic Feedback
+                if (translateX > 50 && !state.hapticTriggered) {
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    state.hapticTriggered = true;
+                } else if (translateX < 50 && state.hapticTriggered) {
+                    state.hapticTriggered = false;
+                }
+            }
         }
     };
     
@@ -83,14 +103,21 @@ const MessageBubble = memo(({
         const state = swipeRef.current;
         if (state) {
             if (state.longPressTimer) clearTimeout(state.longPressTimer);
-            if (state.currentX > 50 && !isSelectionMode) {
+            if (state.currentX > 50 && !isSelectionMode) { // Threshold matches feedback
                 onSwipeReply(msg);
+                if (navigator.vibrate) navigator.vibrate(10); // Confirm haptic
             }
-            swipeRef.current = { startX: 0, startY: 0, currentX: 0, touchMoved: false, longPressTimer: null };
+            swipeRef.current = { startX: 0, startY: 0, currentX: 0, touchMoved: false, longPressTimer: null, hapticTriggered: false };
         }
         
         e.currentTarget.style.transform = 'translateX(0)';
-        e.currentTarget.style.transition = 'transform 0.2s';
+        e.currentTarget.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        
+        // Reset icon
+        if (iconRef.current) {
+             iconRef.current.style.transform = 'translateY(-50%) scale(0)';
+             iconRef.current.style.opacity = '0';
+        }
     };
 
     // --- Mouse Handlers ---
@@ -180,7 +207,7 @@ const MessageBubble = memo(({
          if (isSelectionMode) {
              e.preventDefault();
              e.stopPropagation();
-             onToggleSelection(msg.id, false);
+             onToggleSelection(msg.id); // No force state = Toggle
              return;
          }
     };
@@ -265,6 +292,31 @@ const MessageBubble = memo(({
                         </div>
                     </div>
                 )}
+
+                {/* Reply Swipe Icon */}
+                <div 
+                    ref={iconRef}
+                    className="reply-swipe-icon"
+                    style={{
+                        position: 'absolute',
+                        left: -35,
+                        top: '50%',
+                        transform: `translateY(-50%) scale(${swipeRef.current.currentX > 40 ? 1 : Math.max(0, (swipeRef.current.currentX - 10) / 30)})`,
+                        opacity: swipeRef.current.currentX > 10 ? 1 : 0,
+                        transition: swipeRef.current.touchMoved ? 'none' : 'all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28)',
+                        color: 'var(--theme-accent, #00f0ff)',
+                        fontSize: '1.2rem',
+                        pointerEvents: 'none',
+                        zIndex: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: '30px', height: '30px',
+                        background: 'rgba(255,255,255,0.1)',
+                        borderRadius: '50%',
+                        backdropFilter: 'blur(4px)'
+                    }}
+                >
+                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+                </div>
 
                 {isImage ? (
                     <img 
