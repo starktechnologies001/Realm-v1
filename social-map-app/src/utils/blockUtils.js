@@ -9,7 +9,7 @@ import { supabase } from '../supabaseClient';
 export const blockUser = async (blockerId, blockedId) => {
     try {
         const { error } = await supabase
-            .from('blocks')
+            .from('blocked_users')
             .insert({
                 blocker_id: blockerId,
                 blocked_id: blockedId
@@ -32,7 +32,7 @@ export const blockUser = async (blockerId, blockedId) => {
 export const unblockUser = async (blockerId, blockedId) => {
     try {
         const { error } = await supabase
-            .from('blocks')
+            .from('blocked_users')
             .delete()
             .eq('blocker_id', blockerId)
             .eq('blocked_id', blockedId);
@@ -54,15 +54,16 @@ export const unblockUser = async (blockerId, blockedId) => {
 export const isUserBlocked = async (userId, targetId) => {
     try {
         const { data, error } = await supabase
-            .from('blocks')
-            .select('id')
+            .from('blocked_users')
+            .select('id, created_at')
             .eq('blocker_id', userId)
             .eq('blocked_id', targetId)
             .maybeSingle();
 
-        return !!data && !error;
+        if (error) return null;
+        return data ? { blocked: true, created_at: data.created_at } : null;
     } catch (error) {
-        return false;
+        return null;
     }
 };
 
@@ -75,7 +76,7 @@ export const isUserBlocked = async (userId, targetId) => {
 export const isBlockedMutual = async (user1Id, user2Id) => {
     try {
         const { data, error} = await supabase
-            .from('blocks')
+            .from('blocked_users')
             .select('id')
             .or(`and(blocker_id.eq.${user1Id},blocked_id.eq.${user2Id}),and(blocker_id.eq.${user2Id},blocked_id.eq.${user1Id})`)
             .maybeSingle();
@@ -94,7 +95,7 @@ export const isBlockedMutual = async (user1Id, user2Id) => {
 export const getBlockedUserIds = async (userId) => {
     try {
         const { data, error } = await supabase
-            .from('blocks')
+            .from('blocked_users')
             .select('blocked_id')
             .eq('blocker_id', userId);
 
@@ -114,7 +115,7 @@ export const getBlockedUserIds = async (userId) => {
 export const getBlockerIds = async (userId) => {
     try {
         const { data, error } = await supabase
-            .from('blocks')
+            .from('blocked_users')
             .select('blocker_id')
             .eq('blocked_id', userId);
 

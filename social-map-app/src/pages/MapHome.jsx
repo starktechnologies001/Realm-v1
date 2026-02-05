@@ -98,7 +98,7 @@ function RecenterAutomatically({ lat, lng }) {
 export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
-    const { permissionStatus, setPermission, resetPermission } = useLocationContext();
+    const { permissionStatus, setPermission, resetPermission, userLocation } = useLocationContext();
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
@@ -182,6 +182,22 @@ export default function MapHome() {
              img.src = getAvatar2D(currentUser.avatar_url);
         }
     }, [nearbyUsers, currentUser?.avatar_url]);
+
+    // Live Location Sync
+    useEffect(() => {
+        if (userLocation) {
+            // Update Map Center (if we want to lock to user)
+            // For now, let's update it so user sees themselves
+            setLocation(userLocation);
+            localStorage.setItem('lastLocation', JSON.stringify(userLocation));
+
+            // Update Current User Marker Position
+            setCurrentUser(prev => {
+                if (!prev) return prev;
+                return { ...prev, lat: userLocation.lat, lng: userLocation.lng };
+            });
+        }
+    }, [userLocation]);
 
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
@@ -1370,9 +1386,9 @@ export default function MapHome() {
         }
         else if (action === 'block') {
             try {
-                // Insert into blocks table
+                // Insert into blocked_users table
                 const { error } = await supabase
-                    .from('blocks')
+                    .from('blocked_users')
                     .insert({
                         blocker_id: currentUser.id,
                         blocked_id: targetUser.id
@@ -1389,8 +1405,10 @@ export default function MapHome() {
                     showToast(`Blocked ${targetUser.name}`);
                     setSelectedUser(null);
                     setShowFullProfile(false);
-                    // Refresh nearby users to remove blocked user from map
-                    // The fetchNearbyUsers will automatically filter them out
+                    // Also delete friendship if it exists, to remove from map (optional but cleaner)
+                    if (targetUser.friendshipId) {
+                        await supabase.from('friendships').delete().eq('id', targetUser.friendshipId);
+                    }
                 }
             } catch (err) {
                 console.error('Block error:', err);

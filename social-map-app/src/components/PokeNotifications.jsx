@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D } from '../utils/avatarUtils';
 
@@ -159,6 +159,25 @@ export default function PokeNotifications({ currentUser }) {
         }
     };
 
+    const panelRef = useRef(null);
+
+    // Click outside to dismiss
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (showNotifications && 
+                panelRef.current && 
+                !panelRef.current.contains(event.target) &&
+                !event.target.closest('.poke-badge')) {
+                setShowNotifications(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showNotifications]);
+
     if (!showNotifications || pendingPokes.length === 0) return null;
 
     return (
@@ -170,7 +189,7 @@ export default function PokeNotifications({ currentUser }) {
 
             {/* Notification Panel */}
             {showNotifications && (
-                <div className="poke-notifications-panel">
+                <div className="poke-notifications-panel" ref={panelRef}>
                     <div className="panel-header">
                         <h3>👋 Poke Requests</h3>
                         <button onClick={() => setShowNotifications(false)}>✕</button>

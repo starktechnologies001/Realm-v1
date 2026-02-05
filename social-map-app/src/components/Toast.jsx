@@ -10,7 +10,7 @@ export default function Toast({ message, onClose, duration = 3000 }) {
 
     return (
         <>
-            <div className="toast-notification">
+            <div className="toast-notification" onClick={onClose}>
                 {message}
             </div>
             <style>{`
@@ -31,6 +31,7 @@ export default function Toast({ message, onClose, duration = 3000 }) {
             align-items: center;
             gap: 10px;
             border: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
         }
 
         @keyframes slideDown {

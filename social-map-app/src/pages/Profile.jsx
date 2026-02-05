@@ -16,8 +16,8 @@ export default function Profile() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const [toastMsg, setToastMsg] = useState(null);
-    const [blockedUsers, setBlockedUsers] = useState([]);
-    const [showBlockedModal, setShowBlockedModal] = useState(false);
+    // const [blockedUsers, setBlockedUsers] = useState([]); // Moved to BlockedUsers.jsx
+    // const [showBlockedModal, setShowBlockedModal] = useState(false); // Moved to BlockedUsers.jsx
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const { theme, updateTheme } = useTheme();
@@ -148,8 +148,7 @@ export default function Profile() {
             
             setUser(data);
             
-            // Fetch blocked users
-            await fetchBlockedUsers(user.id);
+            // Fetch blocked users - REMOVED (Handled in dedicated page)
         } catch (error) {
             console.error("Error fetching profile:", error);
         } finally {
@@ -163,87 +162,10 @@ export default function Profile() {
         navigate('/login');
     };
 
-    const fetchBlockedUsers = async (userId) => {
-        try {
-            // Updated to use manual join to ensure correct profile is fetched
-            // 1. Get the list of blocked IDs
-            const { data: blocks, error: blocksError } = await supabase
-                .from('blocks')
-                .select('id, blocked_id')
-                .eq('blocker_id', userId);
-
-            if (blocksError) throw blocksError;
-
-            if (!blocks || blocks.length === 0) {
-                setBlockedUsers([]);
-                return;
-            }
-
-            const blockedIds = blocks.map(b => b.blocked_id);
-
-            // 2. Fetch the actual profiles for these IDs
-            const { data: profiles, error: profilesError } = await supabase
-                .from('profiles')
-                .select('id, full_name, username, gender, avatar_url')
-                .in('id', blockedIds);
-
-            if (profilesError) throw profilesError;
-
-            // 3. Map back to include the block_id for unblocking
-            const combinedData = profiles.map(profile => {
-                const blockRecord = blocks.find(b => b.blocked_id === profile.id);
-                return {
-                    block_id: blockRecord?.id,
-                    ...profile
-                };
-            });
-
-            setBlockedUsers(combinedData);
-
-        } catch (err) {
-            console.error('Error fetching blocked users:', err);
-        }
-    };
-
-    const handleUnblock = async (blockId, userName) => {
-        try {
-            const { error } = await supabase
-                .from('blocks')
-                .delete()
-                .eq('id', blockId);
-
-            if (error) throw error;
-
-            setBlockedUsers(prev => prev.filter(u => u.block_id !== blockId));
-            showToast(`Unblocked ${userName}`);
-        } catch (err) {
-            console.error('Unblock error:', err);
-            showToast('Failed to unblock user');
-        }
-    };
-
-    const blockUser = async (userId, userName) => {
-        try {
-            const { error } = await supabase
-                .from('blocks')
-                .insert({
-                    blocker_id: user.id,
-                    blocked_id: userId
-                });
-
-            if (error) throw error;
-
-            // Refresh blocked users list
-            await fetchBlockedUsers(user.id);
-            showToast(`Blocked ${userName}`);
-        } catch (err) {
-            console.error('Block error:', err);
-            showToast('Failed to block user');
-        }
-    };
 
 
-    const updateProfile = async (updates) => {
+
+    const updateProfile = async (updates, successMessage = "Profile updated successfully! ✅") => {
         // OPTIMISTIC UPDATE: Update local state + LocalStorage immediately
         const previousUser = { ...user };
         const updatedUser = { ...user, ...updates };
@@ -267,7 +189,7 @@ export default function Profile() {
                 throw error;
             }
             console.log('🟣 [Profile] Database update SUCCESS:', data);
-            showToast("Profile updated successfully! ✅");
+            showToast(successMessage);
         } catch (error) {
             console.error("🟣 [Profile] Error updating profile:", error);
             // Revert state on failure
@@ -378,9 +300,32 @@ export default function Profile() {
     const [showNotifMenu, setShowNotifMenu] = useState(false);
 
     const handleMuteChange = (duration) => {
-        // Update local state is tricky with nested JSON, so we reconstruct
-        const newSettings = { ...user.mute_settings, message: duration };
-        updateProfile({ mute_settings: newSettings });
+        let expiry = null;
+        let successMsg = "Notifications unmuted! 🔔";
+        
+        if (duration === '10 Minutes') {
+            const date = new Date(Date.now() + 10 * 60000);
+            expiry = date.toISOString();
+            successMsg = `Muted until ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 🔕`;
+        } else if (duration === '1 Hour') {
+             const date = new Date(Date.now() + 60 * 60000);
+             expiry = date.toISOString();
+             successMsg = `Muted until ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 🔕`;
+        } else if (duration === '24 Hours') {
+             const date = new Date(Date.now() + 24 * 60 * 60000);
+             expiry = date.toISOString();
+             successMsg = `Muted until tomorrow ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 🔕`;
+        }
+        
+        const isMuting = duration !== 'Unmute';
+        
+        const newSettings = { 
+            ...user.mute_settings, 
+            message: isMuting ? duration : 'Never', 
+            muted_until: expiry,
+            mute_all: isMuting // Timer enables mute_all
+        };
+        updateProfile({ mute_settings: newSettings }, successMsg);
     };
 
     if (loading) return <div style={{ color: 'white', padding: '20px' }}>Loading profile...</div>;
@@ -689,29 +634,11 @@ export default function Profile() {
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>}
                         label="Notifications"
-                        value={user.mute_settings?.message && user.mute_settings.message !== 'Never' ? `Muted: ${user.mute_settings.message}` : ''}
-                        hasArrow={!showNotifMenu}
-                        isExpanded={showNotifMenu}
+                        value={user.mute_settings?.mute_all ? 'DND Enabled' : (user.mute_settings?.message && user.mute_settings.message !== 'Never' ? `Muted: ${user.mute_settings.message}` : '')}
+                        hasArrow={true}
                         iconClass="icon-notif"
-                        onClick={() => setShowNotifMenu(!showNotifMenu)}
+                        onClick={() => setActiveModal('notifications')}
                     />
-
-                    {showNotifMenu && (
-                        <div className="inner-submenu">
-                            <div className="submenu-hint">Mute messages for:</div>
-                            <div className="chip-grid">
-                                {['10 Minutes', '1 Hour', '24 Hours', 'Never'].map(dur => (
-                                    <button
-                                        key={dur}
-                                        className={`chip-option ${user.mute_settings?.message === dur ? 'active' : ''}`}
-                                        onClick={() => handleMuteChange(dur)}
-                                    >
-                                        {dur}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                     
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>}
@@ -765,7 +692,7 @@ export default function Profile() {
                         label="Blocked Users" 
                         hasArrow 
                         iconClass="icon-block"
-                        onClick={() => setShowBlockedModal(true)}
+                        onClick={() => navigate('/blocked-users')}
                     />
                     <MenuItem 
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>}
@@ -816,7 +743,9 @@ export default function Profile() {
 
             {/* Modals */}
             {activeModal && activeModal !== 'photo-options' && (
-                <div className="modal-backdrop">
+                <div className="modal-backdrop" onClick={(e) => {
+                    if (e.target === e.currentTarget) setActiveModal(null);
+                }}>
                     <div className="modal-content">
                         {activeModal === 'edit-name' && (
                             <>
@@ -1083,53 +1012,81 @@ export default function Profile() {
                                 </div>
                             </>
                         )}
-                    </div>
-                </div>
-            )}
-
-            {/* Blocked Users Modal */}
-            {showBlockedModal && (
-                <div className="modal-backdrop">
-                    <div className="modal-content blocked-modal">
-                        <h3>🚫 Blocked Users</h3>
-                        {blockedUsers.length === 0 ? (
-                            <p style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-                                No blocked users
-                            </p>
-                        ) : (
-                            <div className="blocked-list">
-                                {blockedUsers.map(user => (
-                                    <div key={user.block_id} className="blocked-user-item">
-                                        <img 
-                                            src={user.avatar_url ? getAvatar2D(user.avatar_url) : (() => {
-                                                const safeName = encodeURIComponent(user.username || user.full_name || 'User');
-                                                if (user.gender === 'Male') return `https://avatar.iran.liara.run/public/boy?username=${safeName}`;
-                                                if (user.gender === 'Female') return `https://avatar.iran.liara.run/public/girl?username=${safeName}`;
-                                                return `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                            })()} 
-                                            alt={user.full_name} 
-                                            className="blocked-avatar"
-                                            onError={(e) => {
-                                                const safeName = encodeURIComponent(user.username || user.full_name || 'User');
-                                                e.target.src = `https://avatar.iran.liara.run/public?username=${safeName}`;
-                                            }}
-                                        />
-                                        <div className="blocked-info">
-                                            <strong>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</strong>
+                        {activeModal === 'notifications' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>Notification Settings</h3>
+                                </div>
+                                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    {/* Mute All Toggle */}
+                                    <div className="menu-item" style={{ 
+                                        padding: '12px 0', 
+                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                        background: 'transparent'
+                                    }}>
+                                        <div className="menu-content">
+                                            <span className="menu-label" style={{ 
+                                                fontSize: '1rem', 
+                                                fontWeight: '600',
+                                                color: user.mute_settings?.mute_all ? '#FF453A' : 'white'
+                                            }}>
+                                                Do Not Disturb
+                                            </span>
+                                            <span className="menu-hint" style={{ 
+                                                fontSize: '0.8rem', 
+                                                color: 'var(--text-secondary)',
+                                                marginTop: '4px'
+                                            }}>
+                                                Mute all incoming calls and messages
+                                            </span>
                                         </div>
-                                        <button 
-                                            className="unblock-btn"
-                                            onClick={() => handleUnblock(user.block_id, user.full_name || user.username)}
-                                        >
-                                            Unblock
-                                        </button>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.mute_settings?.mute_all || false}
+                                                onChange={(e) => {
+                                                    // When toggling DND, we clear any timer
+                                                    const newSettings = { 
+                                                        ...user.mute_settings, 
+                                                        mute_all: e.target.checked,
+                                                        muted_until: null // Clear timer on manual toggle
+                                                    };
+                                                    updateProfile({ mute_settings: newSettings });
+                                                }}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
                                     </div>
-                                ))}
-                            </div>
+
+                                    <div>
+
+                                        <div className="submenu-hint" style={{ 
+                                            transition: 'opacity 0.3s', 
+                                            opacity: 1,
+                                            marginBottom: '12px',
+                                            color: 'var(--text-secondary)',
+                                            fontWeight: '500'
+                                        }}>
+                                            Mute Duration
+                                        </div>
+                                        <div className="chip-grid">
+                                            {['10 Minutes', '1 Hour', '24 Hours', 'Unmute'].map(dur => (
+                                                <button
+                                                    key={dur}
+                                                    className={`chip-option ${(user.mute_settings?.message === dur || (dur === 'Unmute' && (!user.mute_settings?.message || user.mute_settings.message === 'Never'))) ? 'active' : ''}`}
+                                                    onClick={() => handleMuteChange(dur)}
+                                                >
+                                                    {dur}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Done</button>
+                                </div>
+                            </>
                         )}
-                        <div className="modal-footer">
-                            <button onClick={() => setShowBlockedModal(false)} className="btn-sec">Close</button>
-                        </div>
                     </div>
                 </div>
             )}

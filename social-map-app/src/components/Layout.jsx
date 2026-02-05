@@ -135,8 +135,43 @@ export default function Layout() {
         // Realtime Subscription for Badges
         const channel = supabase.channel('layout_notifications')
             // Listen for new messages
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
                  fetchNotificationCounts(); // Refresh counts
+                 
+                 const newMsg = payload.new;
+                 const { data: { session } } = await supabase.auth.getSession();
+                 if (!session || newMsg.receiver_id !== session.user.id) return;
+                 // Filter types (ignore system or call_log as CallContext handles calls usually, but missed calls might be nice? Let's hide call_logs for now to avoid duplicates with CallContext)
+                 if (newMsg.message_type === 'system' || newMsg.message_type === 'call_log') return;
+                 
+                 // System Notification if Hidden
+                 if (document.hidden && Notification.permission === 'granted') {
+                     // 1. Check Global Mute
+                     const { data: userData } = await supabase.from('profiles').select('mute_settings').eq('id', session.user.id).single();
+                     if (userData?.mute_settings?.mute_all) {
+                         const expiry = userData.mute_settings.muted_until;
+                         if (!expiry || new Date(expiry) > new Date()) return;
+                     }
+
+                     // 2. Check Chat Mute
+                     const { data: chatSettings } = await supabase.from('chat_settings').select('muted_until').eq('user_id', session.user.id).eq('partner_id', newMsg.sender_id).maybeSingle();
+                     if (chatSettings?.muted_until && new Date(chatSettings.muted_until) > new Date()) return;
+
+                     // 3. Fetch Sender Details
+                     const { data: sender } = await supabase.from('profiles').select('username, full_name, avatar_url').eq('id', newMsg.sender_id).single();
+                     
+                     if (sender) {
+                         // 4. Show Notification
+                         const isImage = newMsg.message_type === 'image';
+                         const bodyText = isImage ? '📷 Sent a photo' : newMsg.content;
+                         
+                         new Notification(sender.full_name || sender.username, {
+                             body: bodyText,
+                             icon: sender.avatar_url || '/pwa-192x192.png',
+                             tag: 'message-notification'
+                         });
+                     }
+                 }
             })
             // Listen for read status updates
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => {

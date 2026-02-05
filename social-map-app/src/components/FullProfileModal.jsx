@@ -37,7 +37,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
             // 1. Fetch Profile Details (Bio, Joined, Interests, etc)
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, created_at, birth_date, interests')
+                .select('bio, created_at, birth_date, interests, username')
                 .eq('id', user.id)
                 .maybeSingle();
 
@@ -86,10 +86,11 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
 
             setStats({
                 mutuals: mutualCount,
-                joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown',
+                joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: '2-digit' }) : 'Unknown',
                 bio: profile?.bio || 'No bio available.',
-                birthDate: profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : null,
-                interests: profile?.interests || []
+                birthDate: profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null,
+                interests: profile?.interests || [],
+                username: profile?.username || user.username || user.name 
             });
         };
 
@@ -127,6 +128,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                             <div className={`fp-status ${user.isLocationOn ? 'online' : 'offline'}`} />
                         </div>
                         <h2>{user.name}</h2>
+                        {stats.username && <span className="fp-username">@{stats.username}</span>}
 
                         {user.status && <div className="fp-status-tag">{user.status}</div>}
                     </div>
@@ -192,22 +194,26 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     {canViewDetails && isFriend && (
                         <div className="fp-actions">
                             <button className="fp-btn primary" onClick={() => onAction('message', user)}>
-                                <span>💬</span> Message
+                                <span style={{ fontSize: '1.5rem' }}>💬</span>
                             </button>
                             <button className="fp-btn secondary" onClick={() => onAction('call-audio', user)}>
-                                <span>📞</span> Audio Call
+                                <span style={{ fontSize: '1.5rem' }}>📞</span>
                             </button>
                             <button className="fp-btn secondary" onClick={() => onAction('call-video', user)}>
-                                <span>📹</span> Video Call
+                                <span style={{ fontSize: '1.5rem' }}>📹</span>
                             </button>
                         </div>
                     )}
 
                     {/* Footer Actions */}
                     <div className="fp-footer-actions">
-                         <button className="fp-text-btn danger" onClick={() => onAction('block', user)}>Block User</button>
+                         <button className="fp-text-btn danger" onClick={() => onAction('block', user)}>
+                            <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚫</span> Block
+                         </button>
                          <span className="separator">•</span>
-                         <button className="fp-text-btn danger" onClick={() => onAction('report', user)}>Report User</button>
+                         <button className="fp-text-btn danger" onClick={() => onAction('report', user)}>
+                            <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚩</span> Report
+                         </button>
                     </div>
 
                 </motion.div>
@@ -524,15 +530,16 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
 
                     .fp-actions {
                         display: grid;
-                        grid-template-columns: 1fr 1fr;
-                        gap: 12px;
+                        grid-template-columns: repeat(3, 1fr);
+                        gap: 16px;
                         width: 100%;
                         margin-bottom: 24px;
+                        padding: 0 12px;
                     }
                     
                     .fp-btn {
-                        padding: 14px 16px;
-                        border-radius: 14px;
+                        padding: 16px;
+                        border-radius: 20px;
                         border: none;
                         font-weight: 600;
                         font-size: 0.95rem;
@@ -540,8 +547,8 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        gap: 8px;
                         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                        aspect-ratio: 1.25; /* Slightly rect to hold icon well */
                     }
                     
                     .fp-btn:active {
@@ -551,7 +558,6 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     .fp-btn.primary {
                         background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
                         color: white;
-                        grid-column: span 2;
                         box-shadow: 0 8px 20px rgba(0, 114, 255, 0.3);
                     }
                     

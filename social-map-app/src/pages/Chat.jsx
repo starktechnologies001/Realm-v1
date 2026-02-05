@@ -5,7 +5,7 @@ import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
 import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
-import { getBlockedUserIds } from '../utils/blockUtils';
+import { getBlockedUserIds, blockUser, unblockUser, isUserBlocked } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
 import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
@@ -139,15 +139,7 @@ export default function Chat() {
             return [];
         }
 
-        // 2.5. Get blocked user IDs and filter them out
-        const blockedIds = await getBlockedUserIds(userId);
-        blockedIds.forEach(id => partnerIds.delete(id));
-
-        if (partnerIds.size === 0) {
-            return [];
-        }
-
-        // 3. Fetch Profiles for ALL these partners (excluding blocked)
+        // 3. Fetch Profiles for ALL these partners
         const validPartnerIds = Array.from(partnerIds).filter(id => id); // Filter out null/undefined/empty string
         
         if (validPartnerIds.length === 0) return [];
@@ -199,19 +191,24 @@ export default function Chat() {
                     } else {
                         lastMsgContent = lastMessage.content;
                     }
-                } else if (lastMessage.message_type === 'call_log') {
+                } else if (lastMessage.message_type === 'call_log' || (typeof lastMessage.content === 'string' && lastMessage.content.trim().startsWith('{') && lastMessage.content.includes('"status"'))) {
                     try {
-                        const callData = JSON.parse(lastMessage.content);
-                        const isMissed = callData.status === 'missed';
-                        const isDeclined = callData.status === 'declined';
-                        const callType = callData.call_type === 'video' ? 'Video' : 'Voice';
-                        
-                        if (isMissed) {
-                            lastMsgContent = `📞 Missed ${callType} call`;
-                        } else if (isDeclined) {
-                            lastMsgContent = `📵 Declined ${callType} call`;
+                        const callData = typeof lastMessage.content === 'string' ? JSON.parse(lastMessage.content) : lastMessage.content;
+                        const status = callData.status;
+                        const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
+                        const typeStr = `${callType} call`;
+
+                        if (status === 'missed' || status === 'busy') {
+                            lastMsgContent = `📞 Missed ${typeStr.toLowerCase()}`;
+                        } else if (status === 'declined' || status === 'rejected') {
+                            lastMsgContent = `${typeStr} • Declined`;
+                        } else if (status === 'calling' || status === 'ringing') {
+                             const isMyCall = lastMessage.sender_id === userId;
+                             lastMsgContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${typeStr}...`;
                         } else {
-                            lastMsgContent = `📞 Call ended • ${lastMessage.sender_id === userId ? 'Outgoing' : 'Incoming'}`;
+                            // Accepted/Ended
+                            const direction = lastMessage.sender_id === userId ? 'Outgoing' : 'Incoming';
+                            lastMsgContent = `${direction} ${typeStr}`;
                         }
                     } catch (e) {
                          lastMsgContent = '📞 Call log';
@@ -252,7 +249,9 @@ export default function Chat() {
                 .eq('partner_id', partner.id)
                 .maybeSingle();
 
-            const isMuted = muteData && muteData.muted_until && new Date(muteData.muted_until) > new Date();
+            const muteSettings = currentUser?.mute_settings;
+            const isGlobalMuted = muteSettings?.mute_all && (!muteSettings.muted_until || new Date(muteSettings.muted_until) > new Date());
+            const isMuted = isGlobalMuted || (muteData && muteData.muted_until && new Date(muteData.muted_until) > new Date());
 
             // Avatar Logic: Prefer stored avatar, else generate consistent one
             // similar to MapHome logic
@@ -349,6 +348,8 @@ export default function Chat() {
                 console.log('🔔 [ChatList] NEW MESSAGE:', payload.new);
 
                 const senderId = payload.new.sender_id;
+
+
                 
                 // Format message content based on type
                 let newContent;
@@ -361,12 +362,54 @@ export default function Chat() {
                     } else {
                         newContent = payload.new.content;
                     }
+                } else if (payload.new.message_type === 'call_log' || (typeof payload.new.content === 'string' && payload.new.content.trim().startsWith('{') && payload.new.content.includes('"status"'))) {
+                    try {
+                        const callData = typeof payload.new.content === 'string' ? JSON.parse(payload.new.content) : payload.new.content;
+                        const status = callData.status;
+                        const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
+                        const typeStr = `${callType} call`;
+
+                        if (status === 'missed' || status === 'busy') {
+                            newContent = `📞 Missed ${typeStr.toLowerCase()}`;
+                        } else if (status === 'declined' || status === 'rejected') {
+                            newContent = `${typeStr} • Declined`;
+                        } else if (status === 'calling' || status === 'ringing') {
+                             const isMyCall = payload.new.sender_id === currentUser.id;
+                             newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${typeStr}...`;
+                        } else {
+                            // Accepted/Ended
+                            const direction = payload.new.sender_id === currentUser.id ? 'Outgoing' : 'Incoming';
+                            newContent = `${direction} ${typeStr}`;
+                        }
+                    } catch (e) {
+                         newContent = '📞 Call log';
+                    }
                 } else if (payload.new.message_type === 'image') {
                     newContent = '📷 Photo';
                 } else if (payload.new.message_type === 'attachment') {
                     newContent = '📎 Attachment';
                 } else {
-                    newContent = payload.new.content;
+                    // Fallback: Check if it's a raw JSON string (Call Log) that slipped through
+                    if (typeof payload.new.content === 'string' && payload.new.content.trim().startsWith('{') && payload.new.content.includes('"status"')) {
+                         try {
+                            const callData = JSON.parse(payload.new.content);
+                            const status = callData.status;
+                            const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
+                            
+                            if (status === 'calling' || status === 'ringing') {
+                                const isMyCall = payload.new.sender_id === currentUser.id;
+                                newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${callType} call...`;
+                            } else if (status === 'missed') {
+                                newContent = `📞 Missed ${callType.toLowerCase()} call`;
+                            } else {
+                                newContent = `📞 ${callType} call`;
+                            }
+                         } catch (e) {
+                            newContent = payload.new.content;
+                         }
+                    } else {
+                        newContent = payload.new.content;
+                    }
                 }
                 
                 // Format time string
@@ -459,8 +502,9 @@ export default function Chat() {
         initializePresence(user.id);
         
         // If navigated with a target user (from Map or Friends), open that chat immediately
-        if (location.state?.targetUser) {
-            setActiveChatUser(location.state.targetUser);
+        const passedUser = location.state?.targetUser || location.state?.selectedUser;
+        if (passedUser) {
+            setActiveChatUser(passedUser);
         }
 
         loadChats(user.id);
@@ -1046,6 +1090,45 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
+
+    // Blocking State
+    // Blocking State
+    const [blockStatus, setBlockStatus] = useState({ blockedByMe: false, blockedByThem: false, blockedAt: null });
+
+    useEffect(() => {
+        const checkBlockStatus = async () => {
+             if (!currentUser?.id || !targetUser?.id) return;
+             if (!currentUser?.id || !targetUser?.id) return;
+             const status = await isUserBlocked(currentUser.id, targetUser.id);
+             setBlockStatus(prev => ({ 
+                 ...prev, 
+                 blockedByMe: !!status && status.blocked,
+                 blockedAt: status ? status.created_at : null 
+             }));
+             
+             // We generally don't check "blockedByThem" for UI purposes (Requirement 3), 
+             // but if we wanted to stop sending requests, we could. 
+             // Requirement 3 says "Single Tick" (handled by RLS). 
+             // We strictly only need "blockedByMe" to disable input.
+        };
+        checkBlockStatus();
+    }, [currentUser?.id, targetUser?.id]);
+
+    const handleBlockAction = async () => {
+        if (blockStatus.blockedByMe) {
+            // Unblock
+            await unblockUser(currentUser.id, targetUser.id);
+            setBlockStatus(prev => ({ ...prev, blockedByMe: false }));
+            Toast.show(`Unblocked ${targetUser.username || targetUser.full_name}`);
+        } else {
+            // Block
+            await blockUser(currentUser.id, targetUser.id);
+            setBlockStatus(prev => ({ ...prev, blockedByMe: true, blockedAt: new Date().toISOString() }));
+            Toast.show(`Blocked ${targetUser.username || targetUser.full_name}`);
+            
+            // Note: We do NOT clear chat history (Requirement 6)
+        }
+    };
     
     // Track partner's presence status
     const presence = usePresence(targetUser.id, currentUser.id);
@@ -1139,7 +1222,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             
             if (shouldAdd) {
                 newSet.add(msgId);
-                setIsSelectionMode(true); // Always enable selection mode when adding
+                // Vibrate on long press start if this is the first selection
+                if (!isSelectionMode && navigator.vibrate) navigator.vibrate(50);
+                setIsSelectionMode(true); 
             } else {
                 newSet.delete(msgId);
             }
@@ -1154,6 +1239,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
     const clearSelection = () => {
         setSelectedMessages(new Set());
         setIsSelectionMode(false);
+    };
+
+    // Background Click Handler to dismiss Selection Mode
+    const handleBackgroundClick = (e) => {
+        if (isSelectionMode) {
+            clearSelection();
+        }
     };
 
     // Delete Message Modal State
@@ -1744,8 +1836,25 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                 table: 'messages'
             }, async (payload) => {
                 // Client-side Filter:
-                if (String(payload.new.receiver_id) === String(currentUser.id) && 
-                    String(payload.new.sender_id) === String(targetUser.id)) {
+                // 1. Check if blocked
+                if (blockStatus.blockedByMe && String(payload.new.sender_id) === String(targetUser.id)) {
+                    // Only ignore if created AFTER block
+                    const msgTime = new Date(payload.new.created_at).getTime();
+                    const blockTime = blockStatus.blockedAt ? new Date(blockStatus.blockedAt).getTime() : 0;
+                    
+                    if (msgTime > blockTime) {
+                        console.log('🚫 [Chat] Ignoring message from blocked user (time check)');
+                        return;
+                    }
+                }
+
+                // Check if message belongs to this conversation
+                // 1. Incoming: From Target -> Me
+                // 2. Outgoing (sent from elsewhere): From Me -> Target
+                const isIncoming = String(payload.new.receiver_id) === String(currentUser.id) && String(payload.new.sender_id) === String(targetUser.id);
+                const isOutgoingProxy = String(payload.new.sender_id) === String(currentUser.id) && String(payload.new.receiver_id) === String(targetUser.id);
+
+                if (isIncoming || isOutgoingProxy) {
                     
                     // Supabase realtime doesn't return joined data, so we must manually fetch or find reply_to context
                     let replyToData = null;
@@ -1841,7 +1950,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             });
 
         return () => { supabase.removeChannel(channel); };
-    }, [currentUser.id, targetUser.id]);
+    }, [currentUser.id, targetUser.id, blockStatus]);
 
     // Polling Fallback: Fetch messages every 3 seconds to ensure delivery if realtime fails
     useEffect(() => {
@@ -1881,10 +1990,19 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                         });
                     }
                     
-                    // Filter out messages deleted by current user
+                    // Filter out messages deleted by current user AND blocked user messages
                     const filteredData = data.filter(msg => {
                         const deletedFor = msg.deleted_for || [];
-                        return !deletedFor.includes(currentUser.id);
+                        const isDeleted = deletedFor.includes(currentUser.id);
+                        // Check if message is from blocked user AND created after block
+                        let isBlocked = false;
+                        if (blockStatus.blockedByMe && msg.sender_id === targetUser.id) {
+                             const msgTime = new Date(msg.created_at).getTime();
+                             const blockTime = blockStatus.blockedAt ? new Date(blockStatus.blockedAt).getTime() : 0;
+                             isBlocked = msgTime > blockTime;
+                        }
+                        
+                        return !isDeleted && !isBlocked;
                     });
 
                     setMessages(prev => {
@@ -1930,7 +2048,22 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                         return combined;
                     });
                      // Mark UNREAD messages from this user as READ (excluding system messages)
-                    const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
+                     // Mark UNREAD messages from this user as READ (excluding system messages AND blocked user messages)
+                    const unreadIds = data.filter(m => {
+                        const isSystem = m.message_type === 'system';
+                        const isReceiver = m.receiver_id === currentUser.id;
+                        const isUnread = !m.is_read;
+                        
+                        let isBlocked = false;
+                        if (blockStatus.blockedByMe && m.sender_id === targetUser.id) {
+                             const msgTime = new Date(m.created_at).getTime();
+                             const blockTime = blockStatus.blockedAt ? new Date(blockStatus.blockedAt).getTime() : 0;
+                             isBlocked = msgTime > blockTime;
+                        }
+                        
+                        return isReceiver && isUnread && !isSystem && !isBlocked;
+                    }).map(m => m.id);
+
                     if (unreadIds.length > 0) {
                         await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
                     }
@@ -1940,7 +2073,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
         }, 3000); // Poll every 3 seconds
 
         return () => clearInterval(interval);
-    }, [currentUser.id, targetUser.id]);
+    }, [currentUser.id, targetUser.id, blockStatus]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -1954,6 +2087,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
     }, [messages]);
 
     const sendMessage = async (type = 'text', content = null, imageUrl = null) => {
+        // Prevent sending if blocked
+        if (blockStatus.blockedByMe) {
+            showToast("You must unblock this user to send messages.");
+            return;
+        }
+
         const textToSend = content || input;
         if (!textToSend.trim() && type === 'text' && !imageUrl) return;
 
@@ -2166,10 +2305,18 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
 
 
     const startVoiceCall = () => {
+        if (blockStatus.blockedByMe) {
+            showToast("Unblock user to call");
+            return;
+        }
         startCall(targetUser, 'audio');
     };
 
     const startVideoCall = () => {
+        if (blockStatus.blockedByMe) {
+            showToast("Unblock user to call");
+            return;
+        }
         startCall(targetUser, 'video');
     };
 
@@ -2359,6 +2506,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                 '--theme-font-color': currentTheme.fontColor,
                 '--theme-icon-color': currentTheme.iconColor
             }}
+            onClick={handleBackgroundClick}
         >
             <style>{`
                 /* Selection Mode Styles */
@@ -2450,6 +2598,50 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                         background: rgba(0, 240, 255, 0.1) !important;
                     }
                 }
+                /* Blocked Banner Styles */
+                .blocked-message-banner {
+                    /* position: absolute; REMOVED to allow flex layout */
+                    /* bottom: 0; left: 0; right: 0; REMOVED */
+                    position: relative;
+                    padding: 24px;
+                    background: rgba(30, 30, 35, 0.95);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.1);
+                    z-index: 100;
+                    text-align: center;
+                    width: 100%;
+                }
+                .blocked-message-banner p {
+                    color: #e0e0e0;
+                    font-size: 0.95rem;
+                    margin: 0;
+                    font-weight: 500;
+                }
+                .unblock-btn {
+                    background: #FF3B30;
+                    color: white;
+                    border: none;
+                    padding: 8px 32px;
+                    border-radius: 20px;
+                    font-weight: 600;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
+                }
+                .unblock-btn:hover {
+                    transform: scale(1.02);
+                    box-shadow: 0 6px 16px rgba(255, 59, 48, 0.4);
+                }
+                .unblock-btn:active {
+                    transform: scale(0.95);
+                }
             `}</style>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
@@ -2458,7 +2650,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             
             <div className="ambient-glow-chat"></div>
 
-            <div className={`chat-room-header glass-header ${isSelectionMode ? 'selection-mode' : ''}`}>
+            <div className={`chat-room-header glass-header ${isSelectionMode ? 'selection-mode' : ''}`} onClick={(e) => e.stopPropagation()}>
                 {isSelectionMode ? (
                     <>
                         <div className="selection-header-left">
@@ -2567,11 +2759,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                                             Report
                                         </button>
 
-                                        <button onClick={() => handleMenuAction('block')} className="danger">
+                                        <button onClick={() => { setShowMenu(false); handleBlockAction(); }} className="danger">
                                             <span className="icon">
                                                 <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
                                             </span>
-                                            Block
+                                            {blockStatus.blockedByMe ? 'Unblock' : 'Block'}
                                         </button>
                                     </div>
                                 </>
@@ -2977,7 +3169,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             {/* Message Context Menu (Long-Press) */}
 
 
-            <div className="chat-input-container">
+            {blockStatus.blockedByMe ? (
+                <div className="blocked-message-banner">
+                    <p>You have blocked this contact.</p>
+                    <button onClick={handleBlockAction} className="unblock-btn">Unblock</button>
+                </div>
+            ) : (
+            <div className="chat-input-container" onClick={(e) => e.stopPropagation()}>
                 {/* Reply Preview */}
                 {replyToMessage && (
                     <div className="reply-preview">
@@ -3081,10 +3279,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Emoji Picker Popup using Library */}
             {showEmojiPicker && (
-                <div className="emoji-picker-popup">
+                <div className="emoji-picker-popup" onClick={(e) => e.stopPropagation()}>
                     <EmojiPicker 
                         onEmojiClick={handleEmojiSelect}
                         theme="dark"
@@ -3098,8 +3297,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
 
             {/* Image Viewer Modal */}
             {viewingImage && (
-                <div className="image-viewer-modal" onClick={() => setViewingImage(null)}>
-                    <div className="image-viewer-content">
+                <div className="image-viewer-modal" onClick={(e) => { e.stopPropagation(); setViewingImage(null); }}>
+                    <div className="image-viewer-content" onClick={(e) => e.stopPropagation()}>
                         <button className="close-viewer" onClick={() => setViewingImage(null)}>✕</button>
                         <img src={viewingImage} alt="Full size" />
                     </div>
@@ -4303,6 +4502,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     z-index: 1010; /* Above overlay */
                 }
             `}</style>
+
 
             {/* Attachment System Components */}
             <AttachmentPicker

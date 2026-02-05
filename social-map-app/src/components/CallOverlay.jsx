@@ -18,6 +18,11 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
     const localVideoTrackRef = useRef(null);
     const callStartTimeRef = useRef(null);
     const durationIntervalRef = useRef(null);
+    const ringingTimeoutRef = useRef(null); // Timeout for outgoing calls
+
+    const hasAnsweredRef = useRef(false);
+    const hasEndedRef = useRef(false); // Prevent double-fire of onEnd
+    const endCallRef = useRef(null); // Access endCall inside useEffect
 
     // Play Local Video Track when ready and camera is on
     useEffect(() => {
@@ -43,11 +48,64 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             return;
         }
 
+        // 0. Define Timer Helper (Moved up for scope)
+        const startTimer = () => {
+            if (durationIntervalRef.current) return;
+            console.log('⏱️ Starting Call Timer');
+            callStartTimeRef.current = Date.now();
+            durationIntervalRef.current = setInterval(() => {
+                if (callStartTimeRef.current) {
+                    const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
+                    setCallDuration(elapsed);
+                }
+            }, 1000);
+        };
+
+        // 1. Setup Channel Name & Signalling Subscription EARLY
+        const sortedIds = [currentUser.id, callData.partner.id].sort();
+        const channelName = `call_${sortedIds[0].slice(0, 15)}_${sortedIds[1].slice(0, 15)}`;
+
+        console.log("🔗 Connecting to channel:", channelName);
+
+        // Listen for call status changes immediately
+        const channel = supabase.channel('current_call')
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'calls',
+                filter: `channel_name=eq.${channelName}`
+            }, (payload) => {
+                const newStatus = payload.new.status;
+                console.log("🔔 [CallOverlay] Status Update:", newStatus);
+                
+                if (['ended', 'rejected', 'declined', 'missed', 'busy'].includes(newStatus)) {
+                    cleanup();
+                    // Calculate final duration dynamically
+                    const finalDuration = callStartTimeRef.current ? Math.floor((Date.now() - callStartTimeRef.current) / 1000) : 0;
+                    
+                    if (onEnd && !hasEndedRef.current) {
+                        hasEndedRef.current = true;
+                        onEnd(finalDuration, newStatus);
+                    }
+                }
+                
+                if ((newStatus === 'active' || newStatus === 'accepted') && mounted) {
+                    hasAnsweredRef.current = true; // Mark as answered to prevent timeout start
+                    // Clear timeout if it's already running
+                    if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
+                    
+                    setStatus('Connected');
+                    startTimer();
+                }
+            })
+            .subscribe();
+
+
         const initializeCall = async () => {
             try {
                 const isVideoCall = callData.type === 'video';
 
-                // 1. IMMEDIATE: Initialize Local Tracks first for instant UI feedback
+                // 2. IMMEDIATE: Initialize Local Tracks
                 if (isVideoCall) {
                     try {
                         const videoTrack = await AgoraRTC.createCameraVideoTrack();
@@ -77,7 +135,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                 if (!mounted) return;
 
-                // 2. Setup Agora Client
+                // 3. Setup Agora Client
                 const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
                 clientRef.current = client;
 
@@ -93,6 +151,16 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
 
                     await client.subscribe(user, mediaType);
                     console.log('Subscribed to remote user:', user.uid, mediaType);
+
+                    // ROBUSTNESS: If we receive media, they definitely answered.
+                    // Fallback if Realtime 'active' event was missed.
+                    if (!callData.isIncoming && !hasAnsweredRef.current) {
+                        console.log("✅ [Agora] Remote user published media. Assuming call Answered.");
+                        hasAnsweredRef.current = true;
+                        if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
+                        setStatus('Connected');
+                        startTimer();
+                    }
 
                     if (mediaType === 'video') {
                         setRemoteUsers(prev => {
@@ -116,12 +184,12 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 client.on('user-left', (user) => {
                     console.log('User left:', user.uid);
                     setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
+                    // STRICT RULE: If remote user leaves, end the call locally.
+                    console.log("🚫 Remote user left. Ending call to prevent partial state.");
+                    if (endCallRef.current) endCallRef.current();
                 });
 
-                // 3. Setup Call Record & Signaling
-                const sortedIds = [currentUser.id, callData.partner.id].sort();
-                const channelName = `call_${sortedIds[0].slice(0, 15)}_${sortedIds[1].slice(0, 15)}`;
-
+                // 4. Create Call (If Caller)
                 if (!callData.isIncoming) {
                     setStatus('Calling...'); // Explicit feedback
                     
@@ -134,7 +202,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     });
                 }
 
-                // 4. Join Channel
+                // 5. Join Channel
                 // Use a unique UID to prevent collision with ghost sessions from previous tabs
                 const uniqueUid = `${currentUser.id}-${Date.now().toString().slice(-6)}`;
                 
@@ -147,7 +215,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                      return;
                 }
 
-                // 5. Publish Tracks
+                // 6. Publish Tracks
                 const tracksToPublish = [];
                 if (localAudioTrackRef.current) tracksToPublish.push(localAudioTrackRef.current);
                 // Only publish video if track exists AND it is enabled (not strictly required as track can be disabled later, but good practice)
@@ -158,61 +226,54 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     console.log('Published local tracks');
                 }
 
-                const startTimer = () => {
-                    if (durationIntervalRef.current) return;
-                    console.log('⏱️ Starting Call Timer');
-                    callStartTimeRef.current = Date.now();
-                    durationIntervalRef.current = setInterval(() => {
-                        if (callStartTimeRef.current) {
-                            const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
-                            setCallDuration(elapsed);
-                        }
-                    }, 1000);
-                };
+                if (tracksToPublish.length > 0) {
+                    await client.publish(tracksToPublish);
+                    console.log('Published local tracks');
+                }
+
+                // startTimer is now defined in parent scope
 
                 if (mounted) {
                     if (callData.isIncoming) {
                          // Receiver: Connected immediately upon opening this overlay
                          setStatus('Connected');
                          startTimer();
+                         hasAnsweredRef.current = true;
                     } else {
                          // Caller: Wait for answer
                          setStatus('Ringing...'); 
+                         
+                         // Start 30s Timeout for Caller (ONLY IF NOT ANSWERED YET)
+                         if (!hasAnsweredRef.current) {
+                             ringingTimeoutRef.current = setTimeout(async () => {
+                                 console.log('⏱️ No answer after 30s. Ending call as missed.');
+                                 if (mounted && !hasAnsweredRef.current) {
+                                    setStatus('No Answer');
+                                    
+                                    // Spec Point 5: Notify Caller if backgrounded
+                                    if (document.hidden && Notification.permission === 'granted') {
+                                        new Notification('Video call not answered', {
+                                            body: `Your call to ${callData.partner.username || 'User'} was not answered.`,
+                                            tag: 'call-timeout'
+                                        });
+                                    }
+
+                                    await new Promise(r => setTimeout(r, 1500)); // Show status briefly
+                                    await endCall(); // This uses the current callDuration (0) -> 'missed'
+                                 }
+                             }, 30000);
+                         } else {
+                             console.log("✅ Call already answered during init, skipping timeout.");
+                             setStatus('Connected');
+                             startTimer();
+                         }
                     }
                 }
 
-                // 6. Play Local Video if ready
+                // 7. Play Local Video if ready
                 if (localVideoTrackRef.current && localVideoRef.current && !cameraOff) {
                     localVideoTrackRef.current.play(localVideoRef.current);
                 }
-
-                // Listen for call status changes
-                const channel = supabase.channel('current_call')
-                    .on('postgres_changes', { 
-                        event: 'UPDATE', 
-                        schema: 'public', 
-                        table: 'calls',
-                        filter: `channel_name=eq.${channelName}`
-                    }, (payload) => {
-                        if (payload.new.status === 'ended' || payload.new.status === 'rejected' || payload.new.status === 'declined') {
-                            cleanup();
-                            // Calculate final duration dynamically to avoid stale closure state
-                            const finalDuration = callStartTimeRef.current ? Math.floor((Date.now() - callStartTimeRef.current) / 1000) : 0;
-                            onEnd(finalDuration, payload.new.status);
-                        }
-                        if (payload.new.status === 'active' && mounted) {
-                            setStatus('Connected');
-                            startTimer();
-                        }
-                        if (payload.new.status === 'ringing' && mounted) {
-                            setStatus('Ringing...');
-                        }
-                    })
-                    .subscribe();
-
-                return () => {
-                    supabase.removeChannel(channel);
-                };
 
             } catch (error) {
                 console.error('Call initialization error:', error);
@@ -220,7 +281,6 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 // Detailed Error Handling
                 if (error.code === 'PERMISSION_DENIED' || error.name === 'NotAllowedError') {
                     setStatus('⚠️ Camera/Mic access denied. Please allow perms.');
-                    // Optional: You could show a more prominent actionable button here
                 } else if (error.code === 'UID_CONFLICT') {
                     setStatus('Connection stuck. Please refresh the page.');
                 } else {
@@ -228,6 +288,7 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                 }
             }
         };
+
 
         const cleanup = async () => {
             if (!mounted) return; // Prevent double cleanup if possible, though refs protect us
@@ -237,6 +298,11 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             if (durationIntervalRef.current) {
                 clearInterval(durationIntervalRef.current);
                 durationIntervalRef.current = null;
+            }
+            
+            if (ringingTimeoutRef.current) {
+                clearTimeout(ringingTimeoutRef.current);
+                ringingTimeoutRef.current = null;
             }
 
             // Close local tracks - CRITICAL for simple hardware release
@@ -323,9 +389,12 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             clientRef.current = null;
         }
 
+        // Calculate final duration dynamically to avoid stale closure state
+        const finalDuration = callStartTimeRef.current ? Math.floor((Date.now() - callStartTimeRef.current) / 1000) : 0;
+
         // Determine final status
         // If Caller hung up before answer (duration 0), mark as missed/cancelled
-        const isMissed = !callData.isIncoming && callDuration === 0;
+        const isMissed = !callData.isIncoming && finalDuration === 0;
         const finalStatus = isMissed ? 'missed' : 'ended';
 
         // Update DB to end call
@@ -336,12 +405,20 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
             .update({ 
                 status: finalStatus,
                 ended_at: new Date().toISOString(),
-                duration_seconds: callDuration
+                duration_seconds: finalDuration
             })
             .eq('channel_name', channelName);
         
-        onEnd(callDuration, finalStatus);
+        if (!hasEndedRef.current) {
+            hasEndedRef.current = true;
+            onEnd(finalDuration, finalStatus);
+        }
     };
+
+    // Update ref so listener can access latest endCall logic
+    useEffect(() => {
+        endCallRef.current = endCall;
+    }, [endCall]);
 
     const formatDuration = (seconds) => {
         const mins = Math.floor(seconds / 60);

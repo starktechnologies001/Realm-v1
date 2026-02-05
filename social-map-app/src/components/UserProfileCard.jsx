@@ -7,13 +7,13 @@ import { supabase } from '../supabaseClient';
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); // 10 January 2026
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); // 3 Feb
 };
 
 const formatJoinDate = (dateStr) => {
      if (!dateStr) return 'N/A';
      const date = new Date(dateStr);
-     return date.toLocaleDateString('en-GB'); // 18/01/2026
+     return date.toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: '2-digit' }); // 3/6/26
 };
 
 
@@ -22,9 +22,66 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
 
     const [sharedMedia, setSharedMedia] = React.useState([]);
     const [previewImage, setPreviewImage] = React.useState(null);
+    const [details, setDetails] = React.useState({
+        bio: user.bio || "Loading...",
+        interests: user.interests || [],
+        birthDate: user.birthday || null,
+        joinedAt: user.created_at || null,
+        mutuals: 0,
+        username: user.username || user.name // fallback
+    });
 
+    // Fetch Details & Mutuals
     React.useEffect(() => {
-        if (user.friendshipStatus === 'accepted' && currentUser) {
+        if (!user || !currentUser) return;
+
+        const fetchExtendedDetails = async () => {
+             // 1. Fetch Profile Columns
+             const { data: profile } = await supabase
+                .from('profiles')
+                .select('bio, interests, birth_date, created_at, username, full_name')
+                .eq('id', user.id)
+                .maybeSingle();
+            
+             if (profile) {
+                 // 2. Calculate Mutuals (Mockable or expensive query)
+                 // Lightweight approach: Intersection of accepted friends
+                 // Note: Ideally this should be an RPC function.
+                 // For now, we'll do the client-side intersection if friend lists aren't too huge
+                 
+                 // Get MY friends
+                 const { data: myFriends } = await supabase.from('friendships')
+                    .select('receiver_id, requester_id')
+                    .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                    .eq('status', 'accepted');
+
+                 const myFriendIds = new Set(myFriends?.map(f => f.requester_id === currentUser.id ? f.receiver_id : f.requester_id) || []);
+
+                 // Get THEIR friends
+                 const { data: theirFriends } = await supabase.from('friendships')
+                    .select('receiver_id, requester_id')
+                    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
+                    .eq('status', 'accepted');
+                 
+                 const theirFriendIds = theirFriends?.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id) || [];
+                 
+                 const mutualCount = theirFriendIds.filter(id => myFriendIds.has(id)).length;
+
+                 setDetails({
+                     bio: profile.bio || "No bio available.",
+                     interests: profile.interests || [],
+                     birthDate: profile.birth_date,
+                     joinedAt: profile.created_at,
+                     mutuals: mutualCount,
+                     username: profile.username || user.name
+                 });
+             }
+        };
+
+        fetchExtendedDetails();
+
+        // 3. Fetch Media (Existing Logic)
+        if (user.friendshipStatus === 'accepted') {
             const fetchMedia = async () => {
                 const { data } = await supabase
                     .from('messages')
@@ -51,13 +108,12 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const avatarUrl = user.avatar || user.avatar_url || (user.gender === 'Male' ? DEFAULT_MALE_AVATAR : user.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR);
     const displayAvatar = getAvatar2D(avatarUrl);
 
-    // Fields
-    const bio = user.bio || "No bio available.";
-    const interests = user.interests || []; 
-    // const mutuals = user.mutuals_count || 0; // TODO: Calculate mutuals if possible, else 0
-    const mutuals = 0; 
-    const joinedDate = formatJoinDate(user.created_at); 
-    const birthday = user.birthday ? formatDate(user.birthday) : null;
+    // Fields from State
+    const bio = details.bio;
+    const interests = details.interests; 
+    const mutuals = details.mutuals; 
+    const joinedDate = formatJoinDate(details.joinedAt); 
+    const birthday = details.birthDate ? formatDate(details.birthDate) : null;
 
     return (
         <AnimatePresence>
@@ -119,6 +175,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         </div>
                         
                         <h2 className="user-name">{user.name}</h2>
+                        <span className="user-handle">@{details.username}</span>
                         
                         <div className="header-badges">
                             <div className="status-pill">
@@ -191,29 +248,17 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     {/* Actions */}
                     <div className="action-buttons-container">
                         {user.friendshipStatus === 'accepted' ? (
-                            <>
-                                <button 
-                                    className="btn-message-large"
-                                    onClick={() => onAction('message', user)}
-                                >
-                                    💬 Message
+                            <div className="action-row-icons">
+                                <button className="btn-icon-action primary" onClick={() => onAction('message', user)}>
+                                    <span style={{ fontSize: '1.5rem' }}>💬</span>
                                 </button>
-                                
-                                <div className="call-buttons-row">
-                                    <button 
-                                        className="btn-call"
-                                        onClick={() => onAction('call-audio', user)}
-                                    >
-                                        📞 Audio Call
-                                    </button>
-                                    <button 
-                                        className="btn-call"
-                                        onClick={() => onAction('call-video', user)}
-                                    >
-                                        📹 Video Call
-                                    </button>
-                                </div>
-                            </>
+                                <button className="btn-icon-action secondary" onClick={() => onAction('call-audio', user)}>
+                                    <span style={{ fontSize: '1.5rem' }}>📞</span>
+                                </button>
+                                <button className="btn-icon-action secondary" onClick={() => onAction('call-video', user)}>
+                                    <span style={{ fontSize: '1.5rem' }}>📹</span>
+                                </button>
+                            </div>
                         ) : (
                             <button 
                                 className="btn-message-large"
@@ -305,11 +350,15 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     .status-dot-large.offline { background: #666; }
 
                     .user-name { 
-                        font-size: 1.75rem; font-weight: 800; margin: 8px 0 0 0; 
+                        font-size: 1.75rem; font-weight: 800; margin: 8px 0 2px 0; 
                         letter-spacing: -0.5px;
                         background: linear-gradient(180deg, #fff 0%, #ddd 100%);
                         -webkit-background-clip: text;
                         -webkit-text-fill-color: transparent;
+                    }
+                    .user-handle {
+                        font-size: 0.95rem; color: rgba(255,255,255,0.5); 
+                        font-weight: 500; margin-bottom: 8px;
                     }
                     
                     .header-badges {
@@ -425,6 +474,35 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         backdrop-filter: blur(2px);
                         display: flex; align-items: center; justify-content: center;
                         color: white; font-size: 0.8rem; font-weight: 700;
+                    }
+
+                    .action-buttons-container { width: 100%; margin-bottom: 20px; }
+                    .action-row-icons {
+                        display: grid;
+                        grid-template-columns: repeat(3, 1fr);
+                        gap: 12px;
+                        width: 100%;
+                    }
+                    .btn-icon-action {
+                        padding: 16px;
+                        border-radius: 20px;
+                        border: none;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                        aspect-ratio: 1.25;
+                    }
+                    .btn-icon-action:active { transform: scale(0.92); }
+                    .btn-icon-action.primary {
+                        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+                        box-shadow: 0 8px 20px rgba(0, 114, 255, 0.3);
+                    }
+                    .btn-icon-action.secondary {
+                        background: rgba(255,255,255,0.08);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        color: white;
                     }
                 `}</style>
             </motion.div>

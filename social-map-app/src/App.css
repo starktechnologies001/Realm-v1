@@ -131,3 +131,30 @@
     accent-color: #34c759 !important; /* Green radio button */
     margin-right: 8px !important;
 }
+
+/* System Messages (Call Logs) */
+.msg-bubble.system-msg {
+    align-self: center !important;
+    background: rgba(128, 128, 128, 0.15) !important; /* Neutral system gray */
+    color: var(--text-primary) !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: fit-content !important;
+    max-width: 80% !important;
+    border-radius: 99px !important; /* Pill shape */
+    padding: 6px 16px !important;
+    margin: 8px auto !important;
+}
+
+/* Adjust text inside system bubble */
+.msg-bubble.system-msg .call-log-bubble {
+    justify-content: center;
+}
+
+/* Hide time meta for system messages if desired, or center it */
+.msg-bubble.system-msg .msg-meta {
+    justify-content: center !important;
+    margin-top: 2px;
+    font-size: 0.7em;
+    opacity: 0.6;
+}

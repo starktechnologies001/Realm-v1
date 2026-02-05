@@ -335,8 +335,8 @@ html[data-theme="dark"] .icon-delete {
 .toggle-switch {
     position: relative;
     display: inline-block;
-    width: 52px;
-    height: 28px;
+    width: 44px;
+    height: 24px;
     margin-left: auto;
 }
 
@@ -355,14 +355,14 @@ html[data-theme="dark"] .icon-delete {
     bottom: 0;
     background-color: #ccc;
     transition: 0.3s;
-    border-radius: 28px;
+    border-radius: 24px;
 }
 
 .toggle-slider:before {
     position: absolute;
     content: "";
-    height: 22px;
-    width: 22px;
+    height: 18px;
+    width: 18px;
     left: 3px;
     bottom: 3px;
     background-color: white;
@@ -376,7 +376,7 @@ html[data-theme="dark"] .icon-delete {
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(24px);
+    transform: translateX(20px);
 }
 
 .logout-btn {

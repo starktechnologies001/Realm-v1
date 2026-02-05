@@ -5,6 +5,8 @@ import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 export default function IncomingCallModal({ incomingCall, onAnswer, onReject, onRejectWithMessage }) {
     const [ringtoneAudio, setRingtoneAudio] = useState(null);
     const [showQuickReplies, setShowQuickReplies] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false); // New State
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const quickReplyMessages = [
         "I am busy right now, call you later",
@@ -28,48 +30,51 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
     }, []);
 
     // Cleanup audio when answering/rejecting
-    const handleAction = (action) => {
+    const handleAction = async (action) => {
+        if (isProcessing) return;
+        setIsProcessing(true);
         if (ringtoneAudio) {
             ringtoneAudio.pause();
             ringtoneAudio.currentTime = 0;
         }
-        action();
+        await action();
+        // Don't setProcessing(false) because component will unmount
     };
 
     const handleQuickReply = async (message) => {
+        if (isProcessing) return;
+        setIsProcessing(true);
+
         if (ringtoneAudio) {
             ringtoneAudio.pause();
             ringtoneAudio.currentTime = 0;
         }
 
         console.log('📱 [QuickReply] Starting quick reply process...');
-        console.log('📱 [QuickReply] Message:', message);
-        console.log('📱 [QuickReply] Caller ID:', incomingCall.caller_id);
-        console.log('📱 [QuickReply] Receiver ID:', incomingCall.receiver_id);
-
-        // First, reject the call (this will create the call log)
+        
+        // First, reject the call (this triggers the Caller to create the log)
         await onReject();
+        
+        // Poll for the call log (Caller creates it via Realtime, might take a moment)
+        let replyToId = null;
+        for (let i = 0; i < 5; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+            
+            const { data: recentMessages } = await supabase
+                .from('messages')
+                .select('id, created_at, content')
+                .eq('message_type', 'call_log')
+                .or(`and(sender_id.eq.${incomingCall.caller_id},receiver_id.eq.${incomingCall.receiver_id}),and(sender_id.eq.${incomingCall.receiver_id},receiver_id.eq.${incomingCall.caller_id})`)
+                .gt('created_at', new Date(Date.now() - 10000).toISOString()) // Created within last 10s
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-        // Wait a brief moment for the call log to be created
-        await new Promise(resolve => setTimeout(resolve, 800));
+            if (recentMessages?.[0]) {
+                replyToId = recentMessages[0].id;
+                break; // Found it!
+            }
+        }
 
-        // Then send the message as a reply to the call log
-        // We need to fetch the most recent call log message between these two users
-        const { data: recentMessages, error: fetchError } = await supabase
-            .from('messages')
-            .select('id, created_at, content')
-            .eq('message_type', 'call_log')
-            .or(`and(sender_id.eq.${incomingCall.caller_id},receiver_id.eq.${incomingCall.receiver_id}),and(sender_id.eq.${incomingCall.receiver_id},receiver_id.eq.${incomingCall.caller_id})`)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        console.log('📱 [QuickReply] Fetch error:', fetchError);
-        console.log('📱 [QuickReply] Recent call logs:', recentMessages);
-
-        const replyToId = recentMessages?.[0]?.id || null;
-        console.log('📱 [QuickReply] Replying to message ID:', replyToId);
-
-        // Send the selected message as a reply
         const { error } = await supabase.from('messages').insert({
             sender_id: incomingCall.receiver_id,
             receiver_id: incomingCall.caller_id,
@@ -78,18 +83,20 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
             reply_to_message_id: replyToId
         });
 
-        if (error) {
-            console.error("❌ [QuickReply] Error sending message:", error);
-        } else {
-            console.log("✅ [QuickReply] Message sent successfully!");
-        }
+        if (error) console.error("❌ [QuickReply] Error sending message:", error);
     };
 
     const avatarUrl = getAvatar2D(incomingCall.caller.avatar_url || incomingCall.caller.avatar);
 
     return (
-        <div className="incoming-call-banner-container">
-            <div className="incoming-call-banner glass-panel">
+        <div className={`incoming-call-banner-container ${isExpanded ? 'expanded-container' : ''}`}>
+            {/* Backdrop for expanded mode */}
+            {isExpanded && <div className="expanded-backdrop" />}
+
+            <div 
+                className={`incoming-call-banner glass-panel ${isExpanded ? 'expanded' : ''}`}
+                onClick={() => !isExpanded && setIsExpanded(true)}
+            >
                 <div className="banner-content">
                     <div className="avatar-wrapper">
                         <img 
@@ -108,11 +115,13 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     </div>
                 </div>
                 
-                <div className="banner-actions">
+                <div className="banner-actions" onClick={e => e.stopPropagation()}>
                     <button 
                         className="banner-btn decline" 
                         onClick={() => handleAction(onReject)}
                         title="Decline"
+                        disabled={isProcessing}
+                        style={{ opacity: isProcessing ? 0.6 : 1 }}
                     >
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
@@ -137,7 +146,7 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
 
             {/* Quick Reply Popup */}
             {showQuickReplies && (
-                <div className="quick-reply-popup">
+                <div className="quick-reply-popup" onClick={e => e.stopPropagation()}>
                     <div className="quick-reply-header">
                         <span>Quick Reply</span>
                         <button 
@@ -150,7 +159,10 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                             <button
                                 key={idx}
                                 className="quick-reply-option"
-                                onClick={() => handleQuickReply(msg)}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickReply(msg);
+                                }}
                             >
                                 {msg}
                             </button>
@@ -167,6 +179,16 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     pointer-events: none;
                     padding: 0 12px;
                     gap: 12px;
+                    transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+                }
+                
+                .incoming-call-banner-container.expanded-container {
+                    top: 0; bottom: 0;
+                    padding: 0;
+                    justify-content: center;
+                    background: rgba(0,0,0,0.8);
+                    pointer-events: auto;
+                    backdrop-filter: blur(8px);
                 }
                 
                 .incoming-call-banner {
@@ -180,6 +202,21 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     width: 100%; max-width: 440px;
                     animation: slideDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
                     color: white;
+                    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+                }
+
+                .incoming-call-banner.expanded {
+                    flex-direction: column;
+                    justify-content: center;
+                    width: 100%;
+                    max-width: 100%;
+                    height: 100%;
+                    border-radius: 0;
+                    background: transparent;
+                    border: none;
+                    box-shadow: none;
+                    padding: 40px;
+                    gap: 60px;
                 }
                 
                 @keyframes slideDown { 
@@ -191,17 +228,31 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     display: flex; align-items: center; gap: 14px;
                     flex: 1;
                     min-width: 0;
+                    transition: all 0.4s ease;
+                }
+
+                .expanded .banner-content {
+                    flex-direction: column;
+                    flex: initial;
+                    gap: 24px;
+                    text-align: center;
                 }
                 
                 .avatar-wrapper {
                     position: relative;
                     width: 48px; height: 48px;
+                    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+                }
+
+                .expanded .avatar-wrapper {
+                    width: 160px; height: 160px;
                 }
                 
                 .banner-avatar {
                     width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
                     background: #444;
                     position: relative; z-index: 2;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
                 }
                 
                 .pulsing-ring {
@@ -226,15 +277,31 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 .banner-text h3 {
                     margin: 0; font-size: 1.05rem; font-weight: 600; color: white;
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    transition: all 0.3s ease;
+                }
+
+                .expanded .banner-text h3 {
+                    font-size: 2rem;
+                    margin-bottom: 8px;
                 }
                 
                 .call-type {
                     margin: 2px 0 0 0; font-size: 0.85rem; color: #4CAF50;
                     font-weight: 500; letter-spacing: 0.3px;
+                    transition: all 0.3s ease;
+                }
+
+                .expanded .call-type {
+                    font-size: 1.2rem;
                 }
                 
                 .banner-actions {
                     display: flex; gap: 12px; align-items: center;
+                    transition: all 0.4s ease;
+                }
+                
+                .expanded .banner-actions {
+                    gap: 40px;
                 }
                 
                 .banner-btn {
@@ -244,6 +311,14 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                     cursor: pointer; transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
                     color: white;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                }
+
+                .expanded .banner-btn {
+                    width: 72px; height: 72px;
+                }
+
+                .expanded .banner-btn svg {
+                    width: 36px; height: 36px;
                 }
                 
                 .banner-btn:active { transform: scale(0.92); }
@@ -255,7 +330,11 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 
                 .banner-btn.message {
                     background: #3a3a3c;
-                    width: 40px; height: 40px; /* Slightly smaller */
+                    width: 40px; height: 40px; 
+                }
+
+                .expanded .banner-btn.message {
+                    width: 56px; height: 56px;
                 }
                 
                 .banner-btn.accept {
@@ -265,34 +344,49 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 /* Quick Reply Popup */
                 .quick-reply-popup {
                     pointer-events: auto;
-                    background: #2e2e2e;
+                    background: #202020;
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px;
+                    border-radius: 20px;
                     width: 100%; max-width: 440px;
                     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-                    animation: slideDown 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    animation: slideUpPopup 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
                     overflow: hidden;
+                    position: relative; 
+                    z-index: 11001;
+                }
+
+                .expanded-container .quick-reply-popup {
+                    position: absolute;
+                    bottom: 40px;
+                    width: 90%;
+                    max-width: 380px;
+                }
+                
+                @keyframes slideUpPopup {
+                    from { transform: translateY(100%); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
                 }
 
                 .quick-reply-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 14px 18px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 16px 20px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    background: rgba(255,255,255,0.03);
                     color: white;
                     font-weight: 600;
-                    font-size: 0.95rem;
+                    font-size: 1rem;
                 }
 
                 .close-btn {
-                    background: none;
+                    background: rgba(255,255,255,0.1);
                     border: none;
-                    color: rgba(255, 255, 255, 0.6);
-                    font-size: 28px;
+                    color: white;
+                    font-size: 20px;
                     cursor: pointer;
-                    width: 32px;
-                    height: 32px;
+                    width: 28px;
+                    height: 28px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -303,33 +397,34 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 }
 
                 .close-btn:hover {
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
+                    background: rgba(255, 255, 255, 0.2);
                 }
 
                 .quick-reply-options {
                     display: flex;
                     flex-direction: column;
-                    padding: 8px;
-                    gap: 6px;
+                    padding: 16px;
+                    gap: 10px;
+                    max-height: 300px;
+                    overflow-y: auto;
                 }
 
                 .quick-reply-option {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 14px 16px;
+                    background: #3a3a3c; /* iMessage gray style */
+                    border: none;
+                    border-radius: 18px;
+                    padding: 12px 16px;
                     color: white;
-                    font-size: 0.9rem;
+                    font-size: 0.95rem;
                     cursor: pointer;
                     transition: all 0.2s;
                     text-align: left;
+                    line-height: 1.4;
                 }
 
                 .quick-reply-option:hover {
-                    background: rgba(255, 255, 255, 0.1);
-                    border-color: rgba(255, 255, 255, 0.2);
-                    transform: translateX(4px);
+                    background: #4a4a4c;
+                    transform: scale(1.02);
                 }
 
                 .quick-reply-option:active {
