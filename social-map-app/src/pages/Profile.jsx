@@ -631,6 +631,28 @@ export default function Profile() {
                         </label>
                     </div>
 
+                    <div className="menu-item toggle-item">
+                        <span className="menu-icon-wrapper" style={{ background: 'rgba(128, 90, 213, 0.15)', color: '#805AD5' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        </span>
+                        <div className="menu-content">
+                            <span className="menu-label">Ghost Mode</span>
+                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: user.is_ghost_mode ? '#805AD5' : 'var(--text-secondary)', marginTop: '2px' }}>
+                                {user.is_ghost_mode ? 'No one can see you' : 'Visible to others'}
+                            </span>
+                        </div>
+                        <label className="toggle-switch">
+                            <input 
+                                type="checkbox" 
+                                checked={user.is_ghost_mode || false}
+                                onChange={async (e) => {
+                                    await updateProfile({ is_ghost_mode: e.target.checked });
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>}
                         label="Notifications"
@@ -685,7 +707,7 @@ export default function Profile() {
                 </div>
 
                 {/* Section: Support & Safety */}
-                <div className="section-label">Safety</div>
+                <div className="section-label">Legal & Safety</div>
                 <div className="menu-group">
                     <MenuItem 
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>}
@@ -699,6 +721,28 @@ export default function Profile() {
                         label="Safety Center" 
                         hasArrow 
                         iconClass="icon-safety"
+                        onClick={() => navigate('/legal/safety')}
+                    />
+                    <MenuItem 
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>}
+                        label="Community Guidelines" 
+                        hasArrow 
+                        iconClass="icon-safety"
+                        onClick={() => navigate('/legal/guidelines')}
+                    />
+                    <MenuItem 
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/><path d="M12 2v2"/></svg>}
+                        label="Privacy Policy" 
+                        hasArrow 
+                        iconClass="icon-safety"
+                        onClick={() => navigate('/legal/privacy')}
+                    />
+                    <MenuItem 
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>}
+                        label="Terms of Service" 
+                        hasArrow 
+                        iconClass="icon-safety"
+                        onClick={() => navigate('/legal/terms')}
                     />
                     <div className="divider" style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0 16px' }}></div>
                     <MenuItem
@@ -714,7 +758,7 @@ export default function Profile() {
                     Log Out
                 </button>
 
-                <div className="version-info">RealMM v1.0.3</div>
+                <div className="version-info">Nearo v1.0.0</div>
             </div>
 
             {/* Public Profile Confirmation Modal */}

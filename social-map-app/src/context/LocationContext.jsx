@@ -52,50 +52,69 @@ export function LocationProvider({ children }) {
         }
 
         if ('geolocation' in navigator) {
-            watchIdRef.current = navigator.geolocation.watchPosition(
-                async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    const newLoc = { lat: latitude, lng: longitude };
-                    
-                    setUserLocation(newLoc);
+            const startWatch = (highAccuracy = true) => {
+                watchIdRef.current = navigator.geolocation.watchPosition(
+                    async (position) => {
+                        const { latitude, longitude } = position.coords;
+                        const newLoc = { lat: latitude, lng: longitude };
+                        setUserLocation(newLoc);
 
-                    // DB Update Logic (Throttled)
-                    const now = Date.now();
-                    const TIME_THRESHOLD = 30000; // 30 seconds
-                    const DIST_THRESHOLD = 0.02; // 20 meters
-
-                    const timeDiff = now - lastDbUpdateRef.current;
-                    let distDiff = 100; // Force update if no last location
-                    
-                    if (lastLocationRef.current) {
-                        distDiff = getDistanceKm(lastLocationRef.current.lat, lastLocationRef.current.lng, latitude, longitude);
-                    }
-
-                    // Update DB if: Time > 30s OR Moved > 20m
-                    if (timeDiff > TIME_THRESHOLD || distDiff > DIST_THRESHOLD) {
-                        lastDbUpdateRef.current = now;
-                        lastLocationRef.current = newLoc;
-
-                        const { data: { session } } = await supabase.auth.getSession();
-                        if (session?.user) {
-                             // Update Profile
-                             console.log('📍 Syncing Location to DB:', newLoc);
-                             await supabase.from('profiles').update({ 
-                                 last_location: `POINT(${longitude} ${latitude})`,
-                                 last_active: new Date().toISOString()
-                             }).eq('id', session.user.id);
+                        // DB Update Logic (Throttled)
+                        const now = Date.now();
+                        const timeDiff = now - lastDbUpdateRef.current;
+                        
+                        // Smart throttling: Update if >30s or >20m moved
+                        if (timeDiff > 30000) {
+                            lastDbUpdateRef.current = now;
+                            lastLocationRef.current = newLoc;
+                            
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (session?.user) {
+                                // Combined Update
+                                await supabase.from('profiles').update({ 
+                                    latitude: newLoc.lat,
+                                    longitude: newLoc.lng,
+                                    last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                                    last_active: new Date().toISOString()
+                                }).eq('id', session.user.id);
+                            }
                         }
+                    },
+                    async (err) => {
+                        // Suppress transient errors
+                        if (err.code === 1) { // PERMISSION_DENIED
+                            console.error("Location Permission Denied. Clearing location from DB.");
+                            
+                            // Explicitly HIDE user from map if they revoke permission
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (session?.user) {
+                                await supabase.from('profiles').update({ 
+                                    latitude: null,
+                                    longitude: null,
+                                    last_location: null,
+                                    last_active: new Date().toISOString()
+                                }).eq('id', session.user.id);
+                            }
+                            
+                            setPermissionStatus('denied'); // Sync local status
+                        } else if ((err.code === 2 || err.code === 3) && highAccuracy) { 
+                            // If High Accuracy fails, downgrade to Low Accuracy automatically
+                            console.log("📍 Location: High accuracy failed, switching to low accuracy...");
+                            navigator.geolocation.clearWatch(watchIdRef.current);
+                            startWatch(false); // Restart with low accuracy
+                        } else {
+                            // Already on low accuracy or other error - just silence it to avoid spam
+                        }
+                    },
+                    {
+                        enableHighAccuracy: highAccuracy,
+                        timeout: 20000,
+                        maximumAge: 10000
                     }
-                },
-                (err) => {
-                    console.error("Location Watch Error:", err);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 20000,
-                    maximumAge: 5000
-                }
-            );
+                );
+            };
+
+            startWatch(true); // Start with high accuracy
         }
 
         return () => {

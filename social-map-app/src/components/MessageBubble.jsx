@@ -1,5 +1,6 @@
 import React, { useRef, memo, useEffect } from 'react';
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion';
+import MessageStatusTick from './MessageStatusTick';
 
 const MessageBubble = memo(({ 
     msg, 
@@ -96,7 +97,6 @@ const MessageBubble = memo(({
 
     return (
         <React.Fragment>
-            {dateHeader}
             {dateHeader}
             <motion.div 
                 className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${isHighlighted ? 'message-highlight' : ''} ${msg.message_type === 'call_log' ? 'system-msg' : ''}`}
@@ -315,18 +315,15 @@ const MessageBubble = memo(({
                         })()}
                     </div>
                 ) : (
-                    <div className="msg-text">{msg.content}</div>
+                    <div className="msg-text-container">
+                        <span className="msg-text">{msg.content}</span>
+                        <span className="msg-time-inline">{formatTime(msg.created_at)}</span>
+                        <MessageStatusTick 
+                            status={msg.delivery_status || (msg.is_read ? 'seen' : 'delivered')} 
+                            isSender={isMe} 
+                        />
+                    </div>
                 )}
-                
-                {/* Meta info (Time + Status) */}
-                <div className="msg-meta">
-                    <span className="msg-time">{formatTime(msg.created_at)}</span>
-                    {isMe && (
-                        <span className={`msg-status ${msg.is_read ? 'read' : ''}`}>
-                             {msg.sending ? '🕐' : (msg.is_read || msg.delivered_at) ? '✓✓' : '✓'}
-                        </span>
-                    )}
-                </div>
             </motion.div>
         </React.Fragment>
     );

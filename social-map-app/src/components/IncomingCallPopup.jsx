@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { acceptCall, declineCall } from '../services/callSignalingService';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { supabase } from '../supabaseClient';
 
 const IncomingCallPopup = ({ call, onAccept, onDecline, onDismiss }) => {
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const audioRef = useRef(null);
   const timeoutRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Play ringtone
@@ -45,7 +48,58 @@ const IncomingCallPopup = ({ call, onAccept, onDecline, onDismiss }) => {
     if (audioRef.current) {
       audioRef.current.pause();
     }
+    
+    // Decline the call first
     await declineCall(call.session_id, reason);
+    
+    // If a reason is provided, navigate to chat with the decline message in reply form
+    if (reason) {
+      // Wait a bit for the call log to be created by CallContext
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Try to find the call log message with retry logic
+      let callLogMessage = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!callLogMessage && attempts < maxAttempts) {
+        const { data: messages } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('message_type', 'call_log')
+          .or(`and(sender_id.eq.${call.caller.id},receiver_id.eq.${call.caller.id}),and(sender_id.eq.${call.caller.id},receiver_id.eq.${call.caller.id})`)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        // Find the most recent declined call log message
+        callLogMessage = messages?.find(msg => {
+          try {
+            const content = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+            return (content.status === 'declined' || content.status === 'rejected') && 
+                   msg.created_at > new Date(Date.now() - 5000).toISOString(); // Within last 5 seconds
+          } catch {
+            return false;
+          }
+        });
+        
+        if (!callLogMessage && attempts < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        attempts++;
+      }
+      
+      console.log('📞 Found call log message:', callLogMessage);
+      
+      // Navigate to chat with reply context
+      navigate('/chat', {
+        state: {
+          targetUser: call.caller,
+          replyToMessage: callLogMessage,
+          quickReplyText: reason
+        }
+      });
+    }
+    
     onDecline();
   };
 

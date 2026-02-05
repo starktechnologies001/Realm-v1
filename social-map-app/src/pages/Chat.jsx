@@ -22,7 +22,7 @@ import StoryViewer from '../components/StoryViewer';
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 
-const APP_ID = "ef79b1bdb8f94b7e990ff633799b7c10"; // User Provided App ID
+const APP_ID = import.meta.env.VITE_AGORA_APP_ID; // Moved to environment variable for security
 
 // Chat Theme Configuration
 const CHAT_THEMES = {
@@ -84,6 +84,12 @@ export default function Chat() {
     const [loading, setLoading] = useState(() => {
         return !localStorage.getItem('cached_chats_list');
     });
+    
+    // Selection mode for chat deletion
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedChats, setSelectedChats] = useState(new Set());
+    const longPressTimerRef = useRef(null);
+    
     const navigate = useNavigate();
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
@@ -480,6 +486,24 @@ export default function Chat() {
         };
     }, [currentUser]);
 
+    // Offline -> Online Sync: Mark pending messages as delivered
+    useEffect(() => {
+        const markAllAsDelivered = async () => {
+            if (currentUser && connectionStatus === 'connected') {
+                await supabase
+                    .from('messages')
+                    .update({ 
+                        delivery_status: 'delivered', 
+                        delivered_at: new Date().toISOString() 
+                    })
+                    .eq('receiver_id', currentUser.id)
+                    .eq('delivery_status', 'sent');
+            }
+        };
+        
+        markAllAsDelivered();
+    }, [currentUser, connectionStatus]);
+
 
 
     const initChat = async () => {
@@ -609,6 +633,8 @@ export default function Chat() {
                 currentUser={currentUser}
                 targetUser={activeChatUser}
                 allChats={chats} // Pass chats for forwarding
+                replyToMessage={location.state?.replyToMessage} // Pass reply context from navigation
+                quickReplyText={location.state?.quickReplyText} // Pass quick reply text from navigation
                 onBack={() => {
                     setActiveChatUser(null);
                     // Refresh chat list to show latent changes if any
@@ -627,9 +653,14 @@ export default function Chat() {
         ));
 
         // Update Database in background
+        const now = new Date().toISOString();
         await supabase
             .from('messages')
-            .update({ is_read: true })
+            .update({ 
+                is_read: true,
+                delivery_status: 'seen',
+                seen_at: now
+            })
             .eq('sender_id', senderId)
             .eq('receiver_id', receiverId)
             .eq('is_read', false)
@@ -649,7 +680,8 @@ export default function Chat() {
     return (
         <>
             <ChatList 
-                chats={chats} 
+                chats={chats}
+                setChats={setChats}
                 onSelectChat={handleSelectChat} 
                 onSelectStory={setSelectedStoryUser}
                 loading={loading} 
@@ -673,9 +705,83 @@ export default function Chat() {
     );
 }
 
-function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger }) {
+function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('messages');
+    
+    // Selection mode for chat deletion
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedChats, setSelectedChats] = useState(new Set());
+    const longPressTimerRef = useRef(null);
+    
+    // Long-press handlers
+    const handleTouchStart = (chatId) => {
+        if (selectionMode) return; // Already in selection mode
+        
+        longPressTimerRef.current = setTimeout(() => {
+            // Vibrate if supported
+            if (navigator.vibrate) navigator.vibrate(50);
+            
+            setSelectionMode(true);
+            setSelectedChats(new Set([chatId]));
+        }, 1000); // 1 second
+    };
+    
+    const handleTouchEnd = () => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    };
+    
+    const handleChatItemClick = (chat) => {
+        if (selectionMode) {
+            // Toggle selection
+            const newSelected = new Set(selectedChats);
+            if (newSelected.has(chat.id)) {
+                newSelected.delete(chat.id);
+            } else {
+                newSelected.add(chat.id);
+            }
+            setSelectedChats(newSelected);
+        } else {
+            // Normal chat open
+            onSelectChat(chat);
+        }
+    };
+    
+    const handleDeleteChats = async () => {
+        if (!currentUser || selectedChats.size === 0) return;
+        
+        const confirmed = window.confirm(`Delete ${selectedChats.size} chat${selectedChats.size > 1 ? 's' : ''}? All messages will be permanently deleted.`);
+        if (!confirmed) return;
+        
+        try {
+            // Delete all messages for selected chats
+            for (const chatId of selectedChats) {
+                await supabase
+                    .from('messages')
+                    .delete()
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUser.id})`);
+            }
+            
+            // Immediately update UI by filtering out deleted chats
+            setChats(prevChats => prevChats.filter(chat => !selectedChats.has(chat.id)));
+            
+            // Exit selection mode
+            setSelectionMode(false);
+            setSelectedChats(new Set());
+            
+        } catch (error) {
+            console.error('Error deleting chats:', error);
+            alert('Failed to delete chats. Please try again.');
+        }
+    };
+    
+    const handleCancelSelection = () => {
+        setSelectionMode(false);
+        setSelectedChats(new Set());
+    };
     
     // Filter chats
     const filteredChats = chats?.filter(c => 
@@ -687,10 +793,28 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
             {/* Header */}
             <header className="glass-header">
                 <div className="header-top">
-                    <h1>Chats</h1>
-                    <div className="header-actions">
-                        {/* Status and Settings removed as per user request */}
-                    </div>
+                    {selectionMode ? (
+                        <>
+                            <button className="cancel-selection-btn" onClick={handleCancelSelection}>
+                                Cancel
+                            </button>
+                            <h1>{selectedChats.size} selected</h1>
+                            <button 
+                                className="delete-selection-btn" 
+                                onClick={handleDeleteChats}
+                                disabled={selectedChats.size === 0}
+                            >
+                                🗑️ Delete
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <h1>Chats</h1>
+                            <div className="header-actions">
+                                {/* Status and Settings removed as per user request */}
+                            </div>
+                        </>
+                    )}
             </div>
                 
                 {/* Tabs */}
@@ -743,9 +867,24 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                     filteredChats.map(chat => (
                         <div 
                             key={chat.id} 
-                            className={`chat-item ${chat.unread > 0 ? 'unread' : ''}`}
-                            onClick={() => onSelectChat(chat)}
+                            className={`chat-item ${chat.unread > 0 ? 'unread' : ''} ${selectionMode && selectedChats.has(chat.id) ? 'selected' : ''}`}
+                            onClick={() => handleChatItemClick(chat)}
+                            onTouchStart={() => handleTouchStart(chat.id)}
+                            onTouchEnd={handleTouchEnd}
+                            onMouseDown={() => handleTouchStart(chat.id)}
+                            onMouseUp={handleTouchEnd}
+                            onMouseLeave={handleTouchEnd}
                         >
+                            {selectionMode && (
+                                <div className="selection-checkbox">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedChats.has(chat.id)}
+                                        onChange={() => {}} // Handled by parent click
+                                    />
+                                </div>
+                            )}
+                            
                             <div className="avatar-wrapper">
                                 <img 
                                     src={chat.avatar} 
@@ -911,6 +1050,43 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 .chat-item:last-child {
                     border-bottom: none;
                 }
+                
+                .chat-item.selected {
+                    background-color: rgba(0, 132, 255, 0.1);
+                }
+                
+                .selection-checkbox {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                
+                .selection-checkbox input[type="checkbox"] {
+                    width: 22px;
+                    height: 22px;
+                    cursor: pointer;
+                    accent-color: var(--accent-blue);
+                }
+                
+                .cancel-selection-btn,
+                .delete-selection-btn {
+                    background: none;
+                    border: none;
+                    color: var(--accent-blue);
+                    font-size: 16px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    padding: 8px 12px;
+                }
+                
+                .delete-selection-btn:disabled {
+                    opacity: 0.4;
+                    cursor: not-allowed;
+                }
+                
+                .delete-selection-btn {
+                    color: #ff3b30;
+                }
 
                 .avatar-wrapper {
                     position: relative;
@@ -978,7 +1154,9 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 }
 
                 .chat-item.unread {
-                    background-color: rgba(33, 150, 243, 0.08);
+                    background: linear-gradient(90deg, rgba(66, 133, 244, 0.08) 0%, rgba(66, 133, 244, 0.02) 100%);
+                    border-left: 3px solid #4285F4;
+                    padding-left: 17px; /* Compensate for border */
                 }
 
                 .chat-item.unread .chat-name {
@@ -987,16 +1165,18 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 }
                 .chat-item.unread .chat-preview {
                     color: var(--text-primary) !important;
-                    font-weight: 700; /* Increased bold */
+                    font-weight: 600; /* Slightly less bold than name */
                 }
 
                 /* Dark mode unread background highlight */
                 html[data-theme="dark"] .chat-item.unread {
-                    background-color: rgba(255, 255, 255, 0.08) !important;
+                    background: linear-gradient(90deg, rgba(66, 133, 244, 0.12) 0%, rgba(66, 133, 244, 0.03) 100%) !important;
+                    border-left-color: #5a9fff;
                 }
                 @media (prefers-color-scheme: dark) {
                     html[data-theme="system"] .chat-item.unread {
-                         background-color: rgba(255, 255, 255, 0.08) !important;
+                         background: linear-gradient(90deg, rgba(66, 133, 244, 0.12) 0%, rgba(66, 133, 244, 0.03) 100%) !important;
+                         border-left-color: #5a9fff;
                     }
                 }
 
@@ -1006,6 +1186,7 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                 }
                 html[data-theme="dark"] .chat-item.unread .chat-preview {
                     color: #ffffff !important;
+                    font-weight: 600;
                 }
 
                 @media (prefers-color-scheme: dark) {
@@ -1014,6 +1195,7 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
                     }
                     html[data-theme="system"] .chat-item.unread .chat-preview {
                         color: #ffffff !important;
+                        font-weight: 600;
                     }
                 }
 
@@ -1086,7 +1268,7 @@ function ChatList({ chats, onSelectChat, onSelectStory, loading, currentUser, co
 
 
 
-function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
+function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: initialReplyToMessage, quickReplyText: initialQuickReplyText }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
@@ -1187,6 +1369,22 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
     
     // Reply-to message state
     const [replyToMessage, setReplyToMessage] = useState(null);
+    
+    // Handle reply context from props (passed from parent Chat component via navigation state)
+    useEffect(() => {
+        if (initialReplyToMessage) {
+            console.log('📞 Setting reply context from props:', initialReplyToMessage);
+            setReplyToMessage(initialReplyToMessage);
+        }
+        if (initialQuickReplyText) {
+            console.log('📞 Setting quick reply text from props:', initialQuickReplyText);
+            setInput(initialQuickReplyText);
+            // Focus the input field
+            setTimeout(() => {
+                messageInputRef.current?.focus();
+            }, 300);
+        }
+    }, [initialReplyToMessage, initialQuickReplyText]);
     
     // Message context menu state (long-press)
     // Message context menu state (long-press) REPLACED by Selection Mode
@@ -1808,11 +2006,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     )
                 `)
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: false }) // Get most recent first
+                .limit(100); // Limit to 100 most recent messages for performance
 
             if (!error && data) {
+                // Reverse to show oldest first (chronological order)
+                const reversedData = [...data].reverse();
+                
                 // Filter out messages deleted by current user
-                const filteredMessages = data.filter(msg => {
+                const filteredMessages = reversedData.filter(msg => {
                     const deletedFor = msg.deleted_for || [];
                     return !deletedFor.includes(currentUser.id);
                 });
@@ -1898,8 +2100,30 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     // This avoids 400 errors from RLS policies
                     
                     // Set delivered_at for sender (skip system messages)
+                    // Set delivered_at for sender (skip system messages)
                     if (payload.new.message_type !== 'system') {
-                        await supabase.from('messages').update({ delivered_at: new Date().toISOString() }).eq('id', payload.new.id);
+                        // If I am the receiver and I'm currently looking at this chat, mark as SEEN
+                        if (String(payload.new.receiver_id) === String(currentUser.id)) {
+                             const now = new Date().toISOString();
+                             await supabase
+                                .from('messages')
+                                .update({ 
+                                    is_read: true, 
+                                    delivery_status: 'seen', 
+                                    seen_at: now,
+                                    delivered_at: now 
+                                })
+                                .eq('id', payload.new.id);
+                        } else {
+                            // Just mark as delivered
+                            await supabase
+                                .from('messages')
+                                .update({ 
+                                    delivery_status: 'delivered', 
+                                    delivered_at: new Date().toISOString() 
+                                })
+                                .eq('id', payload.new.id);
+                        }
                     }
                 }
             })
@@ -1940,9 +2164,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                         // Remove message if it's now deleted for me
                         return prev.filter(m => m.id !== updatedMessage.id);
                     }
-                    // Otherwise update it
+                    // Otherwise update it, but merge to preserve joined data (attachments, reply_to)
                     console.log('💬 [Chat] Updating message in state:', updatedMessage.id);
-                    return prev.map(m => m.id === updatedMessage.id ? updatedMessage : m);
+                    return prev.map(m => m.id === updatedMessage.id ? { ...m, ...updatedMessage } : m);
                 });
             })
             .subscribe((status) => {
@@ -2097,6 +2321,19 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
         if (!textToSend.trim() && type === 'text' && !imageUrl) return;
 
         const tempId = `temp_${Date.now()}_${Math.random()}`;
+        
+        // Check if receiver is online (last_active within 1 minute)
+        const { data: receiverProfile } = await supabase
+            .from('profiles')
+            .select('last_active')
+            .eq('id', targetUser.id)
+            .single();
+        
+        const isReceiverOnline = receiverProfile?.last_active && 
+            (new Date() - new Date(receiverProfile.last_active)) < 60000;
+        
+        const initialStatus = isReceiverOnline ? 'delivered' : 'sent';
+        
         const optimisticMessage = {
             tempId,
             sender_id: currentUser.id,
@@ -2106,7 +2343,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             image_url: imageUrl,
             created_at: new Date().toISOString(),
             is_read: false,
-            delivered_at: null,
+            delivery_status: initialStatus,
+            delivered_at: isReceiverOnline ? new Date().toISOString() : null,
             sending: true, // Flag for UI
             reply_to_message_id: replyToMessage?.id || null,
             reply_to: replyToMessage ? {
@@ -2133,7 +2371,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
             content: optimisticMessage.content,
             message_type: type,
             image_url: imageUrl,
-            is_read: true,
+            is_read: false,
+            delivery_status: initialStatus,
+            delivered_at: isReceiverOnline ? new Date().toISOString() : null,
             reply_to_message_id: replyId
         }).select();
 
@@ -3532,11 +3772,25 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     flex-wrap: wrap;
                 }
                 
+                .msg-text-container {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                }
+                
                 .msg-text { 
                     display: inline;
                     line-height: 1.4;
                     flex: 1;
                     min-width: 0;
+                }
+                
+                .msg-time-inline {
+                    font-size: 0.65rem;
+                    opacity: 0.6;
+                    white-space: nowrap;
+                    margin-left: 4px;
                 }
                 
                 .msg-time { 
@@ -3550,6 +3804,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats }) {
                     font-size: 0.7rem;
                     opacity: 0.7;
                     white-space: nowrap;
+                    margin-left: 2px;
                 }
                 
                 .msg-status.read { color: currentColor; font-weight: bold; opacity: 1; }

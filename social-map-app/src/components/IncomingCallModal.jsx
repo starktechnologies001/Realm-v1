@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 
@@ -7,6 +8,7 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
     const [showQuickReplies, setShowQuickReplies] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false); // New State
     const [isProcessing, setIsProcessing] = useState(false);
+    const navigate = useNavigate();
 
     const quickReplyMessages = [
         "I am busy right now, call you later",
@@ -55,14 +57,18 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
         // First, reject the call (this triggers the Caller to create the log)
         await onReject();
         
+        // Wait a bit for the call log to be created by CallContext
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Poll for the call log (Caller creates it via Realtime, might take a moment)
-        let replyToId = null;
-        for (let i = 0; i < 5; i++) {
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
-            
+        let callLogMessage = null;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (!callLogMessage && attempts < maxAttempts) {
             const { data: recentMessages } = await supabase
                 .from('messages')
-                .select('id, created_at, content')
+                .select('*')
                 .eq('message_type', 'call_log')
                 .or(`and(sender_id.eq.${incomingCall.caller_id},receiver_id.eq.${incomingCall.receiver_id}),and(sender_id.eq.${incomingCall.receiver_id},receiver_id.eq.${incomingCall.caller_id})`)
                 .gt('created_at', new Date(Date.now() - 10000).toISOString()) // Created within last 10s
@@ -70,20 +76,38 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                 .limit(1);
 
             if (recentMessages?.[0]) {
-                replyToId = recentMessages[0].id;
+                callLogMessage = recentMessages[0];
+                console.log('📞 Found call log message:', callLogMessage);
                 break; // Found it!
             }
+            
+            if (attempts < maxAttempts - 1) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            attempts++;
         }
 
+        // Send the message automatically
         const { error } = await supabase.from('messages').insert({
             sender_id: incomingCall.receiver_id,
             receiver_id: incomingCall.caller_id,
             content: message,
             message_type: 'text',
-            reply_to_message_id: replyToId
+            reply_to_message_id: callLogMessage?.id || null
         });
 
-        if (error) console.error("❌ [QuickReply] Error sending message:", error);
+        if (error) {
+            console.error("❌ [QuickReply] Error sending message:", error);
+        } else {
+            console.log("✅ [QuickReply] Message sent successfully");
+        }
+
+        // Navigate to chat to show the sent message
+        navigate('/chat', {
+            state: {
+                targetUser: incomingCall.caller
+            }
+        });
     };
 
     const avatarUrl = getAvatar2D(incomingCall.caller.avatar_url || incomingCall.caller.avatar);

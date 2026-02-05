@@ -498,7 +498,7 @@ useEffect(() => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1 className="app-title">SocialMap</h1>
+        <h1 className="app-title">Nearo</h1>
         <p className="app-subtitle">
           {isSignUp ? "Create your profile" : "Welcome Back"}
         </p>

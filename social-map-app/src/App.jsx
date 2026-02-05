@@ -10,7 +10,9 @@ import ConfirmEmail from './pages/ConfirmEmail';
 import UpdatePassword from './pages/UpdatePassword';
 import OAuthProfileSetup from './pages/OAuthProfileSetup';
 import BlockedUsers from './pages/BlockedUsers';
+import LegalPage from './pages/LegalPage';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
 
 import { CallProvider } from './context/CallContext';
@@ -78,32 +80,35 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider>
-      <LocationProvider>
-        <Router>
-          <CallProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Login />} />
+    <ErrorBoundary>
+      <ThemeProvider>
+        <LocationProvider>
+          <Router>
+            <CallProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Login />} />
 
-            {/* Protected Routes with Bottom Nav */}
-            <Route element={<Layout />}>
-              <Route path="/map" element={<MapHome />} />
-              <Route path="/friends" element={<Friends />} />
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/profile" element={<Profile />} />
-            </Route>
+              {/* Protected Routes with Bottom Nav */}
+              <Route element={<Layout />}>
+                <Route path="/map" element={<MapHome />} />
+                <Route path="/friends" element={<Friends />} />
+                <Route path="/chat" element={<Chat />} />
+                <Route path="/profile" element={<Profile />} />
+              </Route>
 
-            <Route path="/confirm-email" element={<ConfirmEmail />} />
-            <Route path="/update-password" element={<UpdatePassword />} />
-            <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />
-            <Route path="/blocked-users" element={<BlockedUsers />} />
-            <Route path="/" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </CallProvider>
-      </Router>
-      </LocationProvider>
-    </ThemeProvider>
+              <Route path="/confirm-email" element={<ConfirmEmail />} />
+              <Route path="/update-password" element={<UpdatePassword />} />
+              <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />
+              <Route path="/blocked-users" element={<BlockedUsers />} />
+              <Route path="/legal/:section" element={<LegalPage />} />
+              <Route path="/" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </CallProvider>
+        </Router>
+        </LocationProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

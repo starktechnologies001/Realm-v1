@@ -137,15 +137,16 @@ export default function BlockedUsers() {
                                             style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', background: '#eee' }} 
                                         />
                                         <div>
-                                            <div style={{ fontWeight: 600, fontSize: '16px' }}>@{profile.username}</div>
+                                            <div className="username-text" style={{ fontWeight: 600, fontSize: '16px', color: '#000' }}>@{profile.username}</div>
                                         </div>
                                     </div>
                                     
                                     <button 
+                                        className="unblock-btn"
                                         onClick={() => handleUnblock(item.blocked_id, name)}
                                         style={{
                                             background: 'rgba(0,0,0,0.05)',
-                                            color: 'var(--text-primary)',
+                                            color: '#000', // Default (Light mode)
                                             border: 'none',
                                             padding: '8px 16px',
                                             borderRadius: '20px',
@@ -176,12 +177,18 @@ export default function BlockedUsers() {
                         background: rgba(20, 20, 25, 0.85) !important;
                         border-bottom-color: rgba(255,255,255,0.15) !important;
                     }
+                    .glass-header h1, .glass-header button {
+                        color: #fff !important;
+                    }
                     .blocked-user-item {
                         background: #1c1c1e !important;
                         box-shadow: none !important;
                     }
-                    .blocked-user-item button {
-                        background: rgba(255, 255, 255, 0.1) !important;
+                    .username-text {
+                        color: #fff !important;
+                    }
+                    .unblock-btn {
+                        background: rgba(255, 255, 255, 0.15) !important;
                         color: #fff !important;
                     }
                     .empty-state {

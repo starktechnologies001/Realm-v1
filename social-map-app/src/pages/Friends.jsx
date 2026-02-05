@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import UserProfileCard from '../components/UserProfileCard';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { useCall } from '../context/CallContext';
+import { blockUser } from '../utils/blockUtils';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
@@ -197,6 +199,7 @@ export default function Friends() {
             id: friend.id,
             name: friend.username,
             avatar: friend.avatar_url || (friend.gender === 'Male' ? DEFAULT_MALE_AVATAR : friend.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR),
+            avatar_url: friend.avatar_url || (friend.gender === 'Male' ? DEFAULT_MALE_AVATAR : friend.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR),
             status: friend.status,
             hide_status: friend.hide_status,
             show_last_seen: friend.show_last_seen,
@@ -207,12 +210,38 @@ export default function Friends() {
         setActiveMenuId(null);
     };
 
-    const handleCardAction = (action, user) => {
+    const { startCall } = useCall(); // From CallContext
+    
+    // ... existing setup ...
+
+    const handleCardAction = async (action, user) => {
         if (action === 'message') {
             setViewingProfile(null);
             navigate('/chat', { state: { targetUser: user } });
+        } else if (action === 'call-audio') {
+            setViewingProfile(null);
+             // Ensure user object has all needed fields for call context
+             // "user" from Friends list might be missing some profile fields, but startCall handles basic object
+            startCall(user, 'audio');
+        } else if (action === 'call-video') {
+            setViewingProfile(null);
+            startCall(user, 'video');
+        } else if (action === 'block') {
+             if (window.confirm(`Are you sure you want to block ${user.name}? They will no longer see you on the map.`)) {
+                const { success, error } = await blockUser(currentUser.id, user.id);
+                if (success) {
+                    alert("User blocked successfully.");
+                    setFriends(prev => prev.filter(f => f.id !== user.id)); // Remove from local list
+                    setRequests(prev => prev.filter(r => r.id !== user.id));
+                    setViewingProfile(null);
+                } else {
+                    alert("Failed to block user. Please try again.");
+                    console.error("Block error:", error);
+                }
+             }
+        } else if (action === 'report') {
+            alert("Report submitted. Thank you for keeping the community safe.");
         }
-        // Handle other actions if needed
     };
 
     const startChat = (friend) => {

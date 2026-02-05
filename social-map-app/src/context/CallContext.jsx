@@ -333,25 +333,16 @@ export const CallProvider = ({ children }) => {
                 } else {
                     console.log(`✅ [rejectCall] Successfully updated call ${idToReject} to status: ${reason}`);
                 }
-              if (idToReject) {
-            await supabase.from('calls').update({ status: reason }).eq('id', idToReject);
-            
-            // Log missed call logic removed for Receiver. Caller handles it via Realtime to preventing dupes.
-             // if (partnerId) {
-             //    await logCallMessage(idToReject, reason, partnerId, type);
-             // }
-        }
-
-        // Delay clearing the call to allow UI to absorb any trailing click events (Ghost Clicks)
-        // verifying "Ghost Video Call" bug fix
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setIncomingCall(null);
-        if (ringtoneAudio) {
-            ringtoneAudio.pause();
-            ringtoneAudio.currentTime = 0;
-        }
+                
+                // Log missed call logic removed for Receiver. Caller handles it via Realtime to preventing dupes.
             }
+
+            // Delay clearing the call to allow UI to absorb any trailing click events (Ghost Clicks)
+            // verifying "Ghost Video Call" bug fix
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            setIncomingCall(null);
+            // Note: ringtoneAudio is managed by IncomingCallModal component, not here
         } finally {
             processingAction.current = false;
         }
@@ -363,18 +354,32 @@ export const CallProvider = ({ children }) => {
         processingAction.current = true;
         
         try {
-            // 1. Find the Call Log to reply to (Visual Threading)
+            // 1. Find the Call Log to reply to (Visual Threading) with Retry
             console.log("🔍 [rejectWithMessage] Finding call log to reply to...");
-            const { data: recentLogs } = await supabase
-                .from('messages')
-                .select('id')
-                .eq('sender_id', incomingCall.caller_id)
-                .eq('receiver_id', currentUser.id)
-                .eq('message_type', 'call_log')
-                .order('created_at', { ascending: false })
-                .limit(1);
+            let replyToId = null;
+            let retries = 0;
+            const maxRetries = 5; // Retry for ~4 seconds
 
-            const replyToId = recentLogs && recentLogs.length > 0 ? recentLogs[0].id : null;
+            while (!replyToId && retries < maxRetries) {
+                const { data: recentLogs } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('sender_id', incomingCall.caller_id)
+                    .eq('receiver_id', currentUser.id)
+                    .eq('message_type', 'call_log')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (recentLogs && recentLogs.length > 0) {
+                    replyToId = recentLogs[0].id;
+                } else {
+                    retries++;
+                    if (retries < maxRetries) {
+                        console.log(`⏳ Call log not found, retrying... (${retries}/${maxRetries})`);
+                        await new Promise(resolve => setTimeout(resolve, 800)); // Wait 800ms
+                    }
+                }
+            }
 
             // 2. Send Message (as Reply)
             const { error } = await supabase.from('messages').insert({

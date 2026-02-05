@@ -744,66 +744,9 @@ export default function MapHome() {
         };
     }, [location, currentUser]);
 
-    // --- Real-time Location Tracking & DB Update ---
-    useEffect(() => {
-        if (!currentUser?.id || permissionStatus !== 'granted') return;
-
-        const updateLocationInDB = async (lat, lng) => {
-            try {
-                // Update local state first for immediate UI feedbac
-                const updatedUser = { ...currentUser, latitude: lat, longitude: lng };
-                // Only update local storage/state if significantly moved? 
-                // Actually, let's keep local state fresh so the user's own marker moves immediately
-                // setCurrentUser(updatedUser); // CAREFUL: This might cause re-renders loop if not memoized dep
-
-                // Update Supabase (Throttled by nature of how often we call this)
-                // We'll use a timestamp check to avoid spamming DB
-                const lastUpdate = localStorage.getItem('last_loc_update');
-                const now = Date.now();
-                if (lastUpdate && now - parseInt(lastUpdate) < 5000) {
-                     return; // Skip if updated < 5s ago
-                }
-
-                await supabase.from('profiles').update({
-                    latitude: lat,
-                    longitude: lng,
-                    last_active: new Date().toISOString()
-                }).eq('id', currentUser.id);
-                
-                localStorage.setItem('last_loc_update', now.toString());
-                console.log("📍 Location updated in DB:", lat, lng);
-
-            } catch (err) {
-                console.error("Failed to update location in DB", err);
-            }
-        };
-
-        const success = (pos) => {
-            const { latitude, longitude } = pos.coords;
-            setLocation({ lat: latitude, lng: longitude });
-            localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
-            
-            // Push to DB
-            updateLocationInDB(latitude, longitude);
-        };
-
-        const error = (err) => {
-            console.warn('ERROR(' + err.code + '): ' + err.message);
-        };
-
-        const options = {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-        };
-
-        const id = navigator.geolocation.watchPosition(success, error, options);
-        watchIdRef.current = id;
-
-        return () => {
-            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
-        };
-    }, [currentUser?.id, permissionStatus]); 
+    // Live Location is now handled entirely by LocationContext.
+    // We just listen to userLocation via the useEffect above.
+    // Removed redundant local watcher to prevent kCLErrorLocationUnknown and resource contention. 
 
     // Preload avatar images to eliminate lag
     useEffect(() => {
@@ -925,64 +868,38 @@ export default function MapHome() {
 
         const startLocationTracking = () => {
             // Immediate fetch
+            // Helper to process location success
+            const handleSuccess = async (position) => {
+                const { latitude, longitude } = position.coords;
+                setLocation({ lat: latitude, lng: longitude });
+                localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
+                setLoading(false);
+                if (parsedUser.id) {
+                    await supabase.from('profiles').update({
+                        latitude: latitude,
+                        longitude: longitude,
+                        last_active: new Date().toISOString()
+                    }).eq('id', parsedUser.id);
+                }
+            };
+
+            // Immediate fetch with High Accuracy
             navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    setLocation({ lat: latitude, lng: longitude });
-                    localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
-                    setLoading(false);
-                    // Update DB
-                     if (parsedUser.id) {
-                         await supabase.from('profiles').update({
-                             latitude: latitude,
-                             longitude: longitude,
-                             last_active: new Date().toISOString()
-                         }).eq('id', parsedUser.id);
-                     }
-                },
-                (error) => { console.error(error); setLoading(false); },
-                { enableHighAccuracy: true }
-            );
-
-            // Watcher
-            // Watcher to keep location live
-            watchIdRef.current = navigator.geolocation.watchPosition(
-                async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    setLocation({ lat: latitude, lng: longitude });
-                    
-                    // If we successfully get a location, ensure permission is 'granted'
-                    if (permissionStatus !== 'granted') {
-                        setPermission('granted', false);
-                    }
-
-                     // Throttle DB updates (15s)
-                    const now = Date.now();
-                    const lastUpdate = window.lastLocationUpdate || 0;
-                    if (parsedUser.id && (now - lastUpdate > 15000)) {
-                        window.lastLocationUpdate = now;
-                        await supabase.from('profiles').update({
-                            latitude: latitude,
-                            longitude: longitude,
-                            last_active: new Date().toISOString()
-                        }).eq('id', parsedUser.id);
-                    }
-                },
+                handleSuccess,
                 (error) => {
-                     console.error('[MapHome] WatchPosition Error:', error);
-                     // If permission is denied or position unavailable (e.g. turned off), force Ghost screen
-                     if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
-                         setPermission('denied', false); // Don't persist denial if it's just switched off temporarily
-                     }
-
-                     // Fallback if no location ever found
-                     if (!location) {
-                         setLoading(false);
-                         // Don't set default SF location if we want to force the denied screen
-                     }
+                    // Debug info: High accuracy often times out indoors. This is normal fallback behavior.
+                    console.log('[MapHome] location init: High accuracy timed out/failed, falling back to low accuracy.');
+                    // Fallback to Low Accuracy
+                    navigator.geolocation.getCurrentPosition(
+                        handleSuccess,
+                        (err) => { console.error("Location init failed:", err); setLoading(false); },
+                        { enableHighAccuracy: false, timeout: 20000, maximumAge: 10000 }
+                    );
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 10000 }
             );
+
+            // Watcher removed. Use LocationContext for live tracking.
         };
 
         // Listen for system permission changes (e.g. toggling in browser/settings)
@@ -1819,7 +1736,7 @@ export default function MapHome() {
 
                     // 3. Apply Spiral Layout
                     const processedUsers = [];
-                    const SPIRAL_SPACING = 0.0005; // Aggressive separation to ensure zero overlap
+                    const SPIRAL_SPACING = 0.0008; // Increased spacing to prevent visual overlap (~90m separation)
 
                     clusters.forEach(cluster => {
                         if (cluster.length === 1) {
