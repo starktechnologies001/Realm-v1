@@ -154,21 +154,25 @@ export default function LegalPage() {
                 li { margin-bottom: 8px; }
 
                 /* Dark Mode Support */
-                @media (prefers-color-scheme: dark) {
-                    .legal-page {
-                        background: #000 !important;
-                        color: #fff !important;
-                    }
-                    .glass-header {
-                        background: rgba(20, 20, 25, 0.85) !important;
-                        border-bottom-color: rgba(255,255,255,0.15) !important;
-                    }
-                    .legal-content > div {
-                        background: #1c1c1e !important;
-                        box-shadow: none !important;
-                    }
-                    p, ul { color: #aaa !important; }
+                /* Dark Mode Support via data-theme attribute */
+                html[data-theme="dark"] .legal-page {
+                    background: #000 !important;
+                    color: #fff !important;
                 }
+                html[data-theme="dark"] .glass-header {
+                    background: rgba(20, 20, 25, 0.85) !important;
+                    border-bottom-color: rgba(255,255,255,0.15) !important;
+                }
+                html[data-theme="dark"] .glass-header h1,
+                html[data-theme="dark"] .glass-header button {
+                    color: #fff !important;
+                }
+                html[data-theme="dark"] .legal-content > div {
+                    background: #1c1c1e !important;
+                    box-shadow: none !important;
+                }
+                html[data-theme="dark"] h3 { color: #fff !important; }
+                html[data-theme="dark"] p, html[data-theme="dark"] ul { color: #ccc !important; }
             `}</style>
         </div>
     );
