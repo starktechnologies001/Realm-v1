@@ -1,11 +1,54 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 export default function ConfirmEmail() {
   const [status, setStatus] = useState('verifying'); // Default to verifying while we check
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // Resend Logic
+  const location = useLocation();
+  const [email, setEmail] = useState(location.state?.email || '');
+  const [timeLeft, setTimeLeft] = useState(90); // 1 minute 30 seconds
+  const [sending, setSending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+  
   const navigate = useNavigate();
+
+  // Timer Effect
+  useEffect(() => {
+    if (timeLeft > 0) {
+        const timerId = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+        return () => clearInterval(timerId);
+    }
+  }, [timeLeft]);
+
+  const handleResend = async () => {
+      if (!email) {
+          setResendMessage("Email address not found. Please try logging in.");
+          return;
+      }
+      setSending(true);
+      setResendMessage("");
+      try {
+          const { error } = await supabase.auth.resend({
+              type: 'signup',
+              email: email,
+              options: {
+                  emailRedirectTo: `${window.location.origin}/confirm-email`
+              }
+          });
+          if (error) throw error;
+          
+          setResendMessage("Confirmation link sent! 📧");
+          setTimeLeft(90); // Reset timer
+      } catch (err) {
+          console.error("Resend error:", err);
+          setResendMessage(err.message || "Failed to resend email.");
+      } finally {
+          setSending(false);
+      }
+  };
 
   useEffect(() => {
     // 1. Parse URL hash for errors (Supabase returns errors in hash)
@@ -110,6 +153,24 @@ export default function ConfirmEmail() {
             
             <div className="info-box">
                 <p>Click the link in the email to activate your account.</p>
+            </div>
+
+            <div style={{ marginBottom: '20px', width: '100%' }}>
+                <button 
+                    onClick={handleResend} 
+                    disabled={timeLeft > 0 || sending}
+                    className="secondary-btn"
+                    style={{ 
+                        background: 'rgba(255,255,255,0.1)', 
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        marginBottom: '10px',
+                        cursor: (timeLeft > 0 || sending) ? 'default' : 'pointer',
+                        opacity: (timeLeft > 0 || sending) ? 0.6 : 1
+                    }}
+                >
+                    {sending ? 'Sending...' : timeLeft > 0 ? `Resend Email (${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')})` : 'Resend Email'}
+                </button>
+                {resendMessage && <p style={{ fontSize: '0.85rem', color: resendMessage.includes('sent') ? '#4ade80' : '#ff453a', margin: '5px 0 0 0' }}>{resendMessage}</p>}
             </div>
             
             <button onClick={() => navigate('/')} className="primary-btn">

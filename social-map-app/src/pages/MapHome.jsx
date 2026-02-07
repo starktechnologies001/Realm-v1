@@ -1144,7 +1144,17 @@ export default function MapHome() {
                 .single();
 
             if (data) {
-                navigate('/chat', { state: { targetUser } });
+                // Normalize user object for Chat (which expects avatar_url, username, full_name)
+                // Map data usually has 'avatar' (GLB/PNG) and 'name'.
+                const userForChat = {
+                    ...targetUser,
+                    avatar_url: targetUser.avatar_url || targetUser.originalAvatar || targetUser.avatar,
+                    username: targetUser.username || targetUser.name,
+                    full_name: targetUser.full_name || targetUser.name,
+                    id: targetUser.id
+                };
+                console.log("📍 [MapHome] Navigating to chat with normalized user:", userForChat);
+                navigate('/chat', { state: { targetUser: userForChat } });
             } else {
                 showToast("You need to be friends to chat! Poke them first. 👉");
             }
