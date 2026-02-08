@@ -334,11 +334,12 @@ const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
                                     // Success - Permission Granted
-                                    console.log("Location access granted during setup:", position);
+                                    console.log("✅ [OAuthSetup] Location access granted. Position:", position);
                                     setPermission('granted'); // Update Context
+                                    // Maybe add a visual feedback here if needed, but the section disappears which is good.
                                 },
                                 (error) => {
-                                    console.error("Location access denied:", error);
+                                    console.error("❌ [OAuthSetup] Location access denied:", error);
                                     setPermission('denied'); // Update Context
                                     alert("Location denied. You won't appear on the map, but you can change this in settings later.");
                                 }
