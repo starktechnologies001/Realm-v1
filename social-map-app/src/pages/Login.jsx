@@ -487,7 +487,7 @@ useEffect(() => {
           access_type: 'offline',
           prompt: 'consent',
         },
-        redirectTo: `${siteUrl}/login`
+        redirectTo: 'https://www.nearo.co.in'
       }
     });
   } catch (err) {
@@ -501,7 +501,7 @@ useEffect(() => {
       <div className="login-card">
         <h1 className="app-title">Nearo</h1>
         <p className="app-subtitle">
-          {isSignUp ? "Create your profile" : "Welcome Back"}
+          {isSignUp ? "Create your profile" : "Welcome"}
         </p>
 
         <div className="auth-toggle">
@@ -1014,31 +1014,36 @@ useEffect(() => {
         .login-card {
           width: 100%;
           max-width: 400px;
-          background: #1c1c1e;
-          border-radius: 20px;
-          padding: 40px 30px;
-          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+          background: rgba(28, 28, 30, 0.6);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 24px;
+          padding: 48px 32px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
           display: flex;
           flex-direction: column;
           align-items: center;
           margin: auto;
+          transition: transform 0.3s ease;
         }
 
         .app-title {
-          font-size: 2.5rem;
-          font-weight: 700;
-          margin: 0;
-          margin-bottom: 5px;
-          color: #0caeff;
-          text-shadow: 0 0 20px rgba(0, 174, 255, 0.5);
-          letter-spacing: -0.5px;
+          font-size: 3rem;
+          font-weight: 800;
+          margin: 0 0 8px 0;
+          background: linear-gradient(135deg, #ffffff 0%, #007aff 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          letter-spacing: -1px;
+          text-shadow: 0 10px 30px rgba(0, 122, 255, 0.3);
         }
 
         .app-subtitle {
-          color: #888;
-          font-size: 1rem;
-          margin: 0 0 30px 0;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 1.1rem;
+          margin: 0 0 32px 0;
           font-weight: 400;
+          letter-spacing: 0.5px;
         }
 
         .auth-toggle {
@@ -1085,37 +1090,46 @@ useEffect(() => {
 
         .input-field {
           width: 100%;
-          background: #2c2c2e;
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          padding: 14px 16px;
-          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 16px 18px;
+          border-radius: 14px;
           color: white;
           font-size: 1rem;
           outline: none;
-          transition: all 0.2s;
+          transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
           box-sizing: border-box;
         }
 
         .input-field::placeholder {
-          color: #666;
+          color: rgba(255, 255, 255, 0.3);
         }
 
         .input-field:focus {
           border-color: #007aff;
-          background: #3a3a3c;
+          background: rgba(255, 255, 255, 0.1);
+          box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+          transform: translateY(-1px);
         }
 
         .btn-primary {
           width: 100%;
-          padding: 14px;
-          background: linear-gradient(135deg, #007aff 0%, #00c6ff 100%);
+          padding: 16px;
+          background: linear-gradient(135deg, #007aff 0%, #0062cc 100%);
           border: none;
-          border-radius: 12px;
+          border-radius: 14px;
           color: white;
-          font-size: 1rem;
+          font-size: 1.05rem;
           font-weight: 600;
           cursor: pointer;
-          transition: transform 0.1s ease, box-shadow 0.2s;
+          transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+          box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+          margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0, 122, 255, 0.4);
         }
 
         .btn-primary:active {

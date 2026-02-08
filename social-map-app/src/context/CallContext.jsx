@@ -213,6 +213,47 @@ export const CallProvider = ({ children }) => {
         };
     }, [currentUser, isCalling, incomingCall]);
 
+    // --- Minimized / PiP Logic ---
+    const [isMinimized, setIsMinimized] = useState(false);
+
+    const toggleMinimize = () => {
+        setIsMinimized(prev => !prev);
+    };
+
+    // Handle Back Button to Minimize
+    useEffect(() => {
+        if (isCalling && !isMinimized) {
+            // Un-minimized call connected: Push a state so "Back" minimizes it
+            // We use a specific state flag to identify our history entry
+            const handlePopState = (event) => {
+                // If we are active and fullscreen, back button should minimize
+                if (isCalling && !isMinimized) {
+                    // Prevent default? No, we Want the navigation to happen (to map/chat)
+                    // but we want the CallOverlay to become minimized.
+                    setIsMinimized(true);
+                }
+            };
+
+            // Push a "Call Active" state when we enter fullscreen mode
+            // This ensures there is something to "go back" from
+            // window.history.pushState({ callFullScreen: true }, ''); 
+            // NOTE: Pushing state can be tricky with Router. 
+            // A safer approach for this App is just listening to PopState.
+            // If user hits back, they likely go to previous route. 
+            // We just ensure the overlay stays mounted (it does) and shrinks.
+
+            window.addEventListener('popstate', handlePopState);
+            return () => window.removeEventListener('popstate', handlePopState);
+        }
+    }, [isCalling, isMinimized]);
+
+    // When call starts/answers, ensure maximized
+    useEffect(() => {
+        if (isCalling) {
+            setIsMinimized(false);
+        }
+    }, [isCalling]);
+
     // Handle Call Actions
     // Track the current call log message ID to prevent duplicates
     const activeCallMessageId = useRef(null);
@@ -470,6 +511,8 @@ export const CallProvider = ({ children }) => {
                     callData={callData}
                     currentUser={currentUser}
                     onEnd={endCallSession}
+                    isMinimized={isMinimized}
+                    toggleMinimize={toggleMinimize}
                 />
             )}
         </CallContext.Provider>

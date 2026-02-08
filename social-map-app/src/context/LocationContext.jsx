@@ -63,8 +63,10 @@ export function LocationProvider({ children }) {
                         const now = Date.now();
                         const timeDiff = now - lastDbUpdateRef.current;
                         
-                        // Smart throttling: Update if >30s or >20m moved
-                        if (timeDiff > 30000) {
+                        // Smart throttling: Update if >10s or >10m moved (Smoother for live tracking)
+                        const distanceMoved = lastLocationRef.current ? getDistanceKm(newLoc.lat, newLoc.lng, lastLocationRef.current.lat, lastLocationRef.current.lng) * 1000 : 9999;
+
+                        if (timeDiff > 10000 || distanceMoved > 10) {
                             lastDbUpdateRef.current = now;
                             lastLocationRef.current = newLoc;
                             

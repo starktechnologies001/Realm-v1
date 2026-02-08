@@ -8,12 +8,14 @@ import {
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
 import ImageCropper from '../components/ImageCropper';
+import { useLocationContext } from '../context/LocationContext';
 
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 
-export default function OAuthProfileSetup() {
+  export default function OAuthProfileSetup() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { permissionStatus, setPermission } = useLocationContext();
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
   // User data from OAuth
@@ -33,12 +35,15 @@ export default function OAuthProfileSetup() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user) {
+      if (!session) {
+        setLoading(false);
         navigate('/login');
         return;
       }
+
+      const user = session.user;
       
       setUserId(user.id);
       setEmail(user.email);
@@ -49,10 +54,14 @@ export default function OAuthProfileSetup() {
         setGooglePhotoUrl(googlePhoto);
         setAvatarPreview(googlePhoto);
       }
+
+      setLoading(false);
     };
     
     checkAuth();
   }, [navigate]);
+
+  if (loading) return <Loader />;
 
   const [cropImage, setCropImage] = useState(null); // State for cropping
 
@@ -307,6 +316,52 @@ export default function OAuthProfileSetup() {
               ))}
             </div>
           </div>
+
+          {/* Location Permission Section - Only show if not already enabled */}
+          {permissionStatus !== 'granted' && (
+            <div className="field-section" style={{ marginTop: '12px', padding: '16px', background: 'rgba(52, 199, 89, 0.1)', borderRadius: '16px', border: '1px solid rgba(52, 199, 89, 0.2)' }}>
+                <label style={{ color: '#34c759', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>📍</span> Enable Location
+                </label>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', margin: '8px 0 16px', lineHeight: '1.4' }}>
+                    To see people around you and appear on the map, you need to enable location services. You can turn this off anytime.
+                </p>
+                
+                <button 
+                    type="button" 
+                    onClick={() => {
+                        if ('geolocation' in navigator) {
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                    // Success - Permission Granted
+                                    console.log("Location access granted during setup:", position);
+                                    setPermission('granted'); // Update Context
+                                },
+                                (error) => {
+                                    console.error("Location access denied:", error);
+                                    setPermission('denied'); // Update Context
+                                    alert("Location denied. You won't appear on the map, but you can change this in settings later.");
+                                }
+                            );
+                        }
+                    }}
+                    id="loc-btn"
+                    style={{
+                        width: '100%',
+                        padding: '12px',
+                        background: '#34c759',
+                        border: 'none',
+                        borderRadius: '10px',
+                        color: 'white',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                    }}
+                >
+                    Allow Location Access
+                </button>
+            </div>
+          )}
 
           <button type="submit" disabled={loading} className="submit-btn">
             {loading ? 'Saving...' : 'Complete Setup'}

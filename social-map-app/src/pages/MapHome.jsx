@@ -11,6 +11,7 @@ import Toast from '../components/Toast';
 import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
+import { useCall } from '../context/CallContext';
 import LocationPermissionModal from '../components/LocationPermissionModal';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import StoryViewer from '../components/StoryViewer';
@@ -99,6 +100,7 @@ export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
     const { permissionStatus, setPermission, resetPermission, userLocation } = useLocationContext();
+    const { startCall } = useCall();
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
@@ -1385,7 +1387,20 @@ export default function MapHome() {
             setSelectedUser(null); // Close small card
         }
         else if (action === 'call-audio' || action === 'call-video') {
-            showToast("Calls coming soon! 📞");
+             // Normalize user object for Call System (expects avatar_url, username)
+             const userForCall = {
+                 ...targetUser,
+                 avatar_url: targetUser.avatar_url || targetUser.originalAvatar || targetUser.avatar,
+                 username: targetUser.username || targetUser.name,
+                 full_name: targetUser.full_name || targetUser.name,
+                 id: targetUser.id
+             };
+             
+             if (action === 'call-audio') {
+                 startCall(userForCall, 'audio');
+             } else {
+                 startCall(userForCall, 'video');
+             }
         }
         else if (action === 'view-story') {
              // Fetch active stories for this user

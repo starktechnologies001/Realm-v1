@@ -25,7 +25,8 @@ export default function PokeNotifications({ currentUser }) {
 
             if (!error && data) {
                 setPendingPokes(data);
-                if (data.length > 0) setShowNotifications(true);
+                // REMOVED: if (data.length > 0) setShowNotifications(true); 
+                // We want to treat this as an 'Inbox' (badge only), not a pop-up on every refresh.
             }
         };
 

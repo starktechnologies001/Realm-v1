@@ -3605,7 +3605,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
                     overflow: hidden;
-                    height: 100vh;
+                    height: 100vh; /* Fallback */
+                    height: 100dvh; /* Mobile viewport fix */
                 }
                 
                 .ambient-glow-chat {
@@ -3621,6 +3622,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     border-bottom: 1px solid rgba(255,255,255,0.08);
                     padding: 15px 20px; display: flex; align-items: center; gap: 15px;
                     z-index: 10;
+                    padding-top: env(safe-area-inset-top); /* Status bar safe area */
                 }
                 
                 .back-btn { 
@@ -3628,15 +3630,33 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     width: 40px; height: 40px; border-radius: 12px;
                     display: flex; align-items: center; justify-content: center;
                     cursor: pointer; transition: all 0.2s;
+                    flex-shrink: 0; /* Prevent shrinking */
                 }
                 .back-btn:hover { background: rgba(255,255,255,0.2); }
 
-                .header-user { flex: 1; display: flex; align-items: center; gap: 12px; }
+                .header-user { 
+                    flex: 1; 
+                    display: flex; 
+                    align-items: center; 
+                    gap: 12px; 
+                    min-width: 0; /* Enable truncation for flex child */
+                }
                 .header-avatar { 
                     width: 44px; height: 44px; border-radius: 14px; object-fit: cover; 
                     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+                    flex-shrink: 0;
                 }
-                .header-text h3 { margin: 0; font-size: 1.05rem; color: white; font-weight: 600; }
+                .header-text {
+                    min-width: 0; /* Enable truncation */
+                    display: flex;
+                    flex-direction: column;
+                }
+                .header-text h3 { 
+                    margin: 0; font-size: 1.05rem; color: white; font-weight: 600;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis; 
+                }
                 .header-text .user-status { 
                     font-size: 0.8rem; 
                     color: #888; 
@@ -3663,7 +3683,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     50% { opacity: 0.5; }
                 }
                 
-                .header-actions { display: flex; gap: 10px; }
+                .header-actions { 
+                    display: flex; 
+                    gap: 10px; 
+                    flex-shrink: 0; /* Prevent buttons from being pushed off */
+                }
                 .icon-btn { 
                     background: transparent; border: none; color: #ccc; 
                     width: 40px; height: 40px; border-radius: 12px;
@@ -3890,6 +3914,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 /* Input Area */
                 .chat-input-container {
                     padding: 16px 20px;
+                    padding-bottom: calc(16px + env(safe-area-inset-bottom)); /* Safe area for iPhone home bar */
                     background: #ffffff; /* Force white background */
                     border-top: 1px solid rgba(0,0,0,0.1); /* Subtle divider */
                     transition: background 0.3s ease;
