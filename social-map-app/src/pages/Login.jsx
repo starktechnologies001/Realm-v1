@@ -487,7 +487,7 @@ useEffect(() => {
           access_type: 'offline',
           prompt: 'consent',
         },
-        redirectTo: 'https://www.nearo.co.in'
+        redirectTo: window.location.origin
       }
     });
   } catch (err) {
