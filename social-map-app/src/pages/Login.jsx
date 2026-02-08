@@ -109,8 +109,10 @@ useEffect(() => {
   // 2️⃣ Handle fresh sign-in event
   const { data: listener } = supabase.auth.onAuthStateChange(
     (event, session) => {
+      console.log(`🔐 [Login] Auth State Change: ${event}`, session?.user?.id);
       if (event === 'SIGNED_IN' && session && mounted) {
         const avatar = session.user?.user_metadata?.avatar_url;
+        console.log("🔐 [Login] Signed In! Redirecting to map...", avatar);
         navigate('/map', { state: { preloadedAvatar: avatar } });
       }
     }
@@ -487,7 +489,7 @@ useEffect(() => {
           access_type: 'offline',
           prompt: 'consent',
         },
-        redirectTo: window.location.origin
+        redirectTo: `${window.location.origin}/login`
       }
     });
   } catch (err) {
