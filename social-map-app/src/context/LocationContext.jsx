@@ -105,7 +105,23 @@ export function LocationProvider({ children }) {
                             navigator.geolocation.clearWatch(watchIdRef.current);
                             startWatch(false); // Restart with low accuracy
                         } else {
-                            // Already on low accuracy or other error - just silence it to avoid spam
+                            // Low accuracy also failed or other error
+                            if (err.code === 2 || err.code === 1) {
+                                // Position Unavailable (Services Off) or Denied matches "Location Off" toggle
+                                console.warn("Location services likely disabled. Resetting permission.");
+                                setPermissionStatus('denied');
+                                
+                                // Ensure we clean up DB
+                                const { data: { session } } = await supabase.auth.getSession();
+                                if (session?.user) {
+                                    await supabase.from('profiles').update({ 
+                                        latitude: null,
+                                        longitude: null,
+                                        last_location: null,
+                                        last_active: new Date().toISOString()
+                                    }).eq('id', session.user.id);
+                                }
+                            }
                         }
                     },
                     {

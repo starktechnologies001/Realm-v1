@@ -103,6 +103,7 @@ export default function MapHome() {
     const { startCall } = useCall();
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
+    const [isRequestingLocation, setIsRequestingLocation] = useState(false);
     
     // Initialize state synchronously to prevent flash
     const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -930,17 +931,7 @@ export default function MapHome() {
         };
     }, [navigate, permissionStatus]); // Depend on permissionStatus
 
-    const handlePermissionSelect = (choice) => {
-        if (choice === 'while-using') {
-            setPermission('granted', true);
-            // Effect will pick up change
-        } else if (choice === 'once') {
-             setPermission('granted', false);
-             // Effect will pick up change
-        } else {
-            setPermission('denied', true);
-        }
-    };
+
 
     const handleEnableLocation = () => {
         resetPermission();
@@ -1507,10 +1498,7 @@ export default function MapHome() {
         );
     }, [currentUser, location?.lat, location?.lng]);
 
-    // 1. Permission Prompt (Highest Priority)
-    if (permissionStatus === 'prompt') {
-        return <LocationPermissionModal onSelect={handlePermissionSelect} />;
-    }
+
 
     // 2. Permission Denied
     if (permissionStatus === 'denied') {
@@ -2541,6 +2529,84 @@ export default function MapHome() {
                 
                 /* Avatar styles moved to App.css for consistency */
             `}</style>
+            {/* custom location permission modal */}
+            {permissionStatus === 'prompt' && !isRequestingLocation && (
+                <LocationPermissionModal 
+                    onAllow={(allowForever) => {
+                        setIsRequestingLocation(true);
+                        // Request native permission
+                        if ('geolocation' in navigator) {
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                    // Success
+                                    console.log("Location granted via modal:", position);
+                                    setPermission('granted'); // Context will start watching
+                                    setIsRequestingLocation(false);
+                                },
+                                (error) => {
+                                    // Error / Denied
+                                    console.error("Location denied via modal:", error);
+                                    setPermission('denied');
+                                    setIsRequestingLocation(false);
+                                    showToast("Location access denied. Map features limited.", "error");
+                                }
+                            );
+                        } else {
+                            showToast("Geolocation not supported", "error");
+                            setPermission('denied');
+                            setIsRequestingLocation(false);
+                        }
+                    }}
+                    onDeny={() => {
+                        console.log("Location denied by user in modal");
+                        setPermission('denied');
+                    }}
+                />
+            )}
+
+            {/* Requesting Overlay */}
+            {permissionStatus === 'prompt' && isRequestingLocation && (
+                <div style={{
+                    position: 'fixed', inset: 0,
+                    background: 'rgba(0,0,0,0.7)',
+                    backdropFilter: 'blur(5px)',
+                    zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#1c1c1e',
+                        padding: '30px',
+                        borderRadius: '20px',
+                        maxWidth: '320px',
+                        textAlign: 'center',
+                        color: 'white',
+                        border: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                        <div style={{ fontSize: '40px', marginBottom: '16px' }}>👆</div>
+                        <h3 style={{ margin: '0 0 10px 0' }}>Requesting Access...</h3>
+                        <p style={{ color: '#aaa', margin: '0 0 20px 0', lineHeight: '1.5' }}>
+                            Please click <strong>Allow</strong> in the top-left browser prompt.
+                        </p>
+                        <p style={{ fontSize: '0.85rem', color: '#666', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                            Don't see it? Check the 🔒 or 📍 icon in your address bar.
+                        </p>
+                        <button 
+                            onClick={() => setIsRequestingLocation(false)}
+                            style={{
+                                marginTop: '20px',
+                                background: 'transparent',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                color: '#ccc',
+                                padding: '10px 20px',
+                                borderRadius: '10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

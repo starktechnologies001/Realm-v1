@@ -1,161 +1,127 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 
-export default function LocationPermissionModal({ onSelect }) {
+export default function LocationPermissionModal({ onAllow, onDeny }) {
     return (
-        <div className="location-modal-overlay">
-            <motion.div 
-                className="location-modal-card"
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            >
-                <div className="permission-header">
-                    <div className="permission-icon-wrapper">
-                        <span className="permission-icon">📍</span>
-                        <div className="permission-pulse"></div>
-                    </div>
-                    <h3>Enable Location</h3>
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+        }}>
+            <div style={{
+                width: '85%',
+                maxWidth: '320px',
+                backgroundColor: '#1c1c1e',
+                borderRadius: '20px',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+            }}>
+                {/* Map Pin Icon Circle */}
+                <div style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(66, 133, 244, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '16px',
+                    border: '1px solid rgba(66, 133, 244, 0.3)'
+                }}>
+                    <span style={{ fontSize: '30px' }}>📍</span>
                 </div>
-                
-                <p className="permission-desc">
-                    Allow <strong>Realm</strong> to access your location to show you on the map and find friends nearby.
+
+                <h2 style={{
+                    color: 'white',
+                    fontSize: '1.25rem',
+                    fontWeight: '600',
+                    margin: '0 0 8px 0',
+                    textAlign: 'center'
+                }}>
+                    Enable Location
+                </h2>
+
+                <p style={{
+                    color: '#9CA3AF',
+                    fontSize: '0.9rem',
+                    textAlign: 'center',
+                    margin: '0 0 24px 0',
+                    lineHeight: '1.5'
+                }}>
+                    Allow <strong>Nearo</strong> to access your location to show you on the map and find friends nearby.
                 </p>
-                
-                <div className="permission-actions">
-                    <button onClick={() => onSelect('while-using')} className="perm-btn primary">
+
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    width: '100%',
+                    gap: '12px'
+                }}>
+                    <button
+                        onClick={() => onAllow(true)}
+                        style={{
+                            width: '100%',
+                            padding: '14px',
+                            backgroundColor: '#007AFF', // System Blue
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}
+                    >
                         Allow While Using App
                     </button>
-                    <button onClick={() => onSelect('once')} className="perm-btn secondary">
+
+                    <button
+                        onClick={() => onAllow(false)} 
+                        style={{
+                            width: '100%',
+                            padding: '14px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                        }}
+                    >
                         Allow This Time
                     </button>
-                    <button onClick={() => onSelect('deny')} className="perm-btn danger">
+
+                    <button
+                        onClick={onDeny}
+                        style={{
+                            width: '100%',
+                            padding: '12px',
+                            backgroundColor: 'transparent',
+                            color: '#FF3B30', // System Red
+                            border: 'none',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            marginTop: '4px'
+                        }}
+                    >
                         Don't Allow
                     </button>
                 </div>
-            </motion.div>
-
-            <style>{`
-                .location-modal-overlay {
-                    position: fixed;
-                    top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0, 0, 0, 0.75);
-                    backdrop-filter: blur(8px);
-                    -webkit-backdrop-filter: blur(8px);
-                    z-index: 9999;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 20px;
-                }
-
-                .location-modal-card {
-                    background: rgba(28, 28, 30, 0.95);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 24px;
-                    padding: 32px 24px;
-                    width: 100%;
-                    max-width: 340px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    text-align: center;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-                }
-
-                .permission-header {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 16px;
-                    margin-bottom: 16px;
-                }
-
-                .permission-icon-wrapper {
-                    width: 64px;
-                    height: 64px;
-                    background: rgba(10, 132, 255, 0.2);
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    position: relative;
-                }
-
-                .permission-icon {
-                    font-size: 32px;
-                }
-
-                .permission-pulse {
-                    position: absolute;
-                    width: 100%;
-                    height: 100%;
-                    background: inherit;
-                    border-radius: 50%;
-                    animation: perm-pulse 2s infinite;
-                    z-index: -1;
-                }
-
-                @keyframes perm-pulse {
-                    0% { transform: scale(1); opacity: 0.8; }
-                    100% { transform: scale(1.6); opacity: 0; }
-                }
-
-                h3 {
-                    margin: 0;
-                    color: white;
-                    font-size: 20px;
-                    font-weight: 600;
-                }
-
-                .permission-desc {
-                    color: rgba(255, 255, 255, 0.7);
-                    font-size: 15px;
-                    line-height: 1.5;
-                    margin: 0 0 32px 0;
-                }
-
-                .permission-actions {
-                    display: flex;
-                    flex-direction: column;
-                    width: 100%;
-                    gap: 12px;
-                }
-
-                .perm-btn {
-                    padding: 14px;
-                    border-radius: 14px;
-                    font-size: 16px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: transform 0.2s, opacity 0.2s;
-                    border: none;
-                    outline: none;
-                }
-
-                .perm-btn:active {
-                    transform: scale(0.98);
-                }
-
-                .perm-btn.primary {
-                    background: #0A84FF;
-                    color: white;
-                }
-
-                .perm-btn.secondary {
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
-                }
-
-                .perm-btn.danger {
-                    background: transparent;
-                    color: #FF453A;
-                }
-
-                .perm-btn.danger:hover {
-                    background: rgba(255, 69, 58, 0.1);
-                }
-            `}</style>
+            </div>
         </div>
     );
 }
