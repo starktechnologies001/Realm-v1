@@ -1041,7 +1041,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     gap: 12px;
                     cursor: pointer;
                     transition: background 0.2s;
-                    border-bottom: 0.5px solid rgba(84, 84, 88, 0.4); /* Separator */
+                    border-bottom: none; /* Separator removed */
                 }
                 
                 .chat-item:active {
@@ -1116,7 +1116,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     overflow: hidden;
                     display: flex;
                     flex-direction: column;
-                    gap: 4px;
+                    gap: 0px; /* Minimal gap between texts */
                 }
 
                 .chat-header-row {
@@ -1129,6 +1129,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     font-size: 17px;
                     font-weight: 600;
                     color: var(--text-primary);
+                    margin-bottom: 0;
                 }
 
                 .chat-time {
@@ -1261,6 +1262,36 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     height: 3px; background: var(--accent-blue);
                     border-radius: 2px;
                 }
+
+                @media (max-width: 768px) {
+                    .chat-item {
+                        padding: 14px 20px;
+                    }
+                    .chat-avatar {
+                        width: 56px;
+                        height: 56px;
+                    }
+                    .online-badge {
+                        width: 14px; 
+                        height: 14px;
+                        border-width: 2px;
+                    }
+                    .chat-info {
+                        gap: 2px;
+                    }
+                    .chat-name {
+                        font-size: 1.05rem;
+                        font-weight: 600;
+                    }
+                    .chat-preview {
+                        font-size: 0.95rem;
+                        line-height: 1.3;
+                    }
+                    .chat-time {
+                        font-size: 0.85rem;
+                    }
+                }
+
             `}</style>
         </div>
     );
@@ -3597,6 +3628,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    width: 100%;
+                    height: 100dvh; /* Dynamic viewport height for mobile */
                     background: var(--theme-bg);
                     background-size: cover;
                     background-position: center;
@@ -3890,6 +3923,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 /* Input Area */
                 .chat-input-container {
                     padding: 16px 20px;
+                    padding-bottom: calc(16px + env(safe-area-inset-bottom)); /* Safe area for mobile */
                     background: #ffffff; /* Force white background */
                     border-top: 1px solid rgba(0,0,0,0.1); /* Subtle divider */
                     transition: background 0.3s ease;
@@ -3956,6 +3990,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     display: flex; align-items: center; justify-content: center;
                     cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     transition: transform 0.2s;
+                    flex-shrink: 0; /* Prevent shrinking on small screens */
                 }
                 .send-btn:hover { transform: scale(1.05); }
                 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { supabase } from '../supabaseClient';
 import CallOverlay from '../components/CallOverlay';
 import IncomingCallModal from '../components/IncomingCallModal';
+import MinimizedCallWidget from '../components/MinimizedCallWidget';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -15,6 +16,8 @@ export const CallProvider = ({ children }) => {
     const [callData, setCallData] = useState(null); // { partner, type, isIncoming }
     const [incomingCall, setIncomingCall] = useState(null); // Payload from DB
     const [autoDeclineTimer, setAutoDeclineTimer] = useState(null);
+    const [isMinimized, setIsMinimized] = useState(false);
+    const [callDuration, setCallDuration] = useState(0);
     const navigate = useNavigate();
     
     // Guard to prevent double-invocations (e.g. double clicks)
@@ -445,13 +448,22 @@ export const CallProvider = ({ children }) => {
 
             setIsCalling(false);
             setCallData(null);
+            setIsMinimized(false); // Reset minimize state when call ends
         } finally {
             processingAction.current = false;
         }
     };
 
+    const minimizeCall = () => {
+        setIsMinimized(true);
+    };
+
+    const maximizeCall = () => {
+        setIsMinimized(false);
+    };
+
     return (
-        <CallContext.Provider value={{ startCall, isCalling }}>
+        <CallContext.Provider value={{ startCall, isCalling, isMinimized, minimizeCall, maximizeCall }}>
             {children}
             
             {/* Incoming Call Modal */}
@@ -465,10 +477,23 @@ export const CallProvider = ({ children }) => {
             )}
 
             {/* Active Call Overlay */}
-            {isCalling && callData && currentUser && (
+            {isCalling && callData && currentUser && !isMinimized && (
                 <CallOverlay
                     callData={callData}
                     currentUser={currentUser}
+                    onEnd={endCallSession}
+                    onMinimize={minimizeCall}
+                    callDuration={callDuration}
+                    setCallDuration={setCallDuration}
+                />
+            )}
+
+            {/* Minimized Call Widget */}
+            {isCalling && callData && isMinimized && (
+                <MinimizedCallWidget
+                    callData={callData}
+                    callDuration={callDuration}
+                    onMaximize={maximizeCall}
                     onEnd={endCallSession}
                 />
             )}

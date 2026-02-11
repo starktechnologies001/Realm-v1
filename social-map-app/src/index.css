@@ -130,3 +130,53 @@ html[data-theme="dark"] button {
     color: var(--text-secondary);
   }
 }
+
+/* Mobile Optimizations - WhatsApp-like compact design */
+@media (max-width: 768px) {
+  /* Prevent text size inflation on mobile */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    font-size: 16px; /* Base font size for mobile */
+    line-height: 1.4;
+  }
+
+  /* Reduce heading sizes on mobile */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+
+  h2 {
+    font-size: 1.25rem !important;
+  }
+
+  h3 {
+    font-size: 1.1rem !important;
+  }
+
+  h4 {
+    font-size: 1rem !important;
+  }
+
+  /* Compact spacing */
+  :root {
+    --spacing-sm: 6px;
+    --spacing-md: 12px;
+    --spacing-lg: 18px;
+  }
+
+  /* Reduce button padding */
+  button {
+    font-size: 0.95rem;
+  }
+
+  /* Compact input fields */
+  input, textarea, select {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}

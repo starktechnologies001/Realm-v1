@@ -322,14 +322,6 @@ export default function Friends() {
                 {/* Friends Tab */}
                 {activeTab === 'friends' && (
                     <div className="section">
-                        <h2 style={{ 
-                            textAlign: 'left', 
-                            fontSize: '2rem', 
-                            fontWeight: 'bold', 
-                            color: 'var(--text-primary)',
-                            margin: '10px 20px 20px 20px',
-                            padding: 0
-                        }}>Friends</h2>
                         {friends.length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-icon">🌍</div>
@@ -364,7 +356,7 @@ export default function Friends() {
                                         </div>
                                         
                                         <div className="menu-wrapper">
-                                            <span className="friend-badge">🤝 Friend</span>
+                                            <span className="friend-badge">Friend</span>
                                             <button className="btn-menu" onClick={(e) => toggleMenu(e, friend.id)}>
                                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                     <circle cx="12" cy="12" r="1"></circle>
@@ -529,17 +521,19 @@ export default function Friends() {
                 }
                 .empty-icon { font-size: 3rem; opacity: 0.5; }
 
-                .menu-wrapper { position: relative; display: flex; align-items: center; gap: 8px; }
+                .menu-wrapper { position: relative; display: flex; align-items: center; gap: 10px; }
                 .friend-badge {
-                    font-size: 0.85rem; 
-                    background: linear-gradient(180deg, #E0F7FA 0%, #B2EBF2 100%);
-                    color: #0097A7;
-                    padding: 6px 14px;
-                    border-radius: 100px;
-                    font-weight: 700;
-                    border: 1px solid #4DD0E1;
-                    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
-                    display: inline-flex; align-items: center; gap: 4px;
+                    font-size: 0.75rem; 
+                    background: linear-gradient(135deg, rgba(0, 132, 255, 0.08) 0%, rgba(0, 132, 255, 0.12) 100%);
+                    color: #0084ff;
+                    padding: 5px 12px;
+                    border-radius: 12px;
+                    font-weight: 600;
+                    border: 1px solid rgba(0, 132, 255, 0.2);
+                    display: inline-flex; 
+                    align-items: center; 
+                    gap: 4px;
+                    letter-spacing: 0.3px;
                 }
                 .btn-menu {
                     width: 40px; height: 40px;
@@ -548,20 +542,25 @@ export default function Friends() {
                     display: flex; align-items: center; justify-content: center;
                     border-radius: 50%;
                     transition: all 0.2s;
+                    opacity: 0.6;
                 }
-                .btn-menu:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+                .btn-menu:hover { 
+                    background: rgba(0, 0, 0, 0.05); 
+                    color: var(--text-primary);
+                    opacity: 1;
+                }
 
                 .dropdown-menu {
                     position: absolute;
-                    top: 45px; right: 0;
-                    background: var(--card-bg);
-                    border: 1px solid var(--border-subtle);
-                    border-radius: 12px;
-                    width: 150px;
+                    top: 48px; right: 0;
+                    background: white;
+                    border: 1px solid rgba(0, 0, 0, 0.08);
+                    border-radius: 14px;
+                    min-width: 160px;
                     z-index: 100;
-                    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
                     overflow: hidden;
-                    animation: fadeIn 0.1s ease;
+                    animation: menuSlideIn 0.15s ease-out;
                 }
                 .dropdown-menu button {
                     width: 100%; text-align: left;
@@ -569,15 +568,28 @@ export default function Friends() {
                     background: transparent; border: none;
                     color: var(--text-primary); font-size: 0.9rem;
                     cursor: pointer;
-                    transition: background 0.2s;
+                    transition: background 0.15s;
+                    font-weight: 500;
                 }
-                .dropdown-menu button:hover { background: var(--bg-secondary); }
-                .dropdown-menu button.danger { color: #ff4444; }
-                .dropdown-menu button.danger:hover { background: rgba(255, 68, 68, 0.1); }
+                .dropdown-menu button:hover { 
+                    background: rgba(0, 0, 0, 0.04);
+                }
+                .dropdown-menu button.danger { 
+                    color: #ff3b30;
+                }
+                .dropdown-menu button.danger:hover { 
+                    background: rgba(255, 59, 48, 0.08);
+                }
                 
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(-5px); }
-                    to { opacity: 1; transform: translateY(0); }
+                @keyframes menuSlideIn {
+                    from { 
+                        opacity: 0; 
+                        transform: translateY(-8px) scale(0.96);
+                    }
+                    to { 
+                        opacity: 1; 
+                        transform: translateY(0) scale(1);
+                    }
                 }
 
                 .friends-page {
@@ -640,26 +652,31 @@ export default function Friends() {
                 .list { display: flex; flex-direction: column; gap: 0; }
 
                 .friend-card {
-                    display: flex; align-items: center; gap: 16px;
-                    padding: 12px 20px; /* Compact padding */
+                    display: flex; align-items: center; gap: 12px;
+                    padding: 8px 20px;
                     background: transparent;
-                    border: none;
-                    border-radius: 12px; /* Slight radius for hover state */
-                    margin: 2px 10px; /* Inset hover effect */
-                    cursor: pointer; transition: background 0.2s;
-                    position: relative; overflow: visible; /* Allow menu overflow */
+                    border: 1px solid transparent;
+                    border-radius: 16px;
+                    margin: 0;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    position: relative;
+                    overflow: visible;
                 }
                 .friend-card:hover { 
-                    background: var(--bg-secondary);
-                    transform: none;
-                    box-shadow: none;
+                    background: rgba(0, 0, 0, 0.02);
+                    border-color: rgba(0, 0, 0, 0.06);
+                    transform: translateX(2px);
                 }
-                .friend-card:active { background: rgba(0,0,0,0.05); }
+                .friend-card:active { 
+                    background: rgba(0, 0, 0, 0.04);
+                    transform: translateX(0);
+                }
 
-                .avatar-container { position: relative; width: 56px; height: 56px; }
+                .avatar-container { position: relative; width: 48px; height: 48px; }
                 .avatar { 
-                    width: 100%; height: 100%; border-radius: 18px; object-fit: cover; 
-                    background: rgba(0,0,0,0.2);
+                    width: 100%; height: 100%; border-radius: 14px; object-fit: cover; 
+                    background: rgba(0,0,0,0.08);
                 }
                 .status-indicator {
                     position: absolute; bottom: -2px; right: -2px;
@@ -669,9 +686,9 @@ export default function Friends() {
                 }
                 .status-indicator.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.5); }
 
-                .info { flex: 1; }
-                .info h3 { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-                .status-text { font-size: 0.85rem; color: var(--text-secondary); display: block; }
+                .info { flex: 1; min-width: 0; }
+                .info h3 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0; }
+                .status-text { font-size: 0.8rem; color: var(--text-secondary); opacity: 0.75; display: block; }
                 .subtitle { font-size: 0.8rem; color: var(--accent-cyan); }
 
                 .actions { display: flex; gap: 8px; }
@@ -695,6 +712,56 @@ export default function Friends() {
                     border: none; padding: 12px 24px; border-radius: 20px;
                     color: white; font-weight: 600; margin-top: 20px;
                     cursor: pointer; box-shadow: 0 4px 15px rgba(0,114,255,0.3);
+                }
+
+                @media (max-width: 768px) {
+                    .friend-card {
+                        padding: 10px 20px;
+                        margin: 0;
+                        border-radius: 18px;
+                    }
+                    .friend-card:hover {
+                        transform: none;
+                    }
+                    .avatar-container {
+                        width: 52px;
+                        height: 52px;
+                    }
+                    .avatar {
+                        border-radius: 16px;
+                    }
+                    .status-indicator {
+                        width: 16px;
+                        height: 16px;
+                        border-width: 2.5px;
+                        bottom: -2px;
+                        right: -2px;
+                    }
+                    .info h3 {
+                        font-size: 0.95rem;
+                        margin-bottom: 0;
+                        font-weight: 600;
+                    }
+                    .status-text {
+                        font-size: 0.8rem;
+                    }
+                    .btn-menu {
+                        width: 44px;
+                        height: 44px;
+                        background: transparent;
+                    }
+                    .btn-menu svg {
+                        width: 24px;
+                        height: 24px;
+                    }
+                    .section-header {
+                        font-size: 0.9rem;
+                        padding: 16px 20px 8px 20px;
+                    }
+                    .friend-badge {
+                        font-size: 0.7rem;
+                        padding: 4px 10px;
+                    }
                 }
             `}</style>
         </div>

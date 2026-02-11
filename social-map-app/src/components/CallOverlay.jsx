@@ -3,11 +3,10 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 
-export default function CallOverlay({ callData, currentUser, onEnd }) {
+export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, callDuration, setCallDuration }) {
     const [status, setStatus] = useState('Connecting...');
     const [muted, setMuted] = useState(false);
     const [cameraOff, setCameraOff] = useState(false);
-    const [callDuration, setCallDuration] = useState(0);
     const [remoteUsers, setRemoteUsers] = useState([]);
     const [localTrackReady, setLocalTrackReady] = useState(false);
     
@@ -544,6 +543,19 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                         )}
                     </button>
                 )}
+
+                <button 
+                    className="ctrl-btn minimize-btn" 
+                    onClick={onMinimize}
+                    title="Minimize"
+                >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="4 14 10 14 10 20"></polyline>
+                        <polyline points="20 10 14 10 14 4"></polyline>
+                        <line x1="14" y1="10" x2="21" y2="3"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
             </div>
 
             <style>{`
@@ -688,6 +700,13 @@ export default function CallOverlay({ callData, currentUser, onEnd }) {
                     background: #ff3b30; width: 72px; height: 72px; margin: 0 12px;
                 }
                 .ctrl-btn.hangup:hover { background: #ff453a; box-shadow: 0 8px 30px rgba(255, 59, 48, 0.5); transform: scale(1.1); }
+                
+                .ctrl-btn.minimize-btn {
+                    background: rgba(255,255,255,0.1);
+                }
+                .ctrl-btn.minimize-btn:hover {
+                    background: rgba(255,255,255,0.2);
+                }
                 
                 /* Mobile optimization */
                 @media (max-width: 480px) {

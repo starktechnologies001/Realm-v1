@@ -504,6 +504,101 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         border: 1px solid rgba(255,255,255,0.1);
                         color: white;
                     }
+
+                    /* Mobile Optimizations */
+                    @media (max-width: 768px) {
+                        .user-profile-card {
+                            padding: 24px 20px;
+                        }
+
+                        .card-header-centered {
+                            gap: 8px;
+                            margin-bottom: 20px;
+                        }
+
+                        .avatar-ring-container {
+                            width: 90px;
+                            height: 90px;
+                        }
+
+                        .status-dot-large {
+                            width: 16px;
+                            height: 16px;
+                            bottom: 6px;
+                            right: 6px;
+                            border-width: 2.5px;
+                        }
+
+                        .user-name {
+                            font-size: 1.4rem;
+                            margin: 4px 0 2px 0;
+                        }
+
+                        .user-handle {
+                            font-size: 0.85rem;
+                            margin-bottom: 6px;
+                        }
+
+                        .header-badges {
+                            gap: 6px;
+                        }
+
+                        .status-pill {
+                            padding: 5px 14px;
+                            font-size: 0.8rem;
+                        }
+
+                        .badge-pill.friend-premium {
+                            font-size: 0.8rem;
+                            padding: 5px 16px;
+                            margin-top: 4px;
+                        }
+
+                        .stats-container {
+                            padding: 16px 0;
+                            margin-bottom: 20px;
+                        }
+
+                        .stat-value {
+                            font-size: 1rem;
+                        }
+
+                        .stat-label {
+                            font-size: 0.6rem;
+                        }
+
+                        .info-section {
+                            margin-bottom: 20px;
+                        }
+
+                        .section-title {
+                            font-size: 0.7rem;
+                            margin-bottom: 10px;
+                        }
+
+                        .bio-text {
+                            font-size: 0.9rem;
+                            padding: 14px;
+                        }
+
+                        .interest-tag {
+                            padding: 7px 14px;
+                            font-size: 0.8rem;
+                        }
+
+                        .btn-message-large {
+                            padding: 14px;
+                            font-size: 0.95rem;
+                        }
+
+                        .btn-icon-action {
+                            padding: 14px;
+                        }
+
+                        .btn-icon-action span {
+                            font-size: 1.3rem !important;
+                        }
+                    }
                 `}</style>
             </motion.div>
         </AnimatePresence>

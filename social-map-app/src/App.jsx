@@ -40,7 +40,10 @@ function urlBase64ToUint8Array(base64String) {
 function App() {
   useEffect(() => {
       const initPush = async () => {
-          if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+          if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+              console.log('ℹ️ Push notifications not supported in this browser');
+              return;
+          }
 
           try {
               const registration = await navigator.serviceWorker.register('/sw.js');
@@ -51,8 +54,8 @@ function App() {
               
               if (permission === 'granted') {
                   // Subscribe to Push
-                  if (VAPID_PUBLIC_KEY === 'YOUR_VAPID_PUBLIC_KEY_HERE') {
-                      console.warn('⚠️ Push Notifications: VAPID Key is missing. Please generate one and update App.jsx.');
+                  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY === 'YOUR_VAPID_PUBLIC_KEY_HERE') {
+                      console.log('ℹ️ Push Notifications: VAPID Key not configured. Skipping push setup.');
                       return;
                   }
 
@@ -70,9 +73,16 @@ function App() {
                       }, { onConflict: 'user_id, subscription' });
                       console.log('✅ Push Subscription saved!');
                   }
+              } else if (permission === 'denied') {
+                  console.log('ℹ️ Push notifications permission denied by user');
               }
           } catch (err) {
-              console.error('Service Worker/Push error:', err);
+              // Suppress non-critical push notification errors in development
+              if (err.name === 'AbortError' || err.message?.includes('push service error')) {
+                  console.log('ℹ️ Push notifications unavailable (development mode or not configured)');
+              } else {
+                  console.warn('Push notification setup error:', err.message);
+              }
           }
       };
 
