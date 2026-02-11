@@ -96,32 +96,31 @@ function RecenterAutomatically({ lat, lng }) {
 export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
-    const { 
-        permissionStatus, 
-        setPermission, 
-        resetPermission, 
+    const {
+        permissionStatus,
+        setPermission,
+        resetPermission,
         userLocation,
-        requestPermissionFromUser 
+        requestPermissionFromUser
     } = useLocationContext();
 
-    const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
-    
+
     // Initialize state synchronously to prevent flash
     const [isDarkMode, setIsDarkMode] = useState(() => {
-         if (theme === 'dark') return true;
-         if (theme === 'light') return false;
-         if (typeof window !== 'undefined' && window.matchMedia) {
-             return window.matchMedia('(prefers-color-scheme: dark)').matches;
-         }
-         return false;
+        if (theme === 'dark') return true;
+        if (theme === 'light') return false;
+        if (typeof window !== 'undefined' && window.matchMedia) {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        return false;
     });
 
     useEffect(() => {
         const checkDarkMode = () => {
-             if (theme === 'dark') return true;
-             if (theme === 'light') return false;
-             return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (theme === 'dark') return true;
+            if (theme === 'light') return false;
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         };
         setIsDarkMode(checkDarkMode());
 
@@ -152,7 +151,7 @@ export default function MapHome() {
         try {
             const stored = localStorage.getItem('currentUser');
             let user = stored ? JSON.parse(stored) : null;
-            
+
             // Instant Override from Login Navigation (Healing)
             if (routeLocation?.state?.preloadedAvatar && user) {
                 user.avatar_url = routeLocation.state.preloadedAvatar;
@@ -173,36 +172,56 @@ export default function MapHome() {
     // Image Preloader for Instant Rendering
     useEffect(() => {
         if (!nearbyUsers || nearbyUsers.length === 0) return;
-        
+
         nearbyUsers.forEach(user => {
             if (user.avatar) {
                 const img = new Image();
                 img.src = getAvatar2D(user.avatar);
             }
         });
-        
+
         // Also preload current user
         if (currentUser?.avatar_url) {
-             const img = new Image();
-             img.src = getAvatar2D(currentUser.avatar_url);
+            const img = new Image();
+            img.src = getAvatar2D(currentUser.avatar_url);
         }
     }, [nearbyUsers, currentUser?.avatar_url]);
 
     // Live Location Sync
     useEffect(() => {
-        if (userLocation) {
-            // Update Map Center (if we want to lock to user)
-            // For now, let's update it so user sees themselves
-            setLocation(userLocation);
-            localStorage.setItem('lastLocation', JSON.stringify(userLocation));
+        if (!userLocation) return;
 
-            // Update Current User Marker Position
-            setCurrentUser(prev => {
-                if (!prev) return prev;
-                return { ...prev, lat: userLocation.lat, lng: userLocation.lng };
-            });
-        }
+        setLocation(prev => {
+            if (
+                prev &&
+                prev.lat === userLocation.lat &&
+                prev.lng === userLocation.lng
+            ) {
+                return prev; // ⛔ no-op
+            }
+
+            localStorage.setItem('lastLocation', JSON.stringify(userLocation));
+            return userLocation;
+        });
+
+        setCurrentUser(prev => {
+            if (!prev) return prev;
+
+            if (
+                prev.lat === userLocation.lat &&
+                prev.lng === userLocation.lng
+            ) {
+                return prev; // ⛔ no-op
+            }
+
+            return {
+                ...prev,
+                lat: userLocation.lat,
+                lng: userLocation.lng
+            };
+        });
     }, [userLocation]);
+
 
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
@@ -231,7 +250,7 @@ export default function MapHome() {
                 .select('*')
                 .eq('id', user.id)
                 .single();
-            
+
             // Bypass if locally flagged as complete (immediate fix for loop)
             const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
 
@@ -240,35 +259,35 @@ export default function MapHome() {
                 // This covers OAuth users who haven't set up.
                 // Manual signup users (who have gender/status) are skipped, even if they have default avatar.
                 if (!profile.gender || !profile.status) {
-                     console.log("⚠️ Incomplete profile detected (missing gender/status), opening setup modal.");
-                     setSetupData({
+                    console.log("⚠️ Incomplete profile detected (missing gender/status), opening setup modal.");
+                    setSetupData({
                         username: profile.username,
                         gender: profile.gender || '',
                         status: profile.status || ''
-                     });
-                     setShowProfileSetup(true);
+                    });
+                    setShowProfileSetup(true);
                 }
 
                 setCurrentUser(profile);
             }
 
             if (setupCompleteLocal) {
-                 // Still potentially fix critical data silently, but don't block
+                // Still potentially fix critical data silently, but don't block
             } else if (profile) {
                 // 1. Silently fix missing username (common with OAuth)
                 if (!profile.username) {
                     const baseName = (profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase().replace(/[^a-z0-9_]/g, '');
                     const newUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`;
-                    
+
                     await supabase.from('profiles').update({ username: newUsername }).eq('id', profile.id);
-                    
+
                     // Update connection to avoid race condition in next check
-                    profile.username = newUsername; 
-                    
+                    profile.username = newUsername;
+
                     if (currentUser?.id === profile.id) {
-                         const updated = { ...currentUser, username: newUsername };
-                         setCurrentUser(updated);
-                         localStorage.setItem('currentUser', JSON.stringify(updated));
+                        const updated = { ...currentUser, username: newUsername };
+                        setCurrentUser(updated);
+                        localStorage.setItem('currentUser', JSON.stringify(updated));
                     }
                 }
 
@@ -283,26 +302,26 @@ export default function MapHome() {
                         username: profile.username || defaultUsername
                     });
                     setShowProfileSetup(true);
-                    setLoading(false); 
+                    setLoading(false);
                 }
 
                 // 2.5 Priority Self-Healing: Restore uploaded avatar if Profile reverted to default
                 const metaAvatar = user.user_metadata?.avatar_url;
                 const profileAvatar = profile.avatar_url;
-                
+
                 if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
-                     console.log("🚑 [MapHome] Healing avatar mismatch...", { metaAvatar, profileAvatar });
-                     
-                     // Update DB
-                     await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
-                     
-                     // Update Local immediately so UI reflects it
-                     profile.avatar_url = metaAvatar;
-                     if (profile.id === currentUser?.id) {
-                         const updated = { ...currentUser, avatar_url: metaAvatar };
-                         setCurrentUser(updated);
-                         localStorage.setItem('currentUser', JSON.stringify(updated));
-                     }
+                    console.log("🚑 [MapHome] Healing avatar mismatch...", { metaAvatar, profileAvatar });
+
+                    // Update DB
+                    await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+
+                    // Update Local immediately so UI reflects it
+                    profile.avatar_url = metaAvatar;
+                    if (profile.id === currentUser?.id) {
+                        const updated = { ...currentUser, avatar_url: metaAvatar };
+                        setCurrentUser(updated);
+                        localStorage.setItem('currentUser', JSON.stringify(updated));
+                    }
                 }
 
                 // Check if user needs a new avatar
@@ -310,23 +329,23 @@ export default function MapHome() {
                 // 1. No avatar exists
                 // 2. Has Google profile picture (OAuth users)
                 // 3. Has old/invalid avatar system
-                else if (!profile.avatar_url || 
-                         profile.avatar_url.includes('googleusercontent.com') ||
-                         profile.avatar_url.includes('lh3.googleusercontent.com')) {
-                    
+                else if (!profile.avatar_url ||
+                    profile.avatar_url.includes('googleusercontent.com') ||
+                    profile.avatar_url.includes('lh3.googleusercontent.com')) {
+
                     // Generate specific default avatar based on gender (User Request)
                     const gender = profile.gender || 'Other';
                     let newAvatar;
-                    
+
                     if (gender === 'Male') {
                         newAvatar = '/defaults/male_avatar.jpg';
                     } else if (gender === 'Female') {
-                         newAvatar = '/defaults/female_avatar.jpg';
+                        newAvatar = '/defaults/female_avatar.jpg';
                     } else {
-                         const baseName = (profile.username || profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
-                         newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${baseName}_${Math.floor(Math.random() * 1000)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+                        const baseName = (profile.username || profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
+                        newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${baseName}_${Math.floor(Math.random() * 1000)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
                     }
-                    
+
                     // Auto-save immediately
                     await supabase.from('profiles')
                         .update({ avatar_url: newAvatar })
@@ -334,11 +353,11 @@ export default function MapHome() {
 
                     // Update local state if current user
                     if (profile.id === currentUser?.id) {
-                         const updated = { ...currentUser, avatar_url: newAvatar };
-                         setCurrentUser(updated);
-                         localStorage.setItem('currentUser', JSON.stringify(updated));
+                        const updated = { ...currentUser, avatar_url: newAvatar };
+                        setCurrentUser(updated);
+                        localStorage.setItem('currentUser', JSON.stringify(updated));
                     }
-                    
+
                     // Update profile ref for UI
                     profile.avatar_url = newAvatar;
                 }
@@ -400,12 +419,12 @@ export default function MapHome() {
                 table: 'friendships'
             }, (payload) => {
                 const { eventType, old: oldRec, new: newRec } = payload;
-                
+
                 // CASE 1: DELETE (Unfriend)
                 if (eventType === 'DELETE') {
                     const deletedId = oldRec.id;
                     const partnerId = friendshipsRef.current.get(deletedId);
-                    
+
                     if (partnerId) {
                         friendshipsRef.current.delete(deletedId);
                         // Reset status in UI
@@ -417,16 +436,16 @@ export default function MapHome() {
                 }
 
                 // Identify partner for INSERT/UPDATE
-                const relevantId = newRec?.requester_id === currentUser.id ? newRec.receiver_id 
-                                 : newRec?.receiver_id === currentUser.id ? newRec.requester_id 
-                                 : null;
+                const relevantId = newRec?.requester_id === currentUser.id ? newRec.receiver_id
+                    : newRec?.receiver_id === currentUser.id ? newRec.requester_id
+                        : null;
 
                 if (!relevantId) return;
 
                 // CASE 2: BLOCKED
                 if (newRec?.status === 'blocked') {
-                     window.location.reload(); 
-                     return;
+                    window.location.reload();
+                    return;
                 }
 
                 // CASE 3: ACCEPTED
@@ -440,22 +459,22 @@ export default function MapHome() {
                 // CASE 4: PENDING (New Poke)
                 if (newRec?.status === 'pending') {
                     friendshipsRef.current.set(newRec.id, relevantId); // Cache it
-                    
+
                     const isIncoming = newRec.receiver_id === currentUser.id;
                     if (isIncoming) {
                         showToast(`New Poke received! 👋`);
                     }
 
                     // Update UI
-                    setSelectedUser(prev => prev && prev.id === relevantId ? { 
-                        ...prev, 
-                        friendshipStatus: 'pending', 
+                    setSelectedUser(prev => prev && prev.id === relevantId ? {
+                        ...prev,
+                        friendshipStatus: 'pending',
                         requesterId: newRec.requester_id,
                         friendshipId: newRec.id
                     } : prev);
 
-                    setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { 
-                        ...u, 
+                    setNearbyUsers(prev => prev.map(u => u.id === relevantId ? {
+                        ...u,
                         friendshipStatus: 'pending',
                         requesterId: newRec.requester_id,
                         friendshipId: newRec.id
@@ -497,8 +516,8 @@ export default function MapHome() {
                         .not('latitude', 'is', null)
                         .not('longitude', 'is', null),
 
-                   // Fetch my friendships (to sync map)
-                   supabase
+                    // Fetch my friendships (to sync map)
+                    supabase
                         .from('friendships')
                         .select('id, requester_id, receiver_id, status')
                         .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`),
@@ -508,7 +527,7 @@ export default function MapHome() {
                         .from('stories')
                         .select('id, user_id')
                         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
-                    
+
                     // Fetch my story views (to distinguish Seen/Unseen)
                     supabase
                         .from('story_views')
@@ -521,27 +540,27 @@ export default function MapHome() {
 
                 if (friendshipResult.data) {
                     friendshipResult.data.forEach(f => {
-                         const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
-                         if (f.status === 'accepted') {
-                             friendshipsRef.current.set(f.id, partnerId);
-                             myFriendships.set(partnerId, { status: 'accepted', id: f.id });
-                         }
-                         if (f.status === 'pending') {
-                             // Cache pending ID too for deletion lookup
-                             friendshipsRef.current.set(f.id, partnerId);
-                             myFriendships.set(partnerId, { 
-                                 status: 'pending', 
-                                 id: f.id,
-                                 requesterId: f.requester_id // Store requester to know direction
-                             });
-                         }
+                        const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
+                        if (f.status === 'accepted') {
+                            friendshipsRef.current.set(f.id, partnerId);
+                            myFriendships.set(partnerId, { status: 'accepted', id: f.id });
+                        }
+                        if (f.status === 'pending') {
+                            // Cache pending ID too for deletion lookup
+                            friendshipsRef.current.set(f.id, partnerId);
+                            myFriendships.set(partnerId, {
+                                status: 'pending',
+                                id: f.id,
+                                requesterId: f.requester_id // Store requester to know direction
+                            });
+                        }
                     });
                 }
-                
+
                 // Process Stories & Views
                 const usersWithStories = new Set();
                 const usersWithUnseenStories = new Set();
-                
+
                 const myViewedStoryIds = new Set(
                     viewsResult.data ? viewsResult.data.map(v => v.story_id) : []
                 );
@@ -564,7 +583,7 @@ export default function MapHome() {
                         }
                     });
                 }
-                
+
                 // Filter and map users (exclude blocked users AND current user)
                 const validUsers = profilesResult.data
                     .filter(u => !allBlockedIds.has(u.id) && u.id !== currentUser.id)
@@ -598,7 +617,7 @@ export default function MapHome() {
                             lastActive: u.last_active,
                             isLocationOn: true,
                             isLocationShared: true,
-                            friendshipStatus: fData?.status || null, 
+                            friendshipStatus: fData?.status || null,
                             friendshipId: fData?.id || null,
                             is_public: u.is_public,
                             // PRIVACY CHECK: Only show story if public OR friends
@@ -625,7 +644,7 @@ export default function MapHome() {
                 if (blockedIdsRef.current.has(updatedUser.id)) {
                     // Start removing them if they are currently on map
                     setNearbyUsers(prev => prev.filter(u => u.id !== updatedUser.id));
-                    return; 
+                    return;
                 }
 
                 // Check visibility criteria
@@ -688,7 +707,7 @@ export default function MapHome() {
 
                 // FILTER BLOCKED USERS
                 if (blockedIdsRef.current.has(newUser.id)) return;
-                
+
                 // Show new user if not in ghost mode
                 if (!newUser.is_ghost_mode) {
                     // Preload Image Immediately
@@ -702,7 +721,7 @@ export default function MapHome() {
                         // Avoid duplicates
                         if (prev.some(u => u.id === newUser.id)) return prev;
                         // Add new user
-                         return [...prev, {
+                        return [...prev, {
                             id: newUser.id,
                             name: newUser.username || 'User',
                             lat: newUser.latitude,
@@ -727,7 +746,7 @@ export default function MapHome() {
                 const story = payload.new;
                 setNearbyUsers(prev => prev.map(u => {
                     if (u.id === story.user_id) {
-                         // Check privacy before showing ring
+                        // Check privacy before showing ring
                         const isFriend = u.friendshipStatus === 'accepted';
                         const isPublic = u.is_public !== false;
                         if (isFriend || isPublic) {
@@ -839,11 +858,11 @@ export default function MapHome() {
         // Subscribe to my own profile changes (avatar, status updates)
         const profileSub = supabase
             .channel(`public:profiles:${parsedUser.id}`)
-            .on('postgres_changes', { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'profiles', 
-                filter: `id=eq.${parsedUser.id}` 
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'profiles',
+                filter: `id=eq.${parsedUser.id}`
             }, (payload) => {
                 setCurrentUser(prev => {
                     const updated = { ...prev, ...payload.new };
@@ -853,85 +872,11 @@ export default function MapHome() {
             })
             .subscribe();
 
-        // Check Permission Logic
-        const initLocation = () => {
-            if (!navigator.geolocation) {
-                setLoading(false);
-                return;
-            }
-
-            // We now rely on permissionStatus from Context
-            if (permissionStatus === 'granted') {
-                startLocationTracking();
-            } else if (permissionStatus === 'denied') {
-                setLoading(false);
-            } else {
-                // Prompt - Wait for user action (Modal shown via JSX)
-                setLoading(false);
-            }
-        };
-
-        const startLocationTracking = () => {
-            // Immediate fetch
-            // Helper to process location success
-            const handleSuccess = async (position) => {
-                const { latitude, longitude } = position.coords;
-                setLocation({ lat: latitude, lng: longitude });
-                localStorage.setItem('lastLocation', JSON.stringify({ lat: latitude, lng: longitude }));
-                setLoading(false);
-                if (parsedUser.id) {
-                    await supabase.from('profiles').update({
-                        latitude: latitude,
-                        longitude: longitude,
-                        last_active: new Date().toISOString()
-                    }).eq('id', parsedUser.id);
-                }
-            };
-
-            // Immediate fetch with High Accuracy
-            navigator.geolocation.getCurrentPosition(
-                handleSuccess,
-                (error) => {
-                    // Debug info: High accuracy often times out indoors. This is normal fallback behavior.
-                    console.log('[MapHome] location init: High accuracy timed out/failed, falling back to low accuracy.');
-                    // Fallback to Low Accuracy
-                    navigator.geolocation.getCurrentPosition(
-                        handleSuccess,
-                        (err) => { console.error("Location init failed:", err); setLoading(false); },
-                        { enableHighAccuracy: false, timeout: 20000, maximumAge: 10000 }
-                    );
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
-            );
-
-            // Watcher removed. Use LocationContext for live tracking.
-        };
-
-        // Listen for system permission changes (e.g. toggling in browser/settings)
-        if (navigator.permissions && navigator.permissions.query) {
-            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-                result.onchange = () => {
-                    console.log('[MapHome] Permission changed:', result.state);
-                    if (result.state === 'granted') {
-                        setPermission('granted', true);
-                    } else if (result.state === 'denied') {
-                        setPermission('denied', true);
-                    } else if (result.state === 'prompt') {
-                        setPermission('prompt', true);
-                    }
-                };
-            });
-        }
-
-        // Run Init
-        initLocation();
-
         return () => {
-            if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
             if (profileSub) supabase.removeChannel(profileSub);
             window.removeEventListener('local-user-update', handleLocalUpdate);
         };
-    }, [navigate, permissionStatus]); // Depend on permissionStatus
+    }, [navigate]);
 
 
 
@@ -943,7 +888,7 @@ export default function MapHome() {
         }
     };
 
-    
+
     const handleEnableLocation = () => {
         resetPermission();
         requestPermissionFromUser();
@@ -998,7 +943,7 @@ export default function MapHome() {
 
             // 1. Determine Avatar URL (Upload > Gender Default)
             let finalAvatarUrl;
-            
+
             // Priority 1: Uploaded File
             if (avatarFile) {
                 // Upload to 'chat-images' using userId as folder prefix if possible, or just unique name
@@ -1020,7 +965,7 @@ export default function MapHome() {
                 username: setupData.username,
                 avatar_url: finalAvatarUrl
             };
-            
+
             // Validate username
             if (!updates.username) {
                 showToast("Username is required!");
@@ -1064,7 +1009,7 @@ export default function MapHome() {
 
     const handleDeleteThought = async () => {
         if (!currentUser) return;
-        
+
         try {
             // Optimistic update
             const updatedUser = { ...currentUser, thought: null, thoughtTime: null };
@@ -1076,7 +1021,7 @@ export default function MapHome() {
             // DB Update
             const { error } = await supabase
                 .from('profiles')
-                .update({ 
+                .update({
                     status_message: null,
                     status_updated_at: null
                 })
@@ -1104,7 +1049,7 @@ export default function MapHome() {
             // DB Update for global visibility
             const { error } = await supabase
                 .from('profiles')
-                .update({ 
+                .update({
                     status_message: myThought,
                     last_active: new Date().toISOString(),
                     status_updated_at: new Date().toISOString()
@@ -1112,7 +1057,7 @@ export default function MapHome() {
                 .eq('id', currentUser.id);
 
             if (error) throw error;
-            
+
             showToast('Thought posted to map! 🌍');
         } catch (err) {
             console.error("Error posting thought:", err);
@@ -1129,8 +1074,8 @@ export default function MapHome() {
         const Δλ = (lon2 - lon1) * Math.PI / 180;
 
         const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
         return R * c; // Distance in meters
@@ -1159,13 +1104,13 @@ export default function MapHome() {
                 // 1. Check Block Status (New Table)
                 const isBlocked = await isUserBlocked(targetUser.id, currentUser.id); // target blocked me
                 if (isBlocked) {
-                    showToast("Failed to send poke."); 
+                    showToast("Failed to send poke.");
                     return;
                 }
                 const iBlocked = await isUserBlocked(currentUser.id, targetUser.id); // I blocked target
                 if (iBlocked) {
-                     showToast("Unblock user to poke them.");
-                     return;
+                    showToast("Unblock user to poke them.");
+                    return;
                 }
 
                 // 2. Check if already friends or requested
@@ -1199,25 +1144,25 @@ export default function MapHome() {
                             return;
                         }
                     }
-                    
+
                     // For 'declined' OR 'blocked' status (legacy), we delete and start fresh
                     const { error: deleteError } = await supabase
                         .from('friendships')
                         .delete()
                         .eq('id', existing.id);
-                        
+
                     if (deleteError) {
                         console.error('Error deleting existing record:', deleteError);
                         // Fallback: try update to pending
                         await supabase
                             .from('friendships')
-                            .update({ 
-                                status: 'pending', 
-                                requester_id: currentUser.id, 
-                                receiver_id: targetUser.id 
+                            .update({
+                                status: 'pending',
+                                requester_id: currentUser.id,
+                                receiver_id: targetUser.id
                             })
                             .eq('id', existing.id);
-                        
+
                         showToast(`👋 Poked ${targetUser.name}!`);
                         setSelectedUser({ ...targetUser, friendshipStatus: 'pending' });
                         return;
@@ -1226,18 +1171,18 @@ export default function MapHome() {
 
                 // OPTIMISTIC UPDATE: Show "Requested" immediately
                 showToast(`Poke Request Sent 📨`);
-                
+
                 // Track previous state for rollback
                 const prevSelectedUser = { ...selectedUser };
-                
-                setSelectedUser({ 
-                    ...targetUser, 
+
+                setSelectedUser({
+                    ...targetUser,
                     friendshipStatus: 'pending',
                     requesterId: currentUser.id,
                     // Temporary ID or null, will update after DB
-                    friendshipId: 'temp-' + Date.now() 
+                    friendshipId: 'temp-' + Date.now()
                 });
-                
+
                 // Send Poke Request
                 const { data: newRecs, error } = await supabase
                     .from('friendships')
@@ -1252,28 +1197,28 @@ export default function MapHome() {
                     // Revert UI on error
                     setSelectedUser(prevSelectedUser);
                     console.error('Poke error:', error);
-                    
-                     if (error.code === '23505') {
-                         console.warn('Handling duplicate poke insert...');
-                         // Was already requested maybe? Refresh user?
-                         showToast("Poke already sent!");
-                         // Refetch to get truth
-                     } else {
-                         showToast("Failed to send poke.");
-                         throw error;
-                     }
+
+                    if (error.code === '23505') {
+                        console.warn('Handling duplicate poke insert...');
+                        // Was already requested maybe? Refresh user?
+                        showToast("Poke already sent!");
+                        // Refetch to get truth
+                    } else {
+                        showToast("Failed to send poke.");
+                        throw error;
+                    }
                 } else {
                     // Success: Update with real ID so Cancel works
                     const newFriendship = newRecs[0];
                     friendshipsRef.current.set(newFriendship.id, targetUser.id);
-                    
-                    setSelectedUser(prev => ({ 
-                        ...prev, 
+
+                    setSelectedUser(prev => ({
+                        ...prev,
                         friendshipId: newFriendship.id
                     }));
                 }
             } catch (err) {
-                 // Already handled rollback above for most cases
+                // Already handled rollback above for most cases
             }
         }
         else if (action === 'cancel-poke') {
@@ -1292,13 +1237,13 @@ export default function MapHome() {
                 if (error) throw error;
 
                 showToast("Request cancelled ❌");
-                
+
                 // Update UI immediately (Revert to no status)
-                setSelectedUser({ 
-                    ...targetUser, 
-                    friendshipStatus: null, 
+                setSelectedUser({
+                    ...targetUser,
+                    friendshipStatus: null,
                     friendshipId: null,
-                    requesterId: null 
+                    requesterId: null
                 });
 
             } catch (err) {
@@ -1343,7 +1288,7 @@ export default function MapHome() {
                 try {
                     const isRequester = targetUser.requesterId === currentUser.id;
                     const column = isRequester ? 'muted_until_by_requester' : 'muted_until_by_receiver';
-                    
+
                     await supabase
                         .from('friendships')
                         .update({ [column]: null })
@@ -1383,32 +1328,32 @@ export default function MapHome() {
             showToast("Calls coming soon! 📞");
         }
         else if (action === 'view-story') {
-             // Fetch active stories for this user
-             const fetchStories = async () => {
-                 try {
-                     const { data, error } = await supabase
+            // Fetch active stories for this user
+            const fetchStories = async () => {
+                try {
+                    const { data, error } = await supabase
                         .from('stories')
                         .select('*')
                         .eq('user_id', targetUser.id)
                         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
                         .order('created_at', { ascending: true });
 
-                     if (error) throw error;
+                    if (error) throw error;
 
-                     if (data && data.length > 0) {
-                         setViewingStoryUser({
-                             user: targetUser,
-                             stories: data
-                         });
-                     } else {
-                         showToast("No active stories");
-                     }
-                 } catch (err) {
-                     console.error("Error fetching stories:", err);
-                     showToast("Failed to load stories");
-                 }
-             };
-             fetchStories();
+                    if (data && data.length > 0) {
+                        setViewingStoryUser({
+                            user: targetUser,
+                            stories: data
+                        });
+                    } else {
+                        showToast("No active stories");
+                    }
+                } catch (err) {
+                    console.error("Error fetching stories:", err);
+                    showToast("Failed to load stories");
+                }
+            };
+            fetchStories();
         }
     };
 
@@ -1433,7 +1378,7 @@ export default function MapHome() {
         // Ensure url is safely wrapped and background is configured
         // Use double quotes for style attribute, single for url
         let style = `background-image: url('${url}'); background-size: cover; background-position: center;`;
-        
+
         if (isSelf) {
             className += ' self';
             if (isGhostMode) style += ' opacity: 0.5; filter: grayscale(100%);';
@@ -1458,8 +1403,8 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [55, 55], 
-            iconAnchor: [27.5, 27.5], 
+            iconSize: [55, 55],
+            iconAnchor: [27.5, 27.5],
             popupAnchor: [0, -30]
         });
     };
@@ -1467,7 +1412,7 @@ export default function MapHome() {
     // Memoize current user marker to avoid hook order issues
     const currentUserMarker = useMemo(() => {
         if (!currentUser || !location) return null;
-        
+
         let avatarUrl;
         if (currentUser.avatar_url) {
             avatarUrl = getAvatar2D(currentUser.avatar_url);
@@ -1498,7 +1443,7 @@ export default function MapHome() {
     }
 
     // 3. Loading User or Waiting for Location (Permission is Granted at this point)
-    if (loading || !location) {
+    if (permissionStatus === 'granted' && !location) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#e0e0e0', color: '#333' }}>
                 <h2>{loading ? 'Loading Profile...' : 'Acquiring Location...'}</h2>
@@ -1514,18 +1459,18 @@ export default function MapHome() {
         <div className="map-container">
             {/* PROFILE UPDATE NUDGE */}
             {currentUser && (
-                (!currentUser.avatar_url || 
-                 currentUser.avatar_url.includes('/defaults/') || 
-                 currentUser.avatar_url.includes('dicebear') || 
-                 currentUser.avatar_url.includes('googleusercontent'))
+                (!currentUser.avatar_url ||
+                    currentUser.avatar_url.includes('/defaults/') ||
+                    currentUser.avatar_url.includes('dicebear') ||
+                    currentUser.avatar_url.includes('googleusercontent'))
             ) && (
-                <div 
-                    className="update-nudge"
-                    onClick={() => navigate('/profile')}
-                >
-                    ⚠️ Update profile avatar
-                </div>
-            )}
+                    <div
+                        className="update-nudge"
+                        onClick={() => navigate('/profile')}
+                    >
+                        ⚠️ Update profile avatar
+                    </div>
+                )}
 
             {/* BLOCKING ONBOARDING MODAL */}
             {showProfileSetup && (
@@ -1536,8 +1481,8 @@ export default function MapHome() {
 
                         <div className="ob-section">
                             <label>Username</label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 className="ob-input"
                                 value={setupData.username}
                                 onChange={(e) => setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
@@ -1574,33 +1519,33 @@ export default function MapHome() {
                         <div className="ob-section">
                             <label>Your Avatar 👤</label>
                             <div className="avatar-preview-box" style={{ position: 'relative', width: '100px', margin: '0 auto' }}>
-                                <div style={{ 
-                                    width: '100px', height: '100px', 
+                                <div style={{
+                                    width: '100px', height: '100px',
                                     borderRadius: '50%', overflow: 'hidden',
                                     border: '3px solid rgba(255,255,255,0.2)',
                                     background: 'rgba(255,255,255,0.05)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }}>
-                                    <img 
+                                    <img
                                         src={(() => {
                                             // Priority 1: Uploaded Preview
                                             if (avatarPreview) return avatarPreview;
-                                            
+
                                             // Priority 2: Gender Default
                                             const g = setupData.gender;
                                             if (g === 'Male') return DEFAULT_MALE_AVATAR;
                                             if (g === 'Female') return DEFAULT_FEMALE_AVATAR;
-                                            
+
                                             // Fallback
                                             return DEFAULT_GENERIC_AVATAR;
                                         })()}
-                                        alt="Avatar Preview" 
+                                        alt="Avatar Preview"
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     />
                                 </div>
-                                
+
                                 {/* Upload Button Overlay */}
-                                <label 
+                                <label
                                     htmlFor="modal-avatar-upload"
                                     style={{
                                         position: 'absolute', bottom: '0', right: '0',
@@ -1616,35 +1561,35 @@ export default function MapHome() {
                                 >
                                     <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
                                 </label>
-                                <input 
-                                    id="modal-avatar-upload" 
-                                    type="file" 
-                                    accept="image/*" 
+                                <input
+                                    id="modal-avatar-upload"
+                                    type="file"
+                                    accept="image/*"
                                     onChange={(e) => {
                                         const file = e.target.files[0];
-                                    if (file) {
-                                        // Read file for cropping
-                                        const reader = new FileReader();
-                                        reader.onload = () => setCropImage(reader.result);
-                                        reader.readAsDataURL(file);
-                                        
-                                        // Clear input so same file can be selected again
-                                        e.target.value = '';
-                                    }
-                                }} 
-                                style={{ display: 'none' }} 
-                            />
-                        </div>
-                        <p className="avatar-hint" style={{ marginTop: '12px' }}>
-                            {avatarFile ? 'Photo selected! Ready to join.' : "We've assigned you a look based on gender. Tap + to upload your own!"}
-                        </p>
-                    </div>
+                                        if (file) {
+                                            // Read file for cropping
+                                            const reader = new FileReader();
+                                            reader.onload = () => setCropImage(reader.result);
+                                            reader.readAsDataURL(file);
 
-                    <button className="complete-btn" onClick={handleCompleteSetup}>
-                        Complete Setup & Enter Map 🚀
-                    </button>
+                                            // Clear input so same file can be selected again
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                    style={{ display: 'none' }}
+                                />
+                            </div>
+                            <p className="avatar-hint" style={{ marginTop: '12px' }}>
+                                {avatarFile ? 'Photo selected! Ready to join.' : "We've assigned you a look based on gender. Tap + to upload your own!"}
+                            </p>
+                        </div>
+
+                        <button className="complete-btn" onClick={handleCompleteSetup}>
+                            Complete Setup & Enter Map 🚀
+                        </button>
+                    </div>
                 </div>
-            </div>
             )}
 
             {/* Cropper Modal */}
@@ -1719,7 +1664,7 @@ export default function MapHome() {
                     // Process users to handle overlap (Spiderfy / Separation)
                     // Density-Based Clustering & Spiral Layout
                     // 1. Sort for stability
-                    const sortedUsers = [...nearbyUsers].sort((a,b) => a.id.localeCompare(b.id));
+                    const sortedUsers = [...nearbyUsers].sort((a, b) => a.id.localeCompare(b.id));
                     const clusters = [];
                     const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
 
@@ -1729,7 +1674,7 @@ export default function MapHome() {
                         for (let cluster of clusters) {
                             // Check distance to cluster center (using first user as anchor for stability)
                             const anchor = cluster[0];
-                            if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD && 
+                            if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD &&
                                 Math.abs(u.lng - anchor.lng) < CLUSTER_THRESHOLD) {
                                 cluster.push(u);
                                 placed = true;
@@ -1755,7 +1700,7 @@ export default function MapHome() {
                                 // Archimedean Spiral / Golden Angle Packing
                                 const angle = i * 2.4; // ~137.5 degrees
                                 const radius = SPIRAL_SPACING * Math.sqrt(i);
-                                
+
                                 processedUsers.push({
                                     ...u,
                                     lat: avgLat + (Math.cos(angle) * radius),
@@ -1782,48 +1727,48 @@ export default function MapHome() {
                                 eventHandlers={{
                                     click: async () => {
 
-                                // Fetch friendship status synchronously to update UI instantly
-                                let status = null;
-                                // Optimistically show card while loading if needed, but fetch runs fast.
-                                // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
-                                console.log(`🔍 [MapHome] Fetching friendship between Me(${currentUser.id}) and ${u.name}(${u.id})`);
-                                const { data, error } = await supabase
-                                    .from('friendships')
-                                    .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
-                                    .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
-                                    .maybeSingle(); 
+                                        // Fetch friendship status synchronously to update UI instantly
+                                        let status = null;
+                                        // Optimistically show card while loading if needed, but fetch runs fast.
+                                        // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
+                                        console.log(`🔍 [MapHome] Fetching friendship between Me(${currentUser.id}) and ${u.name}(${u.id})`);
+                                        const { data, error } = await supabase
+                                            .from('friendships')
+                                            .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
+                                            .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
+                                            .maybeSingle();
 
-                                if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
-                                console.log("✅ [MapHome] Friendship Data:", data);
+                                        if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
+                                        console.log("✅ [MapHome] Friendship Data:", data);
 
-                                let isMuted = false;
-                                if (data) {
-                                    let mutedUntil = null;
-                                    if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
-                                    else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
-                                    
-                                    if (mutedUntil && new Date(mutedUntil) > new Date()) {
-                                        isMuted = true;
+                                        let isMuted = false;
+                                        if (data) {
+                                            let mutedUntil = null;
+                                            if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
+                                            else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
+
+                                            if (mutedUntil && new Date(mutedUntil) > new Date()) {
+                                                isMuted = true;
+                                            }
+                                        }
+
+                                        setSelectedUser({
+                                            ...u,
+                                            // Robust Fallback: Use fetched data OR existing local data
+                                            friendshipStatus: data?.status || u.friendshipStatus || null,
+                                            friendshipId: data?.id || u.friendshipId || null,
+                                            requesterId: data?.requester_id || null,
+                                            receiverId: data?.receiver_id || null,
+                                            isMuted: isMuted
+                                        });
+
+
                                     }
-                                }
-
-                                setSelectedUser({ 
-                                    ...u, 
-                                    // Robust Fallback: Use fetched data OR existing local data
-                                    friendshipStatus: data?.status || u.friendshipStatus || null,
-                                    friendshipId: data?.id || u.friendshipId || null,
-                                    requesterId: data?.requester_id || null, 
-                                    receiverId: data?.receiver_id || null,
-                                    isMuted: isMuted
-                                });
-
-
-                            }
-                        }}
-                    />
-                    );
-                });
-            })()}
+                                }}
+                            />
+                        );
+                    });
+                })()}
             </MapContainer>
 
             <MapProfileCard
@@ -1834,7 +1779,7 @@ export default function MapHome() {
             />
 
             {showFullProfile && fullProfileUser && (
-                <FullProfileModal 
+                <FullProfileModal
                     user={fullProfileUser}
                     currentUser={currentUser}
                     onClose={() => setShowFullProfile(false)}
@@ -1858,10 +1803,10 @@ export default function MapHome() {
                                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
                             </svg>
                         </div>
-                        
+
                         <h3>Report {reportTarget.name}</h3>
                         <p>Please select a reason for reporting:</p>
-                        
+
                         <div className="report-reasons">
                             <button onClick={() => handleReport('Fake or Misleading Profile')}>
                                 <span className="report-emoji">🎭</span>
@@ -1884,7 +1829,7 @@ export default function MapHome() {
                                 <span>Other</span>
                             </button>
                         </div>
-                        
+
                         <button className="cancel-report-btn" onClick={() => setShowReportModal(false)}>
                             Cancel
                         </button>
@@ -1911,7 +1856,7 @@ export default function MapHome() {
                                         const future = new Date(new Date().getTime() + mins * 60000);
                                         const isRequester = muteTarget.requesterId === currentUser.id;
                                         const column = isRequester ? 'muted_until_by_requester' : 'muted_until_by_receiver';
-                                        
+
                                         await supabase
                                             .from('friendships')
                                             .update({ [column]: future.toISOString() })
@@ -1924,7 +1869,7 @@ export default function MapHome() {
                                             setSelectedUser(prev => ({ ...prev, isMuted: true }));
                                         }
                                         setMuteTarget(null);
-                                    } catch(err) {
+                                    } catch (err) {
                                         console.error("Timed mute error", err);
                                         showToast("Failed to mute");
                                     }
@@ -1942,20 +1887,20 @@ export default function MapHome() {
 
             {/* Story Viewer Overlay */}
             {viewingStoryUser && (
-                <StoryViewer 
-                    userStories={viewingStoryUser} 
+                <StoryViewer
+                    userStories={viewingStoryUser}
                     currentUser={currentUser}
                     onClose={() => {
                         const viewedUserId = viewingStoryUser.user.id;
                         setViewingStoryUser(null);
-                        
+
                         // Optimistically mark as seen for map ring
-                        setNearbyUsers(prev => prev.map(u => 
-                            u.id === viewedUserId 
-                                ? { ...u, hasUnseenStory: false } 
+                        setNearbyUsers(prev => prev.map(u =>
+                            u.id === viewedUserId
+                                ? { ...u, hasUnseenStory: false }
                                 : u
                         ));
-                        
+
                         // Also update the global set to prevent it from reappearing on next fetch
                         // (Though fetches usually refresh this based on DB)
                     }}
@@ -2109,16 +2054,16 @@ export default function MapHome() {
                             <div className="thought-actions">
                                 <button type="button" onClick={() => setShowThoughtInput(false)}>Cancel</button>
                                 {currentUser?.thought && (
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={handleDeleteThought}
-                                        style={{ 
-                                            background: 'rgba(255, 59, 48, 0.1)', 
-                                            color: '#ff3b30', 
+                                        style={{
+                                            background: 'rgba(255, 59, 48, 0.1)',
+                                            color: '#ff3b30',
                                             border: '1px solid rgba(255, 59, 48, 0.2)',
                                             padding: '8px 12px',
                                             fontSize: '1.2rem',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                                         }}
                                         title="Delete Thought"
                                     >
