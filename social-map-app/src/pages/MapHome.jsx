@@ -93,12 +93,17 @@ function RecenterAutomatically({ lat, lng }) {
     return null;
 }
 
-
-
 export default function MapHome() {
     const { theme } = useTheme();
     // Global Permission Context
-    const { permissionStatus, setPermission, resetPermission, userLocation } = useLocationContext();
+    const { 
+        permissionStatus, 
+        setPermission, 
+        resetPermission, 
+        userLocation,
+        requestPermissionFromUser 
+    } = useLocationContext();
+
     const watchIdRef = useRef(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
     
@@ -928,20 +933,20 @@ export default function MapHome() {
         };
     }, [navigate, permissionStatus]); // Depend on permissionStatus
 
+
+
     const handlePermissionSelect = (choice) => {
-        if (choice === 'while-using') {
-            setPermission('granted', true);
-            // Effect will pick up change
-        } else if (choice === 'once') {
-             setPermission('granted', false);
-             // Effect will pick up change
+        if (choice === 'while-using' || choice === 'once') {
+            requestPermissionFromUser(); // ✅ MUST be called from click
         } else {
             setPermission('denied', true);
         }
     };
 
+    
     const handleEnableLocation = () => {
         resetPermission();
+        requestPermissionFromUser();
     };
 
     const showToast = (msg) => {

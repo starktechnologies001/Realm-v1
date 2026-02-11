@@ -14,7 +14,12 @@ export function LocationProvider({ children }) {
     const lastDbUpdateRef = useRef(0);
     const lastLocationRef = useRef(null);
 
-    const isLocationEnabled = permissionStatus === 'granted';
+   const isLocationEnabled =
+       permissionStatus === 'granted' &&
+       typeof window !== 'undefined' &&
+       'geolocation' in navigator;
+
+
 
     const setPermission = (status, persist = true) => {
         setPermissionStatus(status);
@@ -27,6 +32,20 @@ export function LocationProvider({ children }) {
             }
         }
     };
+
+    // 🔁 Sync browser permission state on load + external changes
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (!navigator.permissions?.query) return;
+
+        navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+            setPermission(result.state, true);
+
+            result.onchange = () => {
+                setPermission(result.state, true);
+            };
+        });
+    }, []);
 
     // Helper: Calculate distance in km
     const getDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -62,9 +81,24 @@ export function LocationProvider({ children }) {
                         // DB Update Logic (Throttled)
                         const now = Date.now();
                         const timeDiff = now - lastDbUpdateRef.current;
+                        const lastLoc = lastLocationRef.current;        
+
+                        let movedEnough = true;
+                        if (lastLoc) {
+                            const distKm = getDistanceKm(
+                                lastLoc.lat,
+                                lastLoc.lng,
+                                newLoc.lat,
+                                newLoc.lng
+                            );
+                            movedEnough = distKm > 0.02; // 20 meters
+                        }
                         
                         // Smart throttling: Update if >30s or >20m moved
-                        if (timeDiff > 30000) {
+                        if (    
+                            timeDiff > 30000 || 
+                            (movedEnough && timeDiff > 10000)
+                        ) {
                             lastDbUpdateRef.current = now;
                             lastLocationRef.current = newLoc;
                             
@@ -80,33 +114,33 @@ export function LocationProvider({ children }) {
                             }
                         }
                     },
-                    async (err) => {
+                    (err) => {
                         // Suppress transient errors
-                        if (err.code === 1) { // PERMISSION_DENIED
-                            console.error("Location Permission Denied. Clearing location from DB.");
-                            
-                            // Explicitly HIDE user from map if they revoke permission
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.user) {
-                                await supabase.from('profiles').update({ 
-                                    latitude: null,
-                                    longitude: null,
-                                    last_location: null,
-                                    last_active: new Date().toISOString()
-                                }).eq('id', session.user.id);
+                        if (err.code === 1) { 
+                            if (permissionStatus !== 'denied') {    
+                                setPermission('denied', true);
                             }
-                            
-                            setPermissionStatus('denied'); // Sync local status
-                        } else if ((err.code === 2 || err.code === 3) && highAccuracy) { 
+
+                            if (watchIdRef.current) {
+                                navigator.geolocation.clearWatch(watchIdRef.current);
+                                watchIdRef.current = null;
+                            }
+                            return;
+                        }   
+                        
+                        if ((err.code === 2 || err.code === 3) && highAccuracy) {                                   
                             // If High Accuracy fails, downgrade to Low Accuracy automatically
                             console.log("📍 Location: High accuracy failed, switching to low accuracy...");
-                            navigator.geolocation.clearWatch(watchIdRef.current);
-                            startWatch(false); // Restart with low accuracy
-                        } else {
-                            // Already on low accuracy or other error - just silence it to avoid spam
+                            if (watchIdRef.current) {   
+                                navigator.geolocation.clearWatch(watchIdRef.current);
+                            }
+                            startWatch(false);
                         }
+                        // Already on low accuracy or other error - just silence it to avoid spam
+                        
                     },
-                    {
+
+                    {   
                         enableHighAccuracy: highAccuracy,
                         timeout: 20000,
                         maximumAge: 10000
@@ -120,14 +154,63 @@ export function LocationProvider({ children }) {
         return () => {
              if (watchIdRef.current) {
                 navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
             }
         };
     }, [isLocationEnabled]);
+
+    // Clear location from DB when permission is denied/revoked
+    useEffect(() => {
+        if (permissionStatus !== 'denied') return;
+
+        const clearLocation = async () => {
+            console.log("🚫 Permission denied/revoked. Clearing location from DB...");
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user) return;
+
+            await supabase
+                .from('profiles')
+                .update({
+                    latitude: null,
+                    longitude: null,
+                    last_location: null,
+                    last_active: new Date().toISOString()
+                })
+                .eq('id', session.user.id);
+            setUserLocation(null);
+        };
+        clearLocation();
+    }, [permissionStatus]);
 
     // Helper to reset and allow re-prompting
     const resetPermission = () => {
         setPermission('prompt');
     };
+
+    const requestPermissionFromUser = () => {
+    if (!navigator.geolocation) {
+        setPermission('denied', true);
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        () => {
+            setPermission('granted', true);
+        },
+        (err) => {
+            if (err.code === 1) {
+                // User clicked "Block"
+                setPermission('denied', true);
+                alert("Location is blocked. Please enable it from browser settings.");
+            } else {
+                console.log("Location error:", err);
+            }
+        },
+        {
+            enableHighAccuracy: true
+        }
+    );
+};
 
     return (
         <LocationContext.Provider value={{ 
@@ -135,7 +218,8 @@ export function LocationProvider({ children }) {
             isLocationEnabled, 
             userLocation, // Expose live location
             setPermission, 
-            resetPermission 
+            resetPermission,
+            requestPermissionFromUser 
         }}>
             {children}
         </LocationContext.Provider>

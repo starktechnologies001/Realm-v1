@@ -619,11 +619,13 @@ export default function Profile() {
                             <input 
                                 type="checkbox" 
                                 checked={isLocationEnabled}
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                     if (e.target.checked) {
                                         setPermission('granted');
                                     } else {
                                         setPermission('denied');
+                                        // Also specific requirement: "Enable Ghost Mode" when Location turned OFF
+                                        await updateProfile({ is_ghost_mode: true });
                                     }
                                 }}
                             />
