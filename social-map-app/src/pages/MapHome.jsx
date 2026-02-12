@@ -11,12 +11,14 @@ import Toast from '../components/Toast';
 import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
+import { useCall } from '../context/CallContext';
 import LocationPermissionModal from '../components/LocationPermissionModal';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import StoryViewer from '../components/StoryViewer';
 import { uploadToStorage } from '../utils/fileUpload';
 import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import ImageCropper from '../components/ImageCropper';
+import BottomNav from '../components/BottomNav';
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -81,19 +83,121 @@ const generateMockUsers = (centerLat, centerLng) => {
 
 function RecenterAutomatically({ lat, lng }) {
     const map = useMap();
-    const hasCentered = useRef(false);
 
     useEffect(() => {
-        if (!hasCentered.current && lat && lng) {
+        if (lat && lng) {
             map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
-            hasCentered.current = true;
         }
     }, [lat, lng, map]);
 
     return null;
 }
 
+// Map Controller: Handle User Selection & Zoom (with Mobile Offset)
+function UserSelectionController({ selectedUser }) {
+    const map = useMap();
+
+    useEffect(() => {
+        console.log('🗺️ [UserSelectionController] selectedUser changed:', selectedUser);
+        
+        if (!selectedUser) {
+            console.log('🗺️ [UserSelectionController] No selected user');
+            return;
+        }
+
+        // Support both lat/lng and latitude/longitude property names
+        const lat = selectedUser.latitude || selectedUser.lat;
+        const lng = selectedUser.longitude || selectedUser.lng;
+
+        if (!lat || !lng) {
+            console.log('🗺️ [UserSelectionController] No valid coordinates. lat:', lat, 'lng:', lng);
+            return;
+        }
+
+        const targetLat = parseFloat(lat);
+        const targetLng = parseFloat(lng);
+        const zoomLevel = 18; // Close zoom for profile view
+
+        // Check for Mobile (Approximate check using window width)
+        const isMobile = window.innerWidth <= 768;
+        console.log('🗺️ [UserSelectionController] isMobile:', isMobile, 'width:', window.innerWidth);
+
+        if (isMobile) {
+            // Calculate Offset used by MapProfileCard (Usually ~45-50vh height)
+            // We want the user marker to be in the Top ~40% of the screen
+            // Standard flyTo centers in middle (50%)
+            // We need to shift the center "Down" so the marker appears "Up"
+
+            // Convert LatLng to Container Point (Pixels)
+            const point = map.project([targetLat, targetLng], zoomLevel);
+            
+            // Shift Y down by 25% of screen height (to move center down)
+            const yOffset = window.innerHeight * 0.25; 
+            const targetPoint = L.point(point.x, point.y + yOffset);
+            
+            // Convert back to LatLng
+            const newCenter = map.unproject(targetPoint, zoomLevel);
+
+            console.log('🗺️ [UserSelectionController] Flying to (mobile offset):', newCenter, 'zoom:', zoomLevel);
+            
+            // Use setTimeout to ensure map is ready
+            setTimeout(() => {
+                map.setView(newCenter, zoomLevel, {
+                    animate: true,
+                    duration: 1.2
+                });
+            }, 100);
+        } else {
+            // Desktop: Center normally
+            console.log('🗺️ [UserSelectionController] Flying to (desktop):', [targetLat, targetLng], 'zoom:', zoomLevel);
+            
+            setTimeout(() => {
+                map.setView([targetLat, targetLng], zoomLevel, {
+                    animate: true,
+                    duration: 1.2
+                });
+            }, 100);
+        }
+
+    }, [selectedUser, map]);
+
+    return null;
+}
+
 export default function MapHome() {
+    // Map UI State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeFilter, setActiveFilter] = useState('All');
+    const [showFilters, setShowFilters] = useState(false);
+    const [mapMode, setMapMode] = useState('street'); // 'street', 'hybrid', 'satellite'
+
+    // Notification State
+    const [friendRequests, setFriendRequests] = useState([]);
+
+    // Fetch Notifications
+    useEffect(() => {
+        const fetchNotifications = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            // Requests
+            const { count: requestCount } = await supabase
+                .from('friendships')
+                .select('id', { count: 'exact', head: true })
+                .eq('receiver_id', user.id)
+                .eq('status', 'pending');
+            
+            if (requestCount !== null) {
+                // Mock array for length since we only use .length for badge
+                setFriendRequests(new Array(requestCount).fill(0));
+            }
+        };
+
+        fetchNotifications();
+    }, []);
+
+    // Filter Options
+    const FILTERS = ['All', 'Online', 'Nearby', 'Friends'];
     const { theme } = useTheme();
     // Global Permission Context
     const {
@@ -103,6 +207,9 @@ export default function MapHome() {
         userLocation,
         requestPermissionFromUser
     } = useLocationContext();
+
+    // Call Context
+    const { startCall } = useCall();
 
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
 
@@ -637,6 +744,7 @@ export default function MapHome() {
             .channel('public:profiles')
             // Unified UPDATE listener for Location + Profile changes
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+                console.log("📍 [MapHome] Realtime UPDATE received:", payload);
                 const updatedUser = payload.new;
                 if (updatedUser.id === currentUser.id) return; // Skip self
 
@@ -1319,13 +1427,26 @@ export default function MapHome() {
             setSelectedUser(null);
             setShowFullProfile(false); // Close full profile if open
         }
+        else if (action === 'zoom-to-user') {
+            // Triggered by avatar click on mobile - force re-trigger zoom
+            console.log('🗺️ [MapHome] zoom-to-user triggered for:', targetUser.name);
+            // Force selectedUser update to re-trigger UserSelectionController
+            setSelectedUser(null); // Clear first
+            setTimeout(() => {
+                setSelectedUser(targetUser); // Re-set to trigger zoom
+            }, 50);
+        }
         else if (action === 'view-profile') {
             setFullProfileUser(targetUser);
             setShowFullProfile(true);
-            setSelectedUser(null); // Close small card
+            // Keep selectedUser set so map stays zoomed on mobile
         }
         else if (action === 'call-audio' || action === 'call-video') {
-            showToast("Calls coming soon! 📞");
+            const isVideo = action === 'call-video';
+            startCall(targetUser.id, isVideo);
+            showToast(`Starting ${isVideo ? 'video' : 'audio'} call... 📞`);
+            setSelectedUser(null);
+            setShowFullProfile(false);
         }
         else if (action === 'view-story') {
             // Fetch active stories for this user
@@ -1454,6 +1575,96 @@ export default function MapHome() {
     // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
+
+    // --- FILTERING & SEARCH LOGIC ---
+    const filteredUsers = useMemo(() => {
+        if (!nearbyUsers || !currentUser) return [];
+
+        let users = nearbyUsers;
+
+        // 1. Search Filter (High Priority)
+        if (searchQuery && searchQuery.trim().length > 0) {
+            const query = searchQuery.toLowerCase().trim();
+            users = users.filter(u => 
+                u.name.toLowerCase().includes(query)
+            );
+            // Search overrides other filters usually, but let's apply it first
+            // If we want search to search *within* filters, we keep this order.
+            // Requirement: "Search result overrides filter temporarily" -> implies search searches ALL users
+            // So if search is active, we might skip the category filter? 
+            // "Search result overrides filter temporarily" usually means: Filter is ignored if searching.
+            
+            // If I search "John", I want to find John even if he is Offline (unless I specifically want Online Johns?)
+            // UX Rule: "Do not hide other avatars (unless a filter is active)"
+            // Interpretation: Search highlights/zooms, but if I type, maybe list filters?
+            // "When search result is selected... map smooth animate... highlight... do not hide others"
+            
+            // Actually, usually "Find People" is a separate mode or just filters the list.
+            // If I type in search bar, usually the map doesn't filter immediately until I select? OR it filters real-time?
+            // "Find People – Search by Name... When search result is selected..."
+            // This implies the search bar might be an autocomplete dropdown?
+            // Current UI is just a text input.
+            // Let's make it filter the visible map markers for now, OR providing a list to select from.
+            
+            // Let's implement: Active Search = Filter Map View to matches (common pattern) 
+            // OR returns list to select.
+            // Given "Do not hide other avatars", the search might be a "Highlighter".
+            // Implementation: We will use a separate 'searchResults' list for the dropdown, 
+            // but 'filteredUsers' for the map will respect the TABS (All/Online/etc).
+            // UNLESS user explicitly filters by name.
+            
+            // Let's stick to simple: Search filters the list.
+            // But the requirement says "Do not hide other avatars (unless a filter is active)".
+            // This implies search should ZOOM to user, not necessarily hide others.
+            // But if I want to "Find" someone, hiding others is helpful.
+            // Let's stick to the requester's note: "Search → Focus map on user".
+            // So search input shouldn't remove markers?
+            // But usually search bars filter the dataset.
+            
+            // Let's implement Search as a "Selection" mechanism.
+            // The search bar will show a set of results (dropdown).
+            // When clicked, it sets 'selectedUser'.
+            // It does NOT filter `displayedUsers` on the map (unless we want to).
+            // So `filteredUsers` below is purely for the TABS.
+        }
+
+        switch (activeFilter) {
+            case 'Online':
+                return users.filter(u => {
+                    if (!u.lastActive) return false;
+                    const diff = Date.now() - new Date(u.lastActive).getTime();
+                    return diff < 2 * 60 * 1000; // < 2 minutes
+                });
+            case 'Nearby':
+                return users.filter(u => {
+                    if (!currentUser.lat || !currentUser.lng) return false;
+                    const dist = calculateDistance(currentUser.lat, currentUser.lng, u.lat, u.lng);
+                    return dist <= 300; // 300 meters
+                });
+            case 'Friends':
+                return users.filter(u => u.friendshipStatus === 'accepted');
+            case 'All':
+            default:
+                return users;
+        }
+    }, [nearbyUsers, activeFilter, currentUser, searchQuery]);
+
+    // Search Suggestions (derived from ALL users, ignoring current tab filter to find anyone)
+    const searchResults = useMemo(() => {
+        if (!searchQuery || searchQuery.trim().length === 0) return [];
+        const query = searchQuery.toLowerCase().trim();
+        // Search against ALL nearby users (or potentially all valid users if we had them)
+        // For now, nearbyUsers is our client-side cache of "World" around us.
+        return nearbyUsers.filter(u => u.name.toLowerCase().includes(query));
+    }, [nearbyUsers, searchQuery]);
+
+    const handleSearchResultClick = (user) => {
+        console.log("🔍 Search Result Selected:", user.name);
+        setSearchQuery(''); // Clear search on select? Or keep it? Usually clear to show full map again?
+        // Requirement: "Do not hide other avatars (unless a filter is active)"
+        // So clearing search query restores the view.
+        setSelectedUser(user); // Triggers Zoom via UserSelectionController
+    };
 
     return (
         <div className="map-container">
@@ -1615,35 +1826,35 @@ export default function MapHome() {
                 zoomControl={false}
                 attributionControl={false}
             >
-                <LayersControl position="topright">
-                    <LayersControl.BaseLayer checked name="Street View">
-                        <TileLayer
-                            attribution='&copy; Google Maps'
-                            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
-                            className={isDarkMode ? 'dark-map-tiles' : ''}
-                            maxNativeZoom={20}
-                            maxZoom={22}
-                        />
-                    </LayersControl.BaseLayer>
-                    <LayersControl.BaseLayer name="Realistic (Hybrid)">
-                        <TileLayer
-                            attribution='&copy; Google Maps'
-                            url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
-                            maxNativeZoom={20}
-                            maxZoom={22}
-                        />
-                    </LayersControl.BaseLayer>
-                    <LayersControl.BaseLayer name="Satellite Only">
-                        <TileLayer
-                            attribution='&copy; Google Maps'
-                            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
-                            maxNativeZoom={20}
-                            maxZoom={22}
-                        />
-                    </LayersControl.BaseLayer>
-                </LayersControl>
+                {/* Map Layers based on State */}
+                {mapMode === 'street' && (
+                    <TileLayer
+                        attribution='&copy; Google Maps'
+                        url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+                        className={isDarkMode ? 'dark-map-tiles' : ''}
+                        maxNativeZoom={20}
+                        maxZoom={22}
+                    />
+                )}
+                {mapMode === 'hybrid' && (
+                    <TileLayer
+                        attribution='&copy; Google Maps'
+                        url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                        maxNativeZoom={20}
+                        maxZoom={22}
+                    />
+                )}
+                {mapMode === 'satellite' && (
+                    <TileLayer
+                        attribution='&copy; Google Maps'
+                        url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                        maxNativeZoom={20}
+                        maxZoom={22}
+                    />
+                )}
 
                 <RecenterAutomatically lat={location.lat} lng={location.lng} />
+                <UserSelectionController selectedUser={selectedUser} />
 
                 <Circle
                     center={[location.lat, location.lng]}
@@ -1664,7 +1875,7 @@ export default function MapHome() {
                     // Process users to handle overlap (Spiderfy / Separation)
                     // Density-Based Clustering & Spiral Layout
                     // 1. Sort for stability
-                    const sortedUsers = [...nearbyUsers].sort((a, b) => a.id.localeCompare(b.id));
+                    const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
                     const clusters = [];
                     const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
 
@@ -1770,6 +1981,232 @@ export default function MapHome() {
                     });
                 })()}
             </MapContainer>
+
+
+            {/* Top Search Bar & Action Buttons */}
+            <div className="map-header-controls">
+                <div className="header-top-row">
+                    <div className="search-bar-container glass-panel">
+                        <span className="search-icon">🔍</span>
+                        <input 
+                            type="text" 
+                            placeholder="Find people..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        {/* Search Dropdown */}
+                        {searchQuery && searchResults.length > 0 && (
+                            <div className="search-results-dropdown">
+                                {searchResults.map(user => (
+                                    <div 
+                                        key={user.id} 
+                                        className="search-result-item"
+                                        onClick={() => handleSearchResultClick(user)}
+                                    >
+                                        <img src={getAvatar2D(user.avatar)} alt={user.name} className="search-result-avatar" />
+                                        <span>{user.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    
+                    {/* Action Buttons - Right Side */}
+                    <div className="header-action-buttons">
+                        <button className="control-btn glass-panel" onClick={() => setShowThoughtInput(true)} title="Set Status">
+                            💭
+                        </button>
+                        <button
+                            className={`control-btn glass-panel ${isGhostMode ? 'active' : ''}`}
+                            onClick={async () => {
+                                const newMode = !isGhostMode;
+                                setGhostMode(newMode);
+                                if (currentUser) {
+                                    await supabase.from('profiles').update({ is_ghost_mode: newMode }).eq('id', currentUser.id);
+                                    showToast(newMode ? "👻 Ghost Mode ON (Hidden)" : "👁️ Ghost Mode OFF (Visible)");
+                                }
+                            }}
+                            title="Toggle Ghost Mode"
+                        >
+                            {isGhostMode ? '👻' : '👁️'}
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Horizontal Filter Scroll */}
+                <div className="filter-scroll">
+                    {FILTERS.map(f => (
+                        <button 
+                            key={f}
+                            className={`filter-chip glass-pill ${activeFilter === f ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(f)}
+                        >
+                            {f}
+                        </button>
+                    ))}
+                    
+                    {/* Map View Toggle */}
+                    <button 
+                        className="filter-chip glass-pill icon-only"
+                        onClick={() => {
+                            const modes = ['street', 'satellite', 'hybrid'];
+                            const nextIndex = (modes.indexOf(mapMode) + 1) % modes.length;
+                            setMapMode(modes[nextIndex]);
+                        }}
+                        title="Toggle Map View"
+                        style={{ 
+                            marginLeft: '6px', 
+                            padding: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'black' 
+                        }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                            <polyline points="2 17 12 22 22 17"></polyline>
+                            <polyline points="2 12 12 17 22 12"></polyline>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+
+            {/* Bottom Navigation */}
+            <BottomNav 
+                friendRequestCount={friendRequests.length} 
+                unreadMessageCount={unreadCount} 
+            />
+
+            <style>{`
+                .map-header-controls {
+                    position: absolute;
+                    top: 20px;
+                    left: 0; right: 0;
+                    z-index: 1000;
+                    padding: 0 16px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    pointer-events: none;
+                }
+
+                .header-top-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    pointer-events: auto;
+                }
+
+                .search-bar-container {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    padding: 6px 12px;
+                    border-radius: 16px;
+                    gap: 8px;
+                    transition: all 0.3s ease;
+                    max-width: 400px;
+                }
+
+                .header-action-buttons {
+                    display: flex;
+                    gap: 6px;
+                }
+
+                .search-bar-container:focus-within {
+                    transform: scale(1.02);
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+                }
+
+                .search-icon { font-size: 1.2rem; opacity: 0.6; }
+
+                .search-bar-container input {
+                    border: none;
+                    background: transparent;
+                    font-size: 1rem;
+                    width: 100%;
+                    color: inherit;
+                    outline: none;
+                }
+
+                .filter-scroll {
+                    pointer-events: auto;
+                    display: flex;
+                    gap: 10px;
+                    overflow-x: auto;
+                    padding-bottom: 4px;
+                    -webkit-overflow-scrolling: touch;
+                    scrollbar-width: none; /* Firefox */
+                }
+                .filter-scroll::-webkit-scrollbar { display: none; }
+
+                .filter-chip {
+                    padding: 8px 16px;
+                    white-space: nowrap;
+                    font-size: 0.9rem;
+                    font-weight: 500;
+                    color: inherit;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .filter-chip.active {
+                    background: #4285F4;
+                    color: white;
+                    border-color: #4285F4;
+                }
+
+                .search-results-dropdown {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    background: rgba(255, 255, 255, 0.95);
+                    backdrop-filter: blur(12px);
+                    border-radius: 12px;
+                    margin-top: 8px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                    overflow: hidden;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    z-index: 2000;
+                }
+                .search-result-item {
+                    padding: 10px 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                    color: #000;
+                }
+                .search-result-item:hover {
+                    background: rgba(0,0,0,0.05);
+                }
+                .search-result-avatar {
+                    width: 32px; height: 32px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                }
+                
+                @media (prefers-color-scheme: dark) {
+                    .search-results-dropdown {
+                        background: rgba(28, 28, 30, 0.95);
+                        color: white !important;
+                    }
+                    .search-result-item {
+                        color: white !important;
+                    }
+                    .search-result-item:hover {
+                        background: rgba(255,255,255,0.1);
+                    }
+                }
+
+
+
+            `}</style>
 
             <MapProfileCard
                 user={selectedUser}
@@ -2078,31 +2515,12 @@ export default function MapHome() {
                 </div>
             )}
 
-            <div className="controls-overlay">
-                <button className="control-btn" onClick={() => setShowThoughtInput(true)} title="Set Status">
-                    💭
-                </button>
-                <button
-                    className={`control-btn ${isGhostMode ? 'active' : ''}`}
-                    onClick={async () => {
-                        const newMode = !isGhostMode;
-                        setGhostMode(newMode);
-                        if (currentUser) {
-                            await supabase.from('profiles').update({ is_ghost_mode: newMode }).eq('id', currentUser.id);
-                            showToast(newMode ? "👻 Ghost Mode ON (Hidden)" : "👁️ Ghost Mode OFF (Visible)");
-                        }
-                    }}
-                    title="Toggle Ghost Mode"
-                >
-                    {isGhostMode ? '👻' : '👁️'}
-                </button>
-            </div>
 
             <div className="map-ui-overlay">
                 <div className="stats-card">
-                    <span>Checking 300m radius</span>
+                    <span>{activeFilter === 'Nearby' ? 'Checking 300m radius' : activeFilter === 'Online' ? 'Active in last 2m' : activeFilter + ' View'}</span>
                     <div className="stats-divider"></div>
-                    <strong>{nearbyUsers.length} Active</strong>
+                    <strong>{filteredUsers.length} Visible</strong>
                 </div>
             </div>
 
@@ -2407,20 +2825,22 @@ export default function MapHome() {
                     }
                 }
 
-                .controls-overlay {
-                    position: absolute;
-                    top: 60px;
-                    right: 20px;
-                    z-index: 1000;
-                    display: flex; flex-direction: column; gap: 10px;
-                }
+                    .controls-overlay {
+                        position: absolute;
+                        top: 80px; /* Adjusted for new search bar position */
+                        right: 20px;
+                        z-index: 1000;
+                        display: flex; 
+                        flex-direction: column; 
+                        gap: 8px;
+                    }
                 .control-btn {
-                    width: 48px;
-                    height: 48px;
+                    width: 32px;
+                    height: 32px;
                     border-radius: 50%;
                     background: white;
                     color: #555;
-                    font-size: 20px;
+                    font-size: 14px;
                     display: flex; align-items: center; justify-content: center;
                     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
                     border: none; cursor: pointer;

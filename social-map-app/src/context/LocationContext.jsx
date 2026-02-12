@@ -91,26 +91,32 @@ export function LocationProvider({ children }) {
                                 newLoc.lat,
                                 newLoc.lng
                             );
-                            movedEnough = distKm > 0.02; // 20 meters
+                            movedEnough = distKm > 0.005; // 5 meters (DEBUG: Reduced from 20m)
                         }
                         
-                        // Smart throttling: Update if >30s or >20m moved
+                        // Smart throttling: Update if >5s or >5m moved (DEBUG: Reduced from 30s/10s)
                         if (    
-                            timeDiff > 30000 || 
-                            (movedEnough && timeDiff > 10000)
+                            timeDiff > 5000 || 
+                            (movedEnough && timeDiff > 2000)
                         ) {
+                            console.log("🚀 [LocationContext] Triggering DB update...", { distKm: movedEnough ? "YES" : "NO", timeDiff });
                             lastDbUpdateRef.current = now;
                             lastLocationRef.current = newLoc;
                             
                             const { data: { session } } = await supabase.auth.getSession();
                             if (session?.user) {
                                 // Combined Update
-                                await supabase.from('profiles').update({ 
+                                // Combined Update
+                                const { error } = await supabase.from('profiles').update({ 
                                     latitude: newLoc.lat,
                                     longitude: newLoc.lng,
                                     last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
                                     last_active: new Date().toISOString()
                                 }).eq('id', session.user.id);
+
+                                if (error) {
+                                    console.error("❌ Failed to update location:", error);
+                                }
                             }
                         }
                     },

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D } from '../utils/avatarUtils';
+import { canViewStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 
 export default function FullProfileModal({ user, currentUser, onClose, onAction }) {
     const [stats, setStats] = useState({
@@ -13,11 +14,57 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
     });
     const [sharedMedia, setSharedMedia] = useState([]);
     const [viewingMedia, setViewingMedia] = useState(null);
+    
+    // Avatar Interaction States
+    const [isFullPhoto, setIsFullPhoto] = useState(false);
+    const [showContextMenu, setShowContextMenu] = useState(false);
+    
+    // Long Press Logic
+    const longPressTimer = useRef(null);
+    const isLongPress = useRef(false);
 
     const isFriend = user.friendshipStatus === 'accepted';
     const isOwner = currentUser?.id === user.id;
     const isPublic = user.is_public !== false;
     const canViewDetails = isOwner || isFriend || isPublic;
+    
+    // Avatar Interaction Handlers
+    const startPress = useCallback((e) => {
+        isLongPress.current = false;
+        longPressTimer.current = setTimeout(() => {
+            isLongPress.current = true;
+            setShowContextMenu(true);
+            if (window.navigator?.vibrate) window.navigator.vibrate(50);
+        }, 1000);
+    }, []);
+
+    const endPress = useCallback((e) => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+        
+        if (isLongPress.current) {
+            isLongPress.current = false;
+            return;
+        }
+
+        // Single Tap Logic
+        const tapAction = getAvatarTapAction(user, currentUser);
+        
+        if (tapAction === 'view-status') {
+            onAction('view-story', user);
+        } else {
+            setIsFullPhoto(true);
+        }
+    }, [user, currentUser, onAction]);
+
+    const cancelPress = useCallback(() => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -119,14 +166,83 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     
                     {/* Header with Avatar */}
                     <div className="fp-header">
-                        <div className="fp-avatar-container">
+                        <div 
+                            className={`fp-avatar-container ${getStatusRingClass(user, currentUser)}`}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                startPress(e);
+                            }}
+                            onMouseUp={(e) => {
+                                e.stopPropagation();
+                                endPress(e);
+                            }}
+                            onMouseLeave={cancelPress}
+                            onTouchStart={(e) => {
+                                e.stopPropagation();
+                                startPress(e);
+                            }}
+                            onTouchEnd={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                endPress(e);
+                            }}
+                            onTouchMove={cancelPress}
+                            style={{ position: 'relative', cursor: 'pointer' }}
+                        >
                             <img 
                                 src={getAvatar2D(user.avatar || user.avatar_url)} 
                                 alt={user.name} 
-                                className="fp-avatar" 
+                                className="fp-avatar"
+                                style={{ pointerEvents: 'none' }}
                             />
                             <div className={`fp-status ${user.isLocationOn ? 'online' : 'offline'}`} />
+                            
+                            {/* Context Menu */}
+                            <AnimatePresence>
+                                {showContextMenu && (
+                                    <motion.div 
+                                        className="fp-avatar-context-menu"
+                                        initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                                        animate={{ opacity: 1, scale: 1, y: -100 }}
+                                        exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onMouseUp={(e) => e.stopPropagation()}
+                                        onTouchEnd={(e) => e.stopPropagation()}
+                                    >
+                                        {canViewStatus(currentUser, user) && (
+                                            <>
+                                            <button onClick={(e) => {
+                                                e.stopPropagation();
+                                                onAction('view-story', user);
+                                                setShowContextMenu(false);
+                                            }}>
+                                                See Status
+                                            </button>
+                                            <div className="menu-divider" />
+                                            </>
+                                        )}
+                                        <button onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsFullPhoto(true);
+                                            setShowContextMenu(false);
+                                        }}>
+                                            See Photo
+                                        </button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
+                        
+                        {/* Backdrop for closing context menu */}
+                        {showContextMenu && (
+                            <div 
+                                className="fp-context-menu-backdrop" 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowContextMenu(false);
+                                }} 
+                            />
+                        )}
                         <h2>{user.name}</h2>
                         {stats.username && <span className="fp-username">@{stats.username}</span>}
 
@@ -225,6 +341,17 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         <button className="fp-viewer-close" onClick={() => setViewingMedia(null)}>×</button>
                     </div>
                 )}
+                
+                {/* Full-Screen Avatar Photo Zoom */}
+                {isFullPhoto && (
+                    <div className="full-photo-zoom-overlay" onClick={() => setIsFullPhoto(false)}>
+                        <img 
+                            src={getAvatar2D(user.avatar || user.avatar_url)} 
+                            alt={user.name}
+                            className="full-photo-zoom-image"
+                        />
+                    </div>
+                )}
 
                 <style>{`
                     .full-profile-backdrop {
@@ -290,18 +417,48 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     .fp-avatar-container {
                         position: relative;
                         margin-bottom: 16px;
+                        width: 120px; height: 120px;
+                        display: flex; justify-content: center; align-items: center;
+                        border-radius: 50%;
+                    }
+
+                    .fp-avatar-container::after {
+                        content: '';
+                        position: absolute;
+                        inset: -8px; /* Slightly larger gap for full profile */
+                        border-radius: 50%;
+                        border: 4px solid transparent;
+                        pointer-events: none;
+                        box-sizing: border-box;
+                        z-index: 1;
+                    }
+
+                    .fp-avatar-container.status-ring-active::after {
+                        border-color: #4285F4;
+                        box-shadow: 0 0 20px rgba(66, 133, 244, 0.5);
+                        animation: pulse-ring 2s infinite;
+                    }
+
+                    .fp-avatar-container.status-ring-viewed::after {
+                        border-color: #8e8e93;
+                        box-shadow: 0 0 10px rgba(255,255,255,0.1);
                     }
                     
                     .fp-avatar {
-                        width: 120px;
-                        height: 120px;
+                        width: 100%;
+                        height: 100%;
                         border-radius: 50%;
-                        border: 4px solid rgba(255,255,255,0.08);
+                        border: 4px solid rgba(255,255,255,0.1); /* Inner border separator */
                         object-fit: cover;
                         box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+                        transition: all 0.3s ease;
+                        position: relative;
+                        z-index: 2;
                     }
                     
+                    /* Remove old status ring classes on avatar */
                     .fp-status {
+                        z-index: 3; /* Ensure dot is on top */
                         position: absolute;
                         bottom: 8px;
                         right: 8px;
@@ -608,6 +765,51 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     .fp-text-btn:hover {
                         opacity: 1;
                         transform: scale(1.05);
+                    }
+                    
+                    /* Avatar Context Menu */
+                    .fp-avatar-context-menu {
+                        position: absolute;
+                        bottom: 100%;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background: rgba(20, 20, 25, 0.98);
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        border-radius: 16px;
+                        padding: 8px;
+                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+                        z-index: 3200;
+                        min-width: 140px;
+                    }
+                    
+                    .fp-avatar-context-menu button {
+                        width: 100%;
+                        padding: 12px 16px;
+                        background: transparent;
+                        border: none;
+                        color: white;
+                        font-size: 0.9rem;
+                        font-weight: 500;
+                        cursor: pointer;
+                        border-radius: 10px;
+                        transition: all 0.2s;
+                        text-align: left;
+                    }
+                    
+                    .fp-avatar-context-menu button:hover {
+                        background: rgba(255, 255, 255, 0.1);
+                    }
+                    
+                    .fp-avatar-context-menu .menu-divider {
+                        height: 1px;
+                        background: rgba(255, 255, 255, 0.1);
+                        margin: 4px 8px;
+                    }
+                    
+                    .fp-context-menu-backdrop {
+                        position: fixed;
+                        inset: 0;
+                        z-index: 3100;
                     }
 
                 `}</style>

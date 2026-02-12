@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
 import { calculateDistance, formatDistance } from '../utils/distanceUtils';
+import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser }) {
@@ -58,6 +59,11 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
     const [isFullPhoto, setIsFullPhoto] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     
+    // Debug: Log when isFullPhoto changes
+    useEffect(() => {
+        console.log('📸 [MapProfileCard] isFullPhoto changed to:', isFullPhoto);
+    }, [isFullPhoto]);
+    
     // Long Press Logic
     const longPressTimer = useRef(null);
     const isLongPress = useRef(false);
@@ -70,10 +76,12 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
             setShowContextMenu(true);
             // Haptic feedback
             if (window.navigator?.vibrate) window.navigator.vibrate(50);
-        }, 600); // 600ms for long press
+        }, 1000); // 1000ms (1 second) for long press
     }, []);
 
     const endPress = useCallback((e) => {
+        console.log('👆 [MapProfileCard] endPress called');
+        
         if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
@@ -81,19 +89,29 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
         
         if (isLongPress.current) {
             // Was a long press, menu already triggered
+            console.log('👆 [MapProfileCard] Was long press, ignoring');
             isLongPress.current = false;
             return;
         }
 
-        // Single Tap Logic
-        // Case B: User HAS status/story (and allowed to see)
-        if (user.hasStory && canViewDetails) {
-            onAction('view-story', user); // Opens Story Viewer
+        // Single Tap Logic - Refined based on status availability
+        console.log('👆 [MapProfileCard] Single tap detected');
+        
+        // Determine action based on status visibility
+        const tapAction = getAvatarTapAction(user, currentUser);
+        console.log('👆 [MapProfileCard] Tap action:', tapAction);
+        
+        if (tapAction === 'view-status') {
+            // User has status and viewer can see it
+            onAction('view-story', user);
         } else {
-            // Case A: No status or Private -> Full Screen Photo
-            setIsFullPhoto(true); 
+            // No status or viewer cannot see it - show full-screen photo
+            console.log('👆 [MapProfileCard] Showing full-screen photo');
+            setTimeout(() => {
+                setIsFullPhoto(true);
+            }, 0);
         }
-    }, [user.hasStory, canViewDetails, onAction]);
+    }, [user, canViewDetails, onAction, setIsFullPhoto]);
 
     const cancelPress = useCallback(() => {
         if (longPressTimer.current) {
@@ -128,13 +146,23 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                     <div className="card-header">
                         {/* Avatar with Interaction Hooks */}
                         <div 
-                            className={`avatar-large-container ${canViewDetails && user.hasStory ? (user.hasUnseenStory ? 'has-story' : 'has-viewed-story') : ''}`}
-                            onMouseDown={startPress}
-                            onMouseUp={endPress}
+                            className={`avatar-large-container ${getStatusRingClass(user, currentUser)}`}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                startPress(e);
+                            }}
+                            onMouseUp={(e) => {
+                                e.stopPropagation();
+                                endPress(e);
+                            }}
                             onMouseLeave={cancelPress}
-                            onTouchStart={startPress}
+                            onTouchStart={(e) => {
+                                e.stopPropagation();
+                                startPress(e);
+                            }}
                             onTouchEnd={(e) => {
-                                // e.preventDefault(); // Optional
+                                e.stopPropagation();
+                                e.preventDefault();
                                 endPress(e);
                             }}
                             onTouchMove={cancelPress} // Cancel if scrolling
@@ -146,7 +174,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                 className="avatar-large"
                                 style={{ filter: 'none', pointerEvents: 'none' }} 
                             />
-                            <div className={`status-dot ${user.isLocationOn ? 'online' : 'offline'}`} />
+
 
                             {/* Context Menu Popup (Anchored to Avatar) */}
                             <AnimatePresence>
@@ -157,26 +185,28 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                         animate={{ opacity: 1, scale: 1, y: -80 }}
                                         exit={{ opacity: 0, scale: 0.8, y: 10 }}
                                         onClick={(e) => e.stopPropagation()}
+                                        onMouseUp={(e) => e.stopPropagation()}
+                                        onTouchEnd={(e) => e.stopPropagation()}
                                     >
-                                        <button onClick={(e) => {
-                                            e.stopPropagation();
-                                            onAction('view-profile', user);
-                                            setShowContextMenu(false);
-                                        }}>
-                                            See Profile
-                                        </button>
-                                        {canViewDetails && user.hasStory && (
+                                        {canViewStatus(currentUser, user) && (
                                             <>
-                                            <div className="menu-divider" />
                                             <button onClick={(e) => {
                                                 e.stopPropagation();
-                                                onAction('view-story', user);
+                                                onAction('view-story', user); // Show uploaded status
                                                 setShowContextMenu(false);
                                             }}>
                                                 See Status
                                             </button>
+                                            <div className="menu-divider" />
                                             </>
                                         )}
+                                        <button onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsFullPhoto(true); // Show profile photo in zoom
+                                            setShowContextMenu(false);
+                                        }}>
+                                            See Profile Photo
+                                        </button>
                                         {/* Fallback Status Text if requested, but prompt implies 'See Status' button. Keeping text if no story? Prompt says 'See Status' and 'See Profile' buttons. */} 
                                         {/* If status is text-only (thought), maybe show that? Prompt says 'See Status' -> implies Action. Let's stick to buttons as primary. */}
                                     </motion.div>
@@ -338,8 +368,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                 transition={{ type: "spring", damping: 20, stiffness: 200 }}
                             />
                             
-                            {/* Status Overlay in Full View */}
-                            {(user.thought || user.status) && (
+                            {/* Status Overlay in Full View - HIDDEN */}
+                            {/* {(user.thought || user.status) && (
                                 <motion.div 
                                     className="full-photo-status"
                                     initial={{ y: 20, opacity: 0 }}
@@ -348,7 +378,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                 >
                                     {user.thought || user.status}
                                 </motion.div>
-                            )}
+                            )} */}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -467,36 +497,55 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                     .avatar-large-container {
                         position: relative;
                         width: 100px; height: 100px;
-                        padding: 4px;
-                        background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%);
+                        padding: 0; /* Remove padding as using ::after */
+                        background: none; /* Let ::after handle bg */
                         border-radius: 50%;
-                        box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-                        cursor: pointer; /* Changed to pointer since it's interactive */
+                        cursor: pointer;
                         display: flex; justify-content: center; align-items: center;
                         -webkit-user-select: none;
                         user-select: none;
-                        -webkit-touch-callout: none; /* Disable native callout */
-                        transition: transform 0.2s;
-                    }
-                    .avatar-large-container:active { transform: scale(0.95); }
-                    
-                    .avatar-large-container.has-story {
-                        border: 3px solid #00D4FF; /* Cyan/Blue Ring - UNSEEN */
-                        box-shadow: 0 0 20px rgba(0, 212, 255, 0.6), 0 10px 30px rgba(0,0,0,0.5);
-                        padding: 2px;
-                        background: linear-gradient(180deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 212, 255, 0.05) 100%);
+                        -webkit-touch-callout: none;
+                        /* Ensure no border on container itself */
+                        border: none !important; 
+                        box-shadow: none !important;
                     }
                     
-                    .avatar-large-container.has-viewed-story {
-                        border: 3px solid #6e6e73; /* Grey Ring - VIEWED */
-                        box-shadow: 0 0 10px rgba(255,255,255,0.1);
-                        padding: 2px;
-                        background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%);
+                    /* The Actual Ring - Pseudo Element */
+                    .avatar-large-container::after {
+                        content: '';
+                        position: absolute;
+                        inset: -6px; /* Sits outside by 6px */
+                        border-radius: 50%;
+                        border: 3px solid transparent; /* Default */
+                        pointer-events: none;
+                        box-sizing: border-box;
+                        z-index: 1;
                     }
 
+                    .avatar-large-container.status-ring-active::after {
+                        border-color: #4285F4;
+                        box-shadow: 0 0 15px rgba(66, 133, 244, 0.5);
+                        animation: pulse-ring 2s infinite;
+                    }
+                    
+                    .avatar-large-container.status-ring-viewed::after {
+                        border-color: #8e8e93;
+                        box-shadow: 0 0 8px rgba(255,255,255,0.1);
+                    }
+
+                    .avatar-large-container.status-ring-default::after {
+                        border-color: rgba(255,255,255,0.3);
+                        /* Subtle default */
+                    }
+                    
+                    /* Image Styling - Inner Ring */
                     .avatar-large {
-                        width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
-                        border: 3px solid #1c1c1e;
+                        width: 100%; height: 100%; 
+                        border-radius: 50%; 
+                        object-fit: cover;
+                        border: 3px solid #1c1c1e; /* Separation from outer ring */
+                        position: relative;
+                        z-index: 2; /* Image above ring */
                     }
 
                     .status-dot {

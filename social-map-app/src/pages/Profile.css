@@ -31,9 +31,11 @@ html[data-theme="dark"] {
 /* Header Card */
 .profile-header-card {
     margin: 15px; margin-top: 20px;
+    margin-bottom: 0px; /* Reduced gap */
     background: transparent;
     border: none;
     padding: 20px 25px;
+    padding-bottom: 5px; /* Reduced padding */
     display: flex; flex-direction: column; align-items: center;
     text-align: center; gap: 8px;
     position: relative; z-index: 1;
@@ -45,8 +47,8 @@ html[data-theme="dark"] {
 }
 
 .profile-avatar {
-    width: 120px; height: 120px; border-radius: 50%; object-fit: cover;
-    border: 4px solid #ffffff;
+    width: 86px; height: 86px; border-radius: 50%; object-fit: cover;
+    border: 3px solid #ffffff;
     box-shadow: 0 8px 24px rgba(0,0,0,0.15);
 }
 
@@ -65,7 +67,7 @@ html[data-theme="dark"] {
 }
 
 .profile-username {
-    font-size: 1.8rem;
+    font-size: 1.5rem;
     font-weight: 700;
     background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
     -webkit-background-clip: text;
@@ -105,7 +107,7 @@ html[data-theme="dark"] {
     font-size: 0.95rem; color: var(--text-primary); /* Brighter text */
     font-weight: 600; /* Bold */
     max-width: 85%; 
-    white-space: pre-wrap; word-break: break-word; /* Allow multi-line */
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* Single line */
     cursor: pointer; padding: 6px 14px; border-radius: 10px;
     transition: background 0.2s;
     margin-top: 6px;
@@ -136,7 +138,7 @@ html[data-theme="dark"] {
 
 /* Modern Section Labels */
 .section-label {
-    margin: 24px 0 12px 4px;
+    margin: 8px 0 8px 4px; /* Reduced top margin from 24px */
     font-size: 0.8rem; 
     text-transform: uppercase; 
     letter-spacing: 1.2px;
@@ -172,10 +174,10 @@ html[data-theme="dark"] {
 .menu-item {
     display: flex; 
     align-items: center; 
-    padding: 12px 16px;
+    padding: 10px 16px; /* Reduced vertical padding */
     cursor: pointer; 
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+    border-bottom: none; /* Removing separator */
     background: transparent;
     position: relative;
 }
@@ -335,8 +337,8 @@ html[data-theme="dark"] .icon-delete {
 .toggle-switch {
     position: relative;
     display: inline-block;
-    width: 44px;
-    height: 24px;
+    width: 36px;
+    height: 20px;
     margin-left: auto;
 }
 
@@ -355,14 +357,14 @@ html[data-theme="dark"] .icon-delete {
     bottom: 0;
     background-color: #ccc;
     transition: 0.3s;
-    border-radius: 24px;
+    border-radius: 20px;
 }
 
 .toggle-slider:before {
     position: absolute;
     content: "";
-    height: 18px;
-    width: 18px;
+    height: 14px;
+    width: 14px;
     left: 3px;
     bottom: 3px;
     background-color: white;
@@ -376,7 +378,7 @@ html[data-theme="dark"] .icon-delete {
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(20px);
+    transform: translateX(16px);
 }
 
 .logout-btn {
@@ -761,10 +763,10 @@ html[data-theme="dark"] .icon-delete {
 /* New Real Faces UI Styles */
 .avatar-overlay-btn {
     position: absolute; 
-    bottom: 4px; 
-    right: 4px;
-    width: 36px; 
-    height: 36px; 
+    bottom: 2px; 
+    right: 2px;
+    width: 28px; 
+    height: 28px; 
     background: var(--accent-cyan); 
     color: white; 
     border-radius: 50%;
@@ -772,9 +774,9 @@ html[data-theme="dark"] .icon-delete {
     align-items: center; 
     justify-content: center;
     font-weight: bold; 
-    font-size: 1.4rem;
+    font-size: 1.1rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    border: 3px solid var(--card-bg);
+    border: 2px solid var(--card-bg);
     cursor: pointer;
     transition: transform 0.2s;
     z-index: 5;

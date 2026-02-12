@@ -8,6 +8,7 @@ import ImageCropper from '../components/ImageCropper';
 import { useTheme } from '../context/ThemeContext';
 import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { getStatusRingClass } from '../utils/statusUtils';
 import { uploadToStorage } from '../utils/fileUpload';
 import './Profile.css';
 
@@ -368,7 +369,7 @@ export default function Profile() {
                             if (gender === 'Male') return DEFAULT_MALE_AVATAR;
                             if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
                             return DEFAULT_GENERIC_AVATAR;
-                        })()} alt="Avatar" className="profile-avatar" />
+                        })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} />
                     )}
                     
                     {/* Unified Update Button */}
@@ -498,11 +499,9 @@ export default function Profile() {
                     )}
                     {/* Bio Section */}
                     <div className={`profile-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
-                        {user.bio || "Ready for adventure 🌎"}
+                        {user.bio || "Bio"}
                     </div>
                 </div>
-                {/* Edit Username Button */}
-                <button className="edit-btn" onClick={() => setActiveModal('edit-name')}>Edit Username</button>
             </div>
 
 
@@ -510,6 +509,20 @@ export default function Profile() {
                 {/* Section: Personal */}
                 <div className="section-label">Personal</div>
                 <div className="menu-group">
+                    <MenuItem
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>}
+                        label="Username"
+                        value={`@${user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}`} 
+                        iconClass="icon-personal"
+                        onClick={() => setActiveModal('edit-name')}
+                    />
+                    <MenuItem
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>}
+                        label="Bio"
+                        value={user.bio || 'Add Bio'} 
+                        iconClass="icon-bio"
+                        onClick={() => setActiveModal('edit-bio')}
+                    />
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 10a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v11H9V10z"/></svg>}
                         label="Institute / Work"

@@ -20,7 +20,7 @@ export default function MessageStatusTick({ status, isSender }) {
         );
     }
     
-    if (status === 'seen') {
+    if (status === 'seen' || status === 'read') {
         return (
             <span className="message-status-tick double seen" title="Seen">
                 ✓✓
@@ -44,11 +44,11 @@ style.textContent = `
     
     .message-status-tick.single,
     .message-status-tick.double {
-        color: #8e8e93;
+        color: #8e8e93 !important; /* Force Grey for Sent/Delivered */
     }
     
     .message-status-tick.double.seen {
-        color: #ffd60a;
+        color: #FFB300 !important; /* Force Yellow for Seen */
     }
 `;
 if (!document.getElementById('message-status-tick-styles')) {

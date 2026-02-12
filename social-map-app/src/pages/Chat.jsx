@@ -953,43 +953,57 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
                 .header-top {
                     display: flex;
-                    justify-content: space-between;
+                    justify-content: center; /* Center the title */
                     align-items: center;
-                    margin-bottom: 24px; /* Increased from 12px */
+                    position: relative; /* For absolute positioning of settings if needed */
+                    margin-bottom: 12px;
+                    min-height: 44px;
                 }
 
                 .page-title {
                     margin: 0;
-                    font-size: 34px;
-                    font-weight: 700;
-                    letter-spacing: -0.5px;
+                    font-size: 17px; /* Standard nav title size */
+                    font-weight: 600;
+                    letter-spacing: -0.4px;
+                    color: var(--text-primary);
                 }
 
                 .settings-btn {
-                    background: rgba(0, 0, 0, 0.05);
+                    position: absolute; /* Position absolute to not affect centering */
+                    left: 0;
+                    background: transparent;
                     border: none;
-                    width: 36px;
-                    height: 36px;
+                    width: 40px;
+                    height: 40px;
                     border-radius: 50%;
                     color: var(--accent-blue);
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    transition: background 0.2s;
+                    transition: opacity 0.2s;
+                    font-size: 17px; /* Matches text size if text button */
                 }
                 .settings-btn:active {
-                    background: rgba(0, 0, 0, 0.1);
+                    opacity: 0.5;
+                    background: transparent;
+                }
+                
+                /* Selection mode title override */
+                .selection-header-title {
+                    font-size: 17px;
+                    font-weight: 600;
                 }
 
                 .search-bar {
-                    background: rgba(0, 0, 0, 0.06);
+                    background: rgba(118, 118, 128, 0.12); /* iOS search bar grey */
                     border-radius: 10px;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     display: flex;
                     align-items: center;
                     gap: 8px;
-                    margin-bottom: 20px; /* Added spacing */
+                    margin-bottom: 2px;
+                    height: 32px;
                 }
 
                 .search-icon {
@@ -1028,6 +1042,63 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                         background: rgba(0, 0, 0, 0.95) !important;
                         border-bottom-color: rgba(255, 255, 255, 0.1) !important;
                     }
+                }
+
+                /* Tab Styles - Segmented Control / Pill Toggle */
+                .chat-tabs {
+                    display: flex;
+                    background-color: #f2f2f7; /* iOS System Gray 6 */
+                    border-radius: 100px; /* Fully rounded */
+                    padding: 2px;
+                    margin-bottom: 12px;
+                    position: relative;
+                    height: 32px;
+                    width: 100%; /* Or fixed width if preferred, but 100% is safe */
+                    box-sizing: border-box;
+                }
+                
+                .tab-btn {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    background: transparent;
+                    border: none;
+                    border-radius: 100px; /* Match container */
+                    cursor: pointer;
+                    z-index: 1;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .tab-btn.active {
+                    background-color: #1c1c1e; /* Black/Dark Gray */
+                    color: white;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                
+                .tab-btn.active::after {
+                    content: none;
+                }
+
+                /* Dark mode adjustments */
+                @media (prefers-color-scheme: dark) {
+                     .chat-tabs {
+                         background-color: #1c1c1e; /* Darker container */
+                     }
+                     .tab-btn.active {
+                         background-color: #3a3a3c; /* Lighter active state */
+                         color: white;
+                     }
+                }
+                html[data-theme="dark"] .chat-tabs {
+                    background-color: #1c1c1e;
+                }
+                html[data-theme="dark"] .tab-btn.active {
+                    background-color: #3a3a3c;
+                    color: white;
                 }
 
                 .chat-list-scroll {
@@ -1093,19 +1164,20 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .chat-avatar {
-                    width: 52px;
-                    height: 52px;
+                    width: 42px;
+                    height: 42px;
                     border-radius: 50%;
                     object-fit: cover;
                     background-color: #e5e5ea;
+                    display: block; /* Fix phantom vertical space */
                 }
 
                 .online-badge {
                     position: absolute;
-                    bottom: 2px;
+                    bottom: 0px;
                     right: 0;
-                    width: 12px;
-                    height: 12px;
+                    width: 11px;
+                    height: 11px;
                     background-color: #30d158; /* iOS Green */
                     border: 2px solid var(--bg-dark);
                     border-radius: 50%;
@@ -1116,7 +1188,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     overflow: hidden;
                     display: flex;
                     flex-direction: column;
-                    gap: 0px; /* Minimal gap between texts */
+                    justify-content: center; /* Ensure vertical centering */
+                    gap: 2px; /* Slight gap for visual balance */
                 }
 
                 .chat-header-row {
@@ -1126,7 +1199,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .chat-name {
-                    font-size: 17px;
+                    font-size: 16px;
                     font-weight: 600;
                     color: var(--text-primary);
                     margin-bottom: 0;
@@ -1241,43 +1314,21 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 
                 .empty-icon { font-size: 48px; margin-bottom: 16px; display: block;}
 
-                /* Tab Styles */
-                .chat-tabs {
-                    display: flex; gap: 20px;
-                    margin-bottom: 15px;
-                }
-                .tab-btn {
-                    background: transparent; border: none;
-                    color: var(--text-secondary);
-                    font-size: 16px; font-weight: 600;
-                    padding-bottom: 8px;
-                    cursor: pointer; position: relative;
-                }
-                .tab-btn.active {
-                    color: var(--text-primary);
-                }
-                .tab-btn.active::after {
-                    content: '';
-                    position: absolute; bottom: 0; left: 0; width: 100%;
-                    height: 3px; background: var(--accent-blue);
-                    border-radius: 2px;
-                }
-
                 @media (max-width: 768px) {
                     .chat-item {
-                        padding: 14px 20px;
+                        padding: 12px 16px;
                     }
                     .chat-avatar {
-                        width: 56px;
-                        height: 56px;
+                        width: 44px;
+                        height: 44px;
                     }
                     .online-badge {
-                        width: 14px; 
-                        height: 14px;
+                        width: 12px; 
+                        height: 12px;
                         border-width: 2px;
                     }
                     .chat-info {
-                        gap: 2px;
+                        gap: 0px;
                     }
                     .chat-name {
                         font-size: 1.05rem;
@@ -2054,7 +2105,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 // Mark UNREAD messages from this user as READ (excluding system messages)
                 const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
                 if (unreadIds.length > 0) {
-                    await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
+                    const now = new Date().toISOString();
+                    await supabase.from('messages').update({ 
+                        is_read: true,
+                        delivery_status: 'seen',
+                        seen_at: now
+                    }).in('id', unreadIds);
                 }
             }
         };
@@ -2320,7 +2376,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     }).map(m => m.id);
 
                     if (unreadIds.length > 0) {
-                        await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
+                        const now = new Date().toISOString();
+                        await supabase.from('messages').update({ 
+                            is_read: true,
+                            delivery_status: 'seen',
+                            seen_at: now
+                        }).in('id', unreadIds);
                     }
                 }
             };
@@ -3415,11 +3476,18 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                     // Determine message status with proper tick indicators
                     const isSelected = selectedMessages.has(msg.id);
+                    
+                    // Normalize status: Prioritize is_read or explicit seen status
+                    const isRead = msg.is_read === true;
+                    const status = msg.delivery_status;
+                    const isSeen = isRead || status === 'seen' || status === 'read';
+                    
+                    const displayStatus = isSeen ? 'seen' : (status || 'delivered');
 
                     return (
                         <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
                             <MessageBubble
-                                msg={msg}
+                                msg={{...msg, delivery_status: displayStatus}}
                                 userId={currentUser.id}
                                 partner={partner || targetUser}
                                 isSelectionMode={isSelectionMode}
@@ -3840,7 +3908,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     margin-left: 2px;
                 }
                 
-                .msg-status.read { color: currentColor; font-weight: bold; opacity: 1; }
+                .msg-status.read { color: #FFB300; font-weight: bold; opacity: 1; }
                 
                 .msg-system {
                     width: 100%;

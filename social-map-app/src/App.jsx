@@ -21,73 +21,9 @@ import { LocationProvider } from './context/LocationContext';
 
 import { supabase } from './supabaseClient'; // Make sure this path is correct
 
-// VAPID Public Key - Loaded from .env
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
 function App() {
-  useEffect(() => {
-      const initPush = async () => {
-          if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-              console.log('ℹ️ Push notifications not supported in this browser');
-              return;
-          }
-
-          try {
-              const registration = await navigator.serviceWorker.register('/sw.js');
-              console.log('Service Worker registered with scope:', registration.scope);
-
-              // Request Permission
-              const permission = await Notification.requestPermission();
-              
-              if (permission === 'granted') {
-                  // Subscribe to Push
-                  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY === 'YOUR_VAPID_PUBLIC_KEY_HERE') {
-                      console.log('ℹ️ Push Notifications: VAPID Key not configured. Skipping push setup.');
-                      return;
-                  }
-
-                  const subscription = await registration.pushManager.subscribe({
-                      userVisibleOnly: true,
-                      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-                  });
-
-                  // Save to Supabase
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (session?.user) {
-                      await supabase.from('push_subscriptions').upsert({
-                          user_id: session.user.id,
-                          subscription: subscription
-                      }, { onConflict: 'user_id, subscription' });
-                      console.log('✅ Push Subscription saved!');
-                  }
-              } else if (permission === 'denied') {
-                  console.log('ℹ️ Push notifications permission denied by user');
-              }
-          } catch (err) {
-              // Suppress non-critical push notification errors in development
-              if (err.name === 'AbortError' || err.message?.includes('push service error')) {
-                  console.log('ℹ️ Push notifications unavailable (development mode or not configured)');
-              } else {
-                  console.warn('Push notification setup error:', err.message);
-              }
-          }
-      };
-
-      initPush();
-  }, []);
+  // Logic moved to usePushNotifications hook in Layout
+  // Keeping App simple
 
   return (
     <ErrorBoundary>

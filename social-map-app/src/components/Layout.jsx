@@ -3,10 +3,16 @@ import { Outlet } from 'react-router-dom';
 import BottomNav from './BottomNav';
 import { supabase } from '../supabaseClient';
 
+import { usePushNotifications } from '../hooks/usePushNotifications';
+
 export default function Layout() {
     const [checkingAuth, setCheckingAuth] = useState(true);
+    const [currentUserId, setCurrentUserId] = useState(null);
     const [friendRequestCount, setFriendRequestCount] = useState(0);
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
+    // Initialize Push Notifications
+    usePushNotifications(currentUserId);
 
     // Initial Auth Check & Session Recovery
     useEffect(() => {
@@ -48,6 +54,7 @@ export default function Layout() {
              if (mounted) {
                  if (session) {
                      await syncProfile(session);
+                     setCurrentUserId(session.user.id);
                      setCheckingAuth(false);
                  } else if (!window.location.hash.includes('access_token') && !window.location.hash.includes('type=recovery')) {
                      // Only stop checking if we are NOT expecting a hash-based login (OAuth or Recovery)
@@ -64,11 +71,13 @@ export default function Layout() {
                  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                      if (session) {
                          await syncProfile(session);
+                         setCurrentUserId(session.user.id);
                          setCheckingAuth(false);
                      }
                  } else if (event === 'SIGNED_OUT') {
                      // Optional: clear local storage
                      // localStorage.removeItem('currentUser'); // Let MapHome handle redirect logic
+                     setCurrentUserId(null);
                      setCheckingAuth(false);
                  }
              }

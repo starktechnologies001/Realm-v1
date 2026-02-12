@@ -20,13 +20,31 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
         // Play ringtone
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359.wav');
         audio.loop = true;
-        audio.play().catch(e => console.error("Ringtone play error:", e));
+        audio.play().catch(e => {
+            console.error("Ringtone play error:", e);
+            // Fallback: Use vibration on mobile if audio is blocked
+            if (navigator.vibrate) {
+                // Vibrate pattern: [vibrate, pause, vibrate, pause, ...]
+                const vibratePattern = [400, 200, 400, 200, 400];
+                const vibrateInterval = setInterval(() => {
+                    navigator.vibrate(vibratePattern);
+                }, 2000); // Repeat every 2 seconds
+                
+                // Store interval to clear on cleanup
+                audio.vibrateInterval = vibrateInterval;
+            }
+        });
         setRingtoneAudio(audio);
 
         return () => {
             if (audio) {
                 audio.pause();
                 audio.currentTime = 0;
+                // Clear vibration interval if it exists
+                if (audio.vibrateInterval) {
+                    clearInterval(audio.vibrateInterval);
+                    navigator.vibrate(0); // Stop vibration
+                }
             }
         };
     }, []);

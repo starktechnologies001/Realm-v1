@@ -179,4 +179,19 @@ html[data-theme="dark"] button {
   input, textarea, select {
     font-size: 16px; /* Prevents zoom on iOS */
   }
+
+  /* Reduce MapProfileCard size on mobile */
+  .user-profile-card {
+    max-height: 60vh !important;
+  }
+
+  .avatar-large {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  .avatar-large-container {
+    width: 80px !important;
+    height: 80px !important;
+  }
 }

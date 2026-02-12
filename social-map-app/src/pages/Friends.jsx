@@ -254,8 +254,13 @@ export default function Friends() {
         <div className="friends-page">
             <div className="ambient-glow"></div>
             
-            <header className="glass-header">
-                <button className="back-btn" onClick={() => navigate(-1)}>←</button>
+            <header className="glass-header" style={{ flexDirection: 'column', height: 'auto', padding: '10px 0', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0 16px' }}>
+                    <button className="back-btn" onClick={() => navigate(-1)} style={{ position: 'relative', left: 0 }}>←</button>
+                    <h2 style={{ flex: 1, textAlign: 'center', margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Friends</h2>
+                    <div style={{ width: 40 }}></div> {/* Spacer to balance back button */}
+                </div>
+                
                 <div className="tab-container">
                     <button 
                         className={`tab-btn ${activeTab === 'friends' ? 'active' : ''}`}
@@ -271,7 +276,6 @@ export default function Friends() {
                         {requests.length > 0 && <span className="tab-badge">{requests.length}</span>}
                     </button>
                 </div>
-                <div style={{ width: 40 }}></div> {/* Spacer */}
             </header>
 
             <div className="scroll-content">
