@@ -20,6 +20,7 @@ import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } fr
 import ImageCropper from '../components/ImageCropper';
 import BottomNav from '../components/BottomNav';
 
+
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -1553,24 +1554,9 @@ export default function MapHome() {
         );
     }, [currentUser, location?.lat, location?.lng]);
 
-    // 1. Permission Prompt (Highest Priority)
-    if (permissionStatus === 'prompt') {
-        return <LocationPermissionModal onSelect={handlePermissionSelect} />;
-    }
 
-    // 2. Permission Denied
-    if (permissionStatus === 'denied') {
-        return <LimitedModeScreen onEnableLocation={handleEnableLocation} />;
-    }
 
-    // 3. Loading User or Waiting for Location (Permission is Granted at this point)
-    if (permissionStatus === 'granted' && !location) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#e0e0e0', color: '#333' }}>
-                <h2>{loading ? 'Loading Profile...' : 'Acquiring Location...'}</h2>
-            </div>
-        );
-    }
+
 
     // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -1665,6 +1651,200 @@ export default function MapHome() {
         // So clearing search query restores the view.
         setSelectedUser(user); // Triggers Zoom via UserSelectionController
     };
+
+    // ------------------------------------------------------------------
+    // 📍 MEMOIZED MARKERS (Clustered & Spiral)
+    // ------------------------------------------------------------------
+    const userMarkers = useMemo(() => {
+        // Process users to handle overlap (Spiderfy / Separation)
+        // Density-Based Clustering & Spiral Layout
+        
+        // 1. Sort for stability
+        const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
+        const clusters = [];
+        const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
+
+        // 2. Cluster Users
+        sortedUsers.forEach(u => {
+            let placed = false;
+            for (let cluster of clusters) {
+                // Check distance to cluster center (using first user as anchor for stability)
+                const anchor = cluster[0];
+                if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD &&
+                    Math.abs(u.lng - anchor.lng) < CLUSTER_THRESHOLD) {
+                    cluster.push(u);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) clusters.push([u]);
+        });
+
+        // 3. Apply Spiral Layout
+        const processedUsers = [];
+        const SPIRAL_SPACING = 0.0008; // Increased spacing to prevent visual overlap (~90m separation)
+
+        clusters.forEach(cluster => {
+            if (cluster.length === 1) {
+                processedUsers.push(cluster[0]);
+            } else {
+                // Calculate center of mass for the group
+                const avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
+                const avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
+
+                cluster.forEach((u, i) => {
+                    // Archimedean Spiral / Golden Angle Packing
+                    const angle = i * 2.4; // ~137.5 degrees
+                    const radius = SPIRAL_SPACING * Math.sqrt(i);
+
+                    processedUsers.push({
+                        ...u,
+                        lat: avgLat + (Math.cos(angle) * radius),
+                        lng: avgLng + (Math.sin(angle) * radius)
+                    });
+                });
+            }
+        });
+
+        return processedUsers.map(u => {
+            // Check thought expiration (2 hours)
+            let displayThought = u.thought;
+            if (u.status_updated_at) {
+                const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
+                if (diffHours > 2) displayThought = null;
+            }
+
+            return (
+                <Marker
+                    key={`${u.id}-${u.avatar}`}
+                    position={[u.lat, u.lng]}
+                    icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
+                    riseOnHover={true}
+                    eventHandlers={{
+                        click: async () => {
+
+                            // Fetch friendship status synchronously to update UI instantly
+                            // Optimistically show card while loading if needed, but fetch runs fast.
+                            // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
+                            console.log(`🔍 [MapHome] Fetching friendship between Me(${currentUser?.id}) and ${u.name}(${u.id})`);
+                            
+                            // Prevent check if currentUser is null (edge case)
+                            if (!currentUser) {
+                                setSelectedUser(u);
+                                return;
+                            }
+
+                            const { data, error } = await supabase
+                                .from('friendships')
+                                .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
+                                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
+                                .maybeSingle();
+
+                            if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
+                            
+                            let isMuted = false;
+                            if (data) {
+                                let mutedUntil = null;
+                                if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
+                                else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
+
+                                if (mutedUntil && new Date(mutedUntil) > new Date()) {
+                                    isMuted = true;
+                                }
+                            }
+
+                            setSelectedUser({
+                                ...u,
+                                // Robust Fallback: Use fetched data OR existing local data
+                                friendshipStatus: data?.status || u.friendshipStatus || null,
+                                friendshipId: data?.id || u.friendshipId || null,
+                                requesterId: data?.requester_id || null,
+                                receiverId: data?.receiver_id || null,
+                                isMuted: isMuted
+                            });
+                        }
+                    }}
+                />
+            );
+        });
+    }, [filteredUsers, currentUser]);
+
+    
+    // ------------------------------------------------------------------
+    // 🚀 CROSS-PLATFORM PERMISSION & LOADING GATES
+    // ------------------------------------------------------------------
+
+    // 1. Permission Prompt (Highest Priority)
+    if (permissionStatus === 'prompt') {
+        return <LocationPermissionModal onSelect={handlePermissionSelect} />;
+    }
+
+    // 1. Permission Denied Gate
+    if (permissionStatus === 'denied') {
+        return (
+            <div style={{
+                height: '100vh',
+                width: '100vw',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                background: isDarkMode ? '#121212' : '#f5f5f5',
+                color: isDarkMode ? '#fff' : '#000',
+                textAlign: 'center',
+                padding: '20px'
+            }}>
+                <h2>📍 Location Required</h2>
+                <p style={{ maxWidth: '300px', marginBottom: '20px', opacity: 0.8 }}>
+                    We need your location to show friends nearby.
+                    Please enable it in your device settings.
+                </p>
+                <button
+                    onClick={requestPermissionFromUser}
+                    style={{
+                        padding: '14px 24px',
+                        borderRadius: '25px',
+                        border: 'none',
+                        background: '#4285F4',
+                        color: 'white',
+                        fontWeight: '600',
+                        fontSize: '16px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(66, 133, 244, 0.3)'
+                    }}
+                >
+                    Enable Location
+                </button>
+            </div>
+        );
+    }
+
+    // 2. Loading / Acquiring Location Gate
+    if (permissionStatus === 'granted' && !location) { 
+        return (
+            <div style={{
+                height: '100vh',
+                width: '100vw',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                background: isDarkMode ? '#121212' : '#f5f5f5',
+                color: isDarkMode ? '#fff' : '#000'
+            }}>
+                <div className="spinner" style={{ 
+                    width: '40px', height: '40px', 
+                    border: '4px solid rgba(128,128,128,0.2)', 
+                    borderTop: '4px solid #4285F4', 
+                    borderRadius: '50%', 
+                    animation: 'spin 1s linear infinite',
+                    marginBottom: '16px'
+                }} />
+                <h3 style={{ margin: 0 }}>Finding you...</h3>
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
+    }
 
     return (
         <div className="map-container">
@@ -1818,7 +1998,9 @@ export default function MapHome() {
                 />
             )}
 
+            {/* Map Container */}
             <MapContainer
+                key="map-main-stable"
                 center={[location.lat, location.lng]}
                 zoom={18}
                 maxZoom={22}
@@ -1834,6 +2016,7 @@ export default function MapHome() {
                         className={isDarkMode ? 'dark-map-tiles' : ''}
                         maxNativeZoom={20}
                         maxZoom={22}
+                        keepBuffer={4}
                     />
                 )}
                 {mapMode === 'hybrid' && (
@@ -1842,6 +2025,7 @@ export default function MapHome() {
                         url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
                         maxNativeZoom={20}
                         maxZoom={22}
+                        keepBuffer={4}
                     />
                 )}
                 {mapMode === 'satellite' && (
@@ -1850,6 +2034,7 @@ export default function MapHome() {
                         url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
                         maxNativeZoom={20}
                         maxZoom={22}
+                        keepBuffer={4}
                     />
                 )}
 
@@ -1871,115 +2056,8 @@ export default function MapHome() {
                 {/* Current User Marker (Memoized above) */}
                 {currentUserMarker}
 
-                {(() => {
-                    // Process users to handle overlap (Spiderfy / Separation)
-                    // Density-Based Clustering & Spiral Layout
-                    // 1. Sort for stability
-                    const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
-                    const clusters = [];
-                    const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
-
-                    // 2. Cluster Users
-                    sortedUsers.forEach(u => {
-                        let placed = false;
-                        for (let cluster of clusters) {
-                            // Check distance to cluster center (using first user as anchor for stability)
-                            const anchor = cluster[0];
-                            if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD &&
-                                Math.abs(u.lng - anchor.lng) < CLUSTER_THRESHOLD) {
-                                cluster.push(u);
-                                placed = true;
-                                break;
-                            }
-                        }
-                        if (!placed) clusters.push([u]);
-                    });
-
-                    // 3. Apply Spiral Layout
-                    const processedUsers = [];
-                    const SPIRAL_SPACING = 0.0008; // Increased spacing to prevent visual overlap (~90m separation)
-
-                    clusters.forEach(cluster => {
-                        if (cluster.length === 1) {
-                            processedUsers.push(cluster[0]);
-                        } else {
-                            // Calculate center of mass for the group
-                            const avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
-                            const avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
-
-                            cluster.forEach((u, i) => {
-                                // Archimedean Spiral / Golden Angle Packing
-                                const angle = i * 2.4; // ~137.5 degrees
-                                const radius = SPIRAL_SPACING * Math.sqrt(i);
-
-                                processedUsers.push({
-                                    ...u,
-                                    lat: avgLat + (Math.cos(angle) * radius),
-                                    lng: avgLng + (Math.sin(angle) * radius)
-                                });
-                            });
-                        }
-                    });
-
-                    return processedUsers.map(u => {
-                        // Check thought expiration (2 hours)
-                        let displayThought = u.thought;
-                        if (u.status_updated_at) {
-                            const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
-                            if (diffHours > 2) displayThought = null;
-                        }
-
-                        return (
-                            <Marker
-                                key={`${u.id}-${u.avatar}`}
-                                position={[u.lat, u.lng]}
-                                icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
-                                riseOnHover={true}
-                                eventHandlers={{
-                                    click: async () => {
-
-                                        // Fetch friendship status synchronously to update UI instantly
-                                        let status = null;
-                                        // Optimistically show card while loading if needed, but fetch runs fast.
-                                        // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
-                                        console.log(`🔍 [MapHome] Fetching friendship between Me(${currentUser.id}) and ${u.name}(${u.id})`);
-                                        const { data, error } = await supabase
-                                            .from('friendships')
-                                            .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
-                                            .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
-                                            .maybeSingle();
-
-                                        if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
-                                        console.log("✅ [MapHome] Friendship Data:", data);
-
-                                        let isMuted = false;
-                                        if (data) {
-                                            let mutedUntil = null;
-                                            if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
-                                            else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
-
-                                            if (mutedUntil && new Date(mutedUntil) > new Date()) {
-                                                isMuted = true;
-                                            }
-                                        }
-
-                                        setSelectedUser({
-                                            ...u,
-                                            // Robust Fallback: Use fetched data OR existing local data
-                                            friendshipStatus: data?.status || u.friendshipStatus || null,
-                                            friendshipId: data?.id || u.friendshipId || null,
-                                            requesterId: data?.requester_id || null,
-                                            receiverId: data?.receiver_id || null,
-                                            isMuted: isMuted
-                                        });
-
-
-                                    }
-                                }}
-                            />
-                        );
-                    });
-                })()}
+                {/* Memoized User Markers */}
+                {userMarkers}
             </MapContainer>
 
 
@@ -2082,10 +2160,12 @@ export default function MapHome() {
             <style>{`
                 .map-header-controls {
                     position: absolute;
-                    top: 20px;
+                    top: 0; /* Use padding for safe area instead of top */
+                    padding-top: max(16px, env(safe-area-inset-top));
                     left: 0; right: 0;
                     z-index: 1000;
-                    padding: 0 16px;
+                    padding-left: 16px; 
+                    padding-right: 16px;
                     display: flex;
                     flex-direction: column;
                     gap: 8px;

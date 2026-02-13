@@ -3698,6 +3698,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                     width: 100%;
                     height: 100dvh; /* Dynamic viewport height for mobile */
+                    min-height: 100%; /* Fallback */
                     background: var(--theme-bg);
                     background-size: cover;
                     background-position: center;
@@ -3706,7 +3707,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
                     overflow: hidden;
-                    height: 100vh;
                 }
                 
                 .ambient-glow-chat {
@@ -4591,7 +4591,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
                 .chat-input-bar { padding: 15px; background: #1e1e1e; display: flex; gap: 10px; align-items: center; }
-                .chat-input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; background: #333; color: white; outline: none; }
+                .chat-input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; background: #333; color: white; outline: none; font-size: 16px; }
                 .send-btn { background: #00f0ff; width: 40px; height: 40px; border-radius: 50%; color: black; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; }
                 .chat-input-bar button { cursor: pointer; background: none; border: none; font-size: 1.2rem; }
 

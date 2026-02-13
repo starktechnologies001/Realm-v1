@@ -613,7 +613,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                     .action-btn:active { transform: scale(0.95); }
 
                     .action-btn .icon { font-size: 28px; line-height: 1; margin-bottom: 2px; }
-                    .action-btn .label { font-size: 11px; font-weight: 600; letter-spacing: 0.3px; color: #aaa; }
+                    .action-btn .label { font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: #aaa; }
 
                     /* Button Specific Styles */
                     

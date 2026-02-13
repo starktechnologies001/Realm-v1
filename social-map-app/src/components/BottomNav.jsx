@@ -82,22 +82,23 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
           position: fixed;
           bottom: 0; left: 0; right: 0;
           height: 60px; /* Reduced specific height for sleekness */
-          background: rgba(10, 10, 10, 0.85); /* Slightly darker for contrast */
+          background: var(--glass-bg);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          border-top: 1px solid var(--glass-border);
           display: flex;
           justify-content: space-around;
           align-items: center;
           z-index: 2000;
           padding-bottom: env(safe-area-inset-bottom);
-          box-shadow: 0 -4px 30px rgba(0,0,0,0.3);
+          box-shadow: 0 -4px 30px rgba(0,0,0,0.1);
+          transition: background 0.3s ease, border-color 0.3s ease;
         }
         
         .nav-item {
           background: none;
           border: none;
-          color: rgba(255, 255, 255, 0.5);
+          color: var(--text-secondary);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -111,7 +112,7 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
         }
         
         .nav-item.active {
-          color: #4285F4; /* Brand Primary */
+          color: var(--brand-primary);
         }
         
         .nav-icon-wrapper {
@@ -131,10 +132,11 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
         }
         
         .nav-label {
-          font-size: 0.65rem;
+          font-size: 0.72rem; /* Increased for legibility */
           font-weight: 600;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.2px;
           opacity: 0.8;
+          margin-top: 2px;
         }
         .nav-item.active .nav-label {
             opacity: 1;
