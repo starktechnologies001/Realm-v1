@@ -269,7 +269,8 @@ html[data-theme="dark"] .glass-pill {
 
 /* Status Ring Indicators */
 .status-ring-default {
-    border: 3px solid rgba(255, 255, 255, 0.3) !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .status-ring-active {

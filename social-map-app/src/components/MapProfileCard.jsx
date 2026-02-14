@@ -534,7 +534,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                     }
 
                     .avatar-large-container.status-ring-default::after {
-                        border-color: rgba(255,255,255,0.3);
+                        border-color: transparent;
                         /* Subtle default */
                     }
                     

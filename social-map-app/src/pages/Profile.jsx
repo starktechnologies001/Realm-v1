@@ -22,7 +22,7 @@ export default function Profile() {
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const { theme, updateTheme } = useTheme();
-    const { isLocationEnabled, resetPermission, setPermission } = useLocationContext();
+    const { isLocationEnabled, resetPermission, setPermission, permissionStatus, requestPermissionFromUser, stopWatching } = useLocationContext();
     const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
     const wallpaperInputRef = useRef(null);
     const photoInputRef = useRef(null);
@@ -128,6 +128,14 @@ export default function Profile() {
         fetchProfile();
     }, []);
 
+    // 🔥 Sync UI: If Location is Enabled, Ghost Mode MUST be Off
+    useEffect(() => {
+        if (isLocationEnabled && user?.is_ghost_mode) {
+             console.log("🔵 [Profile] Location enabled, forcing Ghost Mode OFF in UI");
+             setUser(prev => ({ ...prev, is_ghost_mode: false }));
+        }
+    }, [isLocationEnabled, user?.is_ghost_mode]);
+
     const fetchProfile = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -147,7 +155,40 @@ export default function Profile() {
             // Self-Healing (Legacy check removed for brevity, assuming established users or fresh setup)
             // Note: Keeping existing self-healing if needed but simplifying for readability in this update
             
-            setUser(data);
+            // Fetch active stories (last 24h) to determine ring color
+            const { data: stories, error: storiesError } = await supabase
+                .from('stories')
+                .select('id')
+                .eq('user_id', user.id)
+                .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+            let hasStory = false;
+            let hasUnseenStory = false;
+
+            if (stories && stories.length > 0) {
+                hasStory = true;
+                // Check views
+                const { data: views } = await supabase
+                    .from('story_views')
+                    .select('story_id')
+                    .eq('viewer_id', user.id)
+                    .in('story_id', stories.map(s => s.id));
+
+                const viewedCount = views ? views.length : 0;
+                // If I have posted 3 stories and viewed 3, then no unseen. 
+                // If I posted 3 and viewed 2, then 1 unseen.
+                // Wait, usually "Your Story" ring is blue if you have a story that *others* haven't seen? 
+                // No, standard UI is:
+                // - Blue ring (around me): I have a story that *I* haven't viewed yet (e.g. just posted and haven't watched it).
+                // - Grey ring (around me): I have viewed all my own stories.
+                // - No ring: I have no active stories.
+                
+                hasUnseenStory = viewedCount < stories.length;
+                console.log(`📸 [Profile] Stories: ${stories.length}, Views: ${viewedCount}, HasUnseen: ${hasUnseenStory}`);
+            }
+
+            // Merge with profile data
+            setUser({ ...data, hasStory, hasUnseenStory });
             
             // Fetch blocked users - REMOVED (Handled in dedicated page)
         } catch (error) {
@@ -480,19 +521,16 @@ export default function Profile() {
                         {user.status && !user.hide_status && <span className="tag status">{user.status}</span>}
                         
                         {/* Edit Avatar Button - Restored for 3D Avatar Editing */}
-                        <button 
-                            onClick={() => setShowAvatarEditor(true)}
-                            className="edit-avatar-btn-inline"
-                            title="Edit 3D Avatar"
-                        >
-                            ✏️
-                        </button>
+
                     </div>
-                    {/* Location Warning */}
-                    {!isLocationEnabled && (
+                    {/* Location Warning - Only if BOTH Profile Off AND Device Off */}
+                    {!isLocationEnabled && permissionStatus === 'denied' && (
                         <div className="location-warning-badge">
                             <span>📍 Location is disabled</span>
-                            <button onClick={() => { resetPermission(); navigate('/map'); }}>
+                            <button onClick={() => { 
+                                resetPermission(); 
+                                setPermission('granted'); // Trigger request
+                            }}>
                                 Enable
                             </button>
                         </div>
@@ -633,12 +671,20 @@ export default function Profile() {
                                 type="checkbox" 
                                 checked={isLocationEnabled}
                                 onChange={async (e) => {
-                                    if (e.target.checked) {
+                                    const checked = e.target.checked;
+                                    console.log("🔵 [Profile] Location Toggle Clicked:", checked);
+                                    if (checked) {
                                         setPermission('granted');
+                                        console.log("🔵 [Profile] Manually enabling Location (Ghost Mode OFF)");
+                                        // Optimistic Update
+                                        setUser({ ...user, is_ghost_mode: false });
+                                        requestPermissionFromUser(); 
                                     } else {
                                         setPermission('denied');
-                                        // Also specific requirement: "Enable Ghost Mode" when Location turned OFF
-                                        await updateProfile({ is_ghost_mode: true });
+                                        console.log("🔵 [Profile] Manually disabling Location (Ghost Mode ON)");
+                                        // Optimistic Update
+                                        setUser({ ...user, is_ghost_mode: true });
+                                        stopWatching(); 
                                     }
                                 }}
                             />
@@ -661,7 +707,20 @@ export default function Profile() {
                                 type="checkbox" 
                                 checked={user.is_ghost_mode || false}
                                 onChange={async (e) => {
-                                    await updateProfile({ is_ghost_mode: e.target.checked });
+                                    const isGhost = e.target.checked;
+                                    console.log("🟣 [Profile] Ghost Mode Toggle Clicked:", isGhost);
+                                    
+                                    // 1. Optimistic Local Update Only (No DB call here)
+                                    setUser({ ...user, is_ghost_mode: isGhost });
+
+                                    // 2. Delegate DB & Hardware to Location Context
+                                    if (isGhost) {
+                                        setPermission('denied');
+                                        stopWatching(); // Set Ghost:TRUE, Location:FALSE
+                                    } else {
+                                        setPermission('granted');
+                                        requestPermissionFromUser(); // Set Ghost:FALSE, Location:TRUE
+                                    }
                                 }}
                             />
                             <span className="toggle-slider"></span>

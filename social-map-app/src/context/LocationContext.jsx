@@ -1,235 +1,215 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import React, { createContext, useContext, useState, useRef } from "react";
+import { supabase } from "../supabaseClient";
 
 const LocationContext = createContext();
 
 export function LocationProvider({ children }) {
-    const [permissionStatus, setPermissionStatus] = useState(() => {
-        return localStorage.getItem('locationPermission') || 'prompt';
-    });
+  const [permissionStatus, setPermissionStatus] = useState("prompt");
+  const [userLocation, setUserLocation] = useState(null);
+  const watchIdRef = useRef(null);
+
+
+  const trackingRef = useRef(false);
+
+  // Auto-detect permission changes (e.g. system settings)
+  React.useEffect(() => {
+      if (navigator.permissions && navigator.permissions.query) {
+          navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+              const handleChange = () => {
+                  if (result.state === 'granted') {
+                      requestPermissionFromUser(); // Will start watching and update DB
+                  } else if (result.state === 'denied') {
+                      setPermissionStatus('denied');
+                      stopWatching();
+                  }
+              };
+              
+              // Initial check
+              if (result.state === 'granted') {
+                  requestPermissionFromUser();
+              }
+
+              result.addEventListener('change', handleChange);
+              return () => result.removeEventListener('change', handleChange);
+          });
+      }
+  }, []);
+
+  // Internal helper to just clear the watcher without DB updates
+  const cleanupWatcher = () => {
+    trackingRef.current = false; 
+    if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+    }
+  };
+
+  const stopWatching = async () => {
+    cleanupWatcher(); // Stop tracking locally
+
+    // 🔥 HIDE USER when location is off
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+          await supabase.from("profiles").update({
+              is_location_on: false,
+              is_ghost_mode: true, // 🔥 Sync Ghost Mode ON
+              last_active: new Date().toISOString()
+          }).eq("id", session.user.id);
+      }
+    } catch (err) {
+      console.error("Failed to update visibility:", err);
+    }
+  };
+
+  const startWatchingLocation = () => {
+    if (!navigator.geolocation) return;
     
-    // Live Location State
-    const [userLocation, setUserLocation] = useState(null);
-    const watchIdRef = useRef(null);
-    const lastDbUpdateRef = useRef(0);
-    const lastLocationRef = useRef(null);
+    // Stop previous watchers internal
+    cleanupWatcher();
 
-   const isLocationEnabled =
-       permissionStatus === 'granted' &&
-       typeof window !== 'undefined' &&
-       'geolocation' in navigator;
+    trackingRef.current = true; // 🔥 Allow updates
 
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        if (!trackingRef.current) return; // 🔥 Guard against race condition
 
-
-    const setPermission = (status, persist = true) => {
-        setPermissionStatus(status);
-        
-        if (persist) {
-            if (status === 'prompt') {
-                localStorage.removeItem('locationPermission');
-            } else {
-                localStorage.setItem('locationPermission', status);
-            }
-        }
-    };
-
-    // 🔁 Sync browser permission state on load + external changes
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        if (!navigator.permissions?.query) return;
-
-        navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-            setPermission(result.state, true);
-
-            result.onchange = () => {
-                setPermission(result.state, true);
-            };
-        });
-    }, []);
-
-    // Helper: Calculate distance in km
-    const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-        const R = 6371; 
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = 
-            Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-        return R * c;
-    };
-
-    // Real-time Tracking
-    useEffect(() => {
-        if (!isLocationEnabled) {
-            if (watchIdRef.current) {
-                navigator.geolocation.clearWatch(watchIdRef.current);
-                watchIdRef.current = null;
-            }
-            return;
-        }
-
-        if ('geolocation' in navigator) {
-            const startWatch = (highAccuracy = true) => {
-                watchIdRef.current = navigator.geolocation.watchPosition(
-                    async (position) => {
-                        const { latitude, longitude } = position.coords;
-                        const newLoc = { lat: latitude, lng: longitude };
-                        setUserLocation(newLoc);
-
-                        // DB Update Logic (Throttled)
-                        const now = Date.now();
-                        const timeDiff = now - lastDbUpdateRef.current;
-                        const lastLoc = lastLocationRef.current;        
-
-                        let movedEnough = true;
-                        if (lastLoc) {
-                            const distKm = getDistanceKm(
-                                lastLoc.lat,
-                                lastLoc.lng,
-                                newLoc.lat,
-                                newLoc.lng
-                            );
-                            movedEnough = distKm > 0.005; // 5 meters (DEBUG: Reduced from 20m)
-                        }
-                        
-                        // Smart throttling: Update if >5s or >5m moved (DEBUG: Reduced from 30s/10s)
-                        if (    
-                            timeDiff > 5000 || 
-                            (movedEnough && timeDiff > 2000)
-                        ) {
-                            console.log("🚀 [LocationContext] Triggering DB update...", { distKm: movedEnough ? "YES" : "NO", timeDiff });
-                            lastDbUpdateRef.current = now;
-                            lastLocationRef.current = newLoc;
-                            
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.user) {
-                                // Combined Update
-                                // Combined Update
-                                const { error } = await supabase.from('profiles').update({ 
-                                    latitude: newLoc.lat,
-                                    longitude: newLoc.lng,
-                                    last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
-                                    last_active: new Date().toISOString()
-                                }).eq('id', session.user.id);
-
-                                if (error) {
-                                    console.error("❌ Failed to update location:", error);
-                                }
-                            }
-                        }
-                    },
-                    (err) => {
-                        // Suppress transient errors
-                        if (err.code === 1) { 
-                            if (permissionStatus !== 'denied') {    
-                                setPermission('denied', true);
-                            }
-
-                            if (watchIdRef.current) {
-                                navigator.geolocation.clearWatch(watchIdRef.current);
-                                watchIdRef.current = null;
-                            }
-                            return;
-                        }   
-                        
-                        if ((err.code === 2 || err.code === 3) && highAccuracy) {                                   
-                            // If High Accuracy fails, downgrade to Low Accuracy automatically
-                            console.log("📍 Location: High accuracy failed, switching to low accuracy...");
-                            if (watchIdRef.current) {   
-                                navigator.geolocation.clearWatch(watchIdRef.current);
-                            }
-                            startWatch(false);
-                        }
-                        // Already on low accuracy or other error - just silence it to avoid spam
-                        
-                    },
-
-                    {   
-                        enableHighAccuracy: highAccuracy,
-                        timeout: 20000,
-                        maximumAge: 10000
-                    }
-                );
-            };
-
-            startWatch(true); // Start with high accuracy
-        }
-
-        return () => {
-             if (watchIdRef.current) {
-                navigator.geolocation.clearWatch(watchIdRef.current);
-                watchIdRef.current = null;
-            }
+        const newLoc = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
         };
-    }, [isLocationEnabled]);
 
-    // Clear location from DB when permission is denied/revoked
-    useEffect(() => {
-        if (permissionStatus !== 'denied') return;
+        setUserLocation(newLoc);
 
-        const clearLocation = async () => {
-            console.log("🚫 Permission denied/revoked. Clearing location from DB...");
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session?.user) return;
+        const { data: { session } } = await supabase.auth.getSession();
 
-            await supabase
-                .from('profiles')
-                .update({
-                    latitude: null,
-                    longitude: null,
-                    last_location: null,
-                    last_active: new Date().toISOString()
-                })
-                .eq('id', session.user.id);
-            setUserLocation(null);
-        };
-        clearLocation();
-    }, [permissionStatus]);
+        if (session?.user && trackingRef.current) { // Double check before async DB call
+          await supabase.from("profiles").update({
+            latitude: newLoc.lat,
+            longitude: newLoc.lng,
+            is_location_on: true, // 🔥 SHOW USER
+            is_ghost_mode: false, // 🔥 Force Ghost Mode OFF
+            last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+            last_active: new Date().toISOString()
+          }).eq("id", session.user.id);
+        }
+      },
+      (error) => {
+        // Suppress timeout errors (Code 3) to avoid console spam as watchPosition keeps retrying
+        if (error.code === 3) return; 
 
-    // Helper to reset and allow re-prompting
-    const resetPermission = () => {
-        setPermission('prompt');
-    };
+        console.warn("Location watch error:", error.message);
 
-    const requestPermissionFromUser = () => {
+        if (error.code === 1) {
+          setPermissionStatus("denied");
+          trackingRef.current = false; // Stop on denial
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,    // Allow 10s old cached position to reduce timeouts
+        timeout: 30000        // 30s timeout
+      }
+    );
+  };
+
+  const requestPermissionFromUser = () => {
     if (!navigator.geolocation) {
-        setPermission('denied', true);
-        return;
+      alert("Geolocation not supported.");
+      return;
     }
 
+    cleanupWatcher(); // 🔥 internal reset only - no DB update
+
     navigator.geolocation.getCurrentPosition(
-        () => {
-            setPermission('granted', true);
-        },
-        (err) => {
-            if (err.code === 1) {
-                // User clicked "Block"
-                setPermission('denied', true);
-                alert("Location is blocked. Please enable it from browser settings.");
+      async (position) => {
+        const newLoc = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+
+        setPermissionStatus("granted");
+        setUserLocation(newLoc);
+
+        // 🔥 Update DB IMMEDIATELY so map unblocks even if watcher times out later
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                await supabase.from("profiles").update({
+                    latitude: newLoc.lat,
+                    longitude: newLoc.lng,
+                    is_location_on: true, // 🔥 SHOW USER
+                    is_ghost_mode: false,
+                    last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                    last_active: new Date().toISOString()
+                }).eq("id", session.user.id);
+            }
+        } catch (err) {
+            console.error("Failed to update initial location:", err);
+        }
+
+        startWatchingLocation(); // 🔥 Start real-time tracking
+      },
+      (error) => {
+        console.warn("Initial location check failed:", error.message);
+
+        if (error.code === 1) {
+          setPermissionStatus("denied");
+          alert("Location access denied. Please enable it in settings.");
+          return; 
+        } 
+        
+        // For Timeout (3) or Unavailable (2), we proceed to start the watcher anyway.
+        // The watcher has better retry logic (maximumAge, etc.)
+        console.log("⚠️ Initial location timed out/unavailable. Starting watcher anyway...");
+        
+        // We still want to try tracking!
+        startWatchingLocation(); 
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,  
+        timeout: 30000 // Increased to 30s
+      }
+    );
+  };
+
+  // console.log("📍 [LocationProvider] Rendering provider", { childrenPresent: !!children });
+
+  return (
+    <LocationContext.Provider
+      value={{
+        isLocationEnabled: permissionStatus === 'granted',
+        permissionStatus,
+        userLocation,
+        requestPermissionFromUser,
+        setPermission: (status) => {
+            if (status === 'denied') {
+                setPermissionStatus(status);
+                stopWatching();
+            } else if (status === 'granted') {
+                // Don't set status yet - wait for success callback in requestPermissionFromUser
+                requestPermissionFromUser();
             } else {
-                console.log("Location error:", err);
+                setPermissionStatus(status);
             }
         },
-        {
-            enableHighAccuracy: true
-        }
-    );
-};
-
-    return (
-        <LocationContext.Provider value={{ 
-            permissionStatus, 
-            isLocationEnabled, 
-            userLocation, // Expose live location
-            setPermission, 
-            resetPermission,
-            requestPermissionFromUser 
-        }}>
-            {children}
-        </LocationContext.Provider>
-    );
+        resetPermission: () => {
+            setPermissionStatus('prompt');
+            stopWatching(); // Ensure we stop tracking and hide user
+        },
+        stopWatching // Explicitly expose stopWatching
+      }}
+    >
+      {children}
+    </LocationContext.Provider>
+  );
 }
 
-export const useLocationContext = () => useContext(LocationContext);
+export const useLocationContext = () => {
+    const context = useContext(LocationContext);
+    if (context === undefined) {
+        throw new Error('useLocationContext must be used within a LocationProvider');
+    }
+    return context;
+};

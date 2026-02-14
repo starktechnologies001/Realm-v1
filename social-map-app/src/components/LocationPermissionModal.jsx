@@ -19,7 +19,7 @@ export default function LocationPermissionModal({ onSelect }) {
                 </div>
                 
                 <p className="permission-desc">
-                    Allow <strong>Realm</strong> to access your location to show you on the map and find friends nearby.
+                    Your location helps Nearo show nearby people. You can turn this off anytime from settings.
                 </p>
                 
                 <div className="permission-actions">

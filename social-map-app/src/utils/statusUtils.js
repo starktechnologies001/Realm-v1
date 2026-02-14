@@ -76,9 +76,15 @@ export function getStatusRingClass(user, viewer) {
     
     // Owner ALWAYS sees specific ring status (Active Blue) to confirm UI availability
     // or to indicate "You"
+    // Owner ring logic:
+    // Blue if they have a story they haven't viewed.
+    // Grey if they have a story and have viewed it.
+    // Default (no ring) if no story.
     const isOwner = viewer && viewer.id === user.id;
     if (isOwner) {
-        return 'status-ring-active';
+        if (user.hasUnseenStory) return 'status-ring-active'; // Blue
+        if (user.hasStory) return 'status-ring-viewed';       // Grey
+        return 'status-ring-default';                        // No ring
     }
     
     // Check if viewer can see status

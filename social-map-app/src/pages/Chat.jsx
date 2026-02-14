@@ -3019,9 +3019,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
                     <div className="header-user">
-                        <img src={getAvatarHeadshot(partner.avatar_url)} className="header-avatar" alt="avatar" />
+                        <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" />
                         <div className="header-text">
-                            <h3>{partner.username || partner.full_name}</h3>
+                            <h3>{partner.username || partner.full_name || partner.name}</h3>
                             {presence.displayStatus && (
                                 <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
                                     {presence.isOnline && <span className="online-dot">●</span>}
@@ -3697,8 +3697,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .chat-room-container {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                     width: 100%;
-                    height: 100dvh; /* Dynamic viewport height for mobile */
-                    min-height: 100%; /* Fallback */
+                    height: 100%; /* Allow resize with keyboard */
                     background: var(--theme-bg);
                     background-size: cover;
                     background-position: center;
@@ -4054,11 +4053,16 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 
                 .send-btn { 
                     width: 44px; height: 44px; border-radius: 50%; border: none;
-                    background: var(--theme-accent, var(--accent-gradient)); color: white;
+                    background: var(--theme-accent, #0084ff); /* Fallback blue */
+                    background-image: var(--accent-gradient); /* Optional override */
+                    color: white;
                     display: flex; align-items: center; justify-content: center;
                     cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     transition: transform 0.2s;
                     flex-shrink: 0; /* Prevent shrinking on small screens */
+                    min-width: 44px; /* Force width */
+                    margin-left: auto; /* Push to right if needed, but flex handles it */
+                    z-index: 5;
                 }
                 .send-btn:hover { transform: scale(1.05); }
                 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -4185,14 +4189,20 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .light-theme .input-icon-btn { color: #555; }
 
                 .chat-room-header {
-                    padding: 15px; display: flex; align-items: center; gap: 15px;
+                    padding: 8px 12px; display: flex; align-items: center; gap: 10px;
                     background: rgba(20,20,20,0.95); border-bottom: 1px solid #333; color: white;
+                    height: 60px; /* Fixed height for consistency */
                 }
-                .back-btn { background: none; color: white; font-size: 1.5rem; border: none; padding: 0 10px; cursor: pointer; }
-                .header-user { flex: 1; display: flex; align-items: center; gap: 10px; }
-                .header-avatar { width: 40px; height: 40px; border-radius: 50%; }
-                .header-text h3 { margin: 0; font-size: 1rem; }
-                .header-text .user-status { font-size: 0.75rem; color: #888; }
+                .back-btn { background: none; color: white; font-size: 1.5rem; border: none; padding: 0 8px; cursor: pointer; }
+                .header-user { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; /* Enable truncation */ }
+                .header-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+                .header-text { display: flex; flex-direction: column; justify-content: center; min-width: 0; /* Enable flex child truncation */ }
+                .header-text h3 { margin: 0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+                .header-text .user-status { 
+                    font-size: 0.75rem; color: #888; 
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    line-height: 1.2;
+                }
                 .header-text .user-status.online { color: #00ff99; font-weight: 600; }
                 .header-actions { display: flex; gap: 12px; }
                 .header-actions button { background: none; border: none; font-size: 1.2rem; color: white; cursor: pointer; }
@@ -4590,10 +4600,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     to { opacity: 1; }
                 }
 
-                .chat-input-bar { padding: 15px; background: #1e1e1e; display: flex; gap: 10px; align-items: center; }
-                .chat-input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; background: #333; color: white; outline: none; font-size: 16px; }
-                .send-btn { background: #00f0ff; width: 40px; height: 40px; border-radius: 50%; color: black; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; }
-                .chat-input-bar button { cursor: pointer; background: none; border: none; font-size: 1.2rem; }
+                /* Cleaned up duplicate styles */
 
                 /* INCOMING CALL MODAL */
                 .incoming-call-overlay {

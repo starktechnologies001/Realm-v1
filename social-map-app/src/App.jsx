@@ -25,6 +25,20 @@ function App() {
   // Logic moved to usePushNotifications hook in Layout
   // Keeping App simple
 
+  useEffect(() => {
+    const handleUnhandledRejection = (event) => {
+      // Prevent the default console error (optional, but keeps console cleaner if we handle it)
+      // event.preventDefault(); 
+      console.warn('⚠️ Global Unhandled Rejection:', event.reason);
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider>

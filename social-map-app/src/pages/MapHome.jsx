@@ -82,12 +82,79 @@ const generateMockUsers = (centerLat, centerLng) => {
     return users;
 };
 
-function RecenterAutomatically({ lat, lng }) {
+// Control to manually recenter map
+function RecenterControl({ lat, lng }) {
     const map = useMap();
 
-    useEffect(() => {
+    const handleRecenter = (e) => {
+        e.stopPropagation();
         if (lat && lng) {
+            // Zoom level 17 provides a closer view while still showing immediate surroundings
             map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+        }
+    };
+
+    return (
+        <div 
+            className="leaflet-bottom leaflet-right" 
+            style={{ 
+                bottom: '75px', /* Shifted down again */
+                right: '8px',   /* Shifted right again */
+                zIndex: 400,
+                pointerEvents: 'auto',
+                position: 'absolute'
+            }}
+        >
+            <div className="leaflet-control">
+                <button
+                    onClick={handleRecenter}
+                    title="Recenter Map"
+                    style={{
+                        width: '36px',
+                        height: '36px',
+                        backgroundColor: '#4285F4', /* Primary Blue */
+                        border: 'none',
+                        borderRadius: '50%',
+                        boxShadow: '0 4px 12px rgba(66, 133, 244, 0.4)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white', /* White Icon */
+                        transition: 'all 0.2s ease',
+                        padding: 0
+                    }}
+                    onMouseDown={e => { e.stopPropagation(); e.currentTarget.style.transform = 'scale(0.96)'; }}
+                    onMouseUp={e => { e.stopPropagation(); e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseEnter={e => { 
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(66, 133, 244, 0.5)';
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={e => { 
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(66, 133, 244, 0.4)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                    onDoubleClick={e => e.stopPropagation()}
+                >
+                    {/* Standard Crosshair/Target Icon */}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8C9.79 8 8 9.79 8 12C8 14.21 9.79 16 12 16C14.21 16 16 14.21 16 12C16 9.79 14.21 8 12 8ZM12 19C8.13 19 5 15.87 5 12C5 8.13 8.13 5 12 5C15.87 5 19 8.13 19 12C19 15.87 15.87 19 12 19ZM12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C16.97 21 21 16.97 21 12C21 7.03 16.97 3 12 3Z" fill="currentColor" fillOpacity="0.9"/>
+                        <path d="M12 3V1M21 12H23M12 21V23M3 12H1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function RecenterAutomatically({ lat, lng }) {
+    const map = useMap();
+    const hasCentered = useRef(false);
+
+    useEffect(() => {
+        if (lat && lng && !hasCentered.current) {
+            map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+            hasCentered.current = true;
         }
     }, [lat, lng, map]);
 
@@ -618,9 +685,10 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public')
+                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on')
                         .neq('id', currentUser.id)
-                        .eq('is_ghost_mode', false)
+                        .eq('is_ghost_mode', false) // 🔥 Hide if ghost mode
+                        .eq('is_location_on', true) // 🔥 Strict: Hide if location off or null
                         .not('latitude', 'is', null)
                         .not('longitude', 'is', null),
 
@@ -692,9 +760,9 @@ export default function MapHome() {
                     });
                 }
 
-                // Filter and map users (exclude blocked users AND current user)
+                // Filter and map users (exclude blocked users, those with location off, AND current user)
                 const validUsers = profilesResult.data
-                    .filter(u => !allBlockedIds.has(u.id) && u.id !== currentUser.id)
+                    .filter(u => !allBlockedIds.has(u.id) && u.id !== currentUser.id && u.is_location_on !== false)
                     .map(u => {
                         // Use actual avatar if available, otherwise gender-based fallback
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
@@ -723,7 +791,7 @@ export default function MapHome() {
                             show_last_seen: u.show_last_seen,
                             thought: u.status_message,
                             lastActive: u.last_active,
-                            isLocationOn: true,
+                            isLocationOn: u.is_location_on,
                             isLocationShared: true,
                             friendshipStatus: fData?.status || null,
                             friendshipId: fData?.id || null,
@@ -758,7 +826,7 @@ export default function MapHome() {
 
                 // Check visibility criteria
                 const hasLocation = updatedUser.latitude && updatedUser.longitude;
-                const isVisible = !updatedUser.is_ghost_mode && hasLocation;
+                const isVisible = !updatedUser.is_ghost_mode && hasLocation && updatedUser.is_location_on === true;
 
                 setNearbyUsers(prev => {
                     const existingIndex = prev.findIndex(u => u.id === updatedUser.id);
@@ -817,8 +885,8 @@ export default function MapHome() {
                 // FILTER BLOCKED USERS
                 if (blockedIdsRef.current.has(newUser.id)) return;
 
-                // Show new user if not in ghost mode
-                if (!newUser.is_ghost_mode) {
+                // Show new user if not in ghost mode and location is on
+                if (!newUser.is_ghost_mode && newUser.is_location_on !== false) {
                     // Preload Image Immediately
                     const mapAvatar = getAvatar2D(newUser.avatar_url);
 
@@ -998,8 +1066,11 @@ export default function MapHome() {
     };
 
 
-    const handleEnableLocation = () => {
-        resetPermission();
+    const handleEnableLocation = async () => {
+        // Optimistically unblock map
+        setCurrentUser(prev => ({ ...prev, is_location_on: true }));
+        
+        // Request permission (will update DB on success)
         requestPermissionFromUser();
     };
 
@@ -1203,7 +1274,12 @@ export default function MapHome() {
                 .single();
 
             if (data) {
-                navigate('/chat', { state: { targetUser } });
+                const chatUser = {
+                    ...targetUser,
+                    avatar_url: targetUser.avatar_url || targetUser.avatar, // Ensure Chat gets a URL
+                    name: targetUser.name || targetUser.username || targetUser.full_name // Ensure Name
+                };
+                navigate('/chat', { state: { targetUser: chatUser } });
             } else {
                 showToast("You need to be friends to chat! Poke them first. 👉");
             }
@@ -1779,38 +1855,61 @@ export default function MapHome() {
         return <LocationPermissionModal onSelect={handlePermissionSelect} />;
     }
 
-    // 1. Permission Denied Gate
-    if (permissionStatus === 'denied') {
+    // 3. Permission Gate
+    // Block if: 
+    // A. Permission Denied (Browser)
+    // B. Profile 'is_location_on' is explicitly FALSE (User Toggle)
+    const isLocationOffInProfile = currentUser && currentUser.is_location_on === false;
+
+    if (permissionStatus === 'denied' || isLocationOffInProfile) {
         return (
             <div style={{
                 height: '100vh',
                 width: '100vw',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
                 alignItems: 'center',
-                background: isDarkMode ? '#121212' : '#f5f5f5',
-                color: isDarkMode ? '#fff' : '#000',
+                justifyContent: 'center',
+                background: 'var(--bg-color)',
+                color: 'var(--text-primary)',
                 textAlign: 'center',
                 padding: '20px'
             }}>
-                <h2>📍 Location Required</h2>
+                <div style={{
+                    marginBottom: '20px',
+                    fontSize: '3rem',
+                    animation: 'bounce 2s infinite'
+                }}>
+                    📍
+                </div>
+                <h2>Location Required</h2>
                 <p style={{ maxWidth: '300px', marginBottom: '20px', opacity: 0.8 }}>
-                    We need your location to show friends nearby.
-                    Please enable it in your device settings.
+                    {isLocationOffInProfile 
+                        ? "You turned off Location Services in your profile. Enable them to see the map."
+                        : "We need your location to show friends nearby. Please enable it in your device settings."}
                 </p>
                 <button
-                    onClick={requestPermissionFromUser}
+                    onClick={async () => {
+                        // If profile setting is off, turn it on first
+                        if (isLocationOffInProfile) {
+                            await supabase.from('profiles').update({ is_location_on: true }).eq('id', currentUser.id);
+                            // Optimistically update local state
+                            setCurrentUser(prev => ({ ...prev, is_location_on: true }));
+                        }
+                        // Then request permission / reset state
+                        resetPermission();
+                        requestPermissionFromUser();
+                    }}
                     style={{
-                        padding: '14px 24px',
-                        borderRadius: '25px',
-                        border: 'none',
-                        background: '#4285F4',
+                        padding: '12px 24px',
+                        borderRadius: '12px',
+                        background: '#007AFF', // iOS Blue
                         color: 'white',
+                        border: 'none',
+                        fontSize: '1rem',
                         fontWeight: '600',
-                        fontSize: '16px',
                         cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(66, 133, 244, 0.3)'
+                        boxShadow: '0 4px 12px rgba(0,122,255,0.3)'
                     }}
                 >
                     Enable Location
@@ -2039,6 +2138,7 @@ export default function MapHome() {
                 )}
 
                 <RecenterAutomatically lat={location.lat} lng={location.lng} />
+                <RecenterControl lat={location.lat} lng={location.lng} />
                 <UserSelectionController selectedUser={selectedUser} />
 
                 <Circle
