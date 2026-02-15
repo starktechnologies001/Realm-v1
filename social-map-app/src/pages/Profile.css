@@ -30,7 +30,7 @@ html[data-theme="dark"] {
 
 /* Header Card */
 .profile-header-card {
-    margin: 15px; margin-top: 20px;
+    margin: 15px; margin-top: calc(20px + env(safe-area-inset-top)); /* Safe area top */
     margin-bottom: 0px; /* Reduced gap */
     background: transparent;
     border: none;
@@ -631,10 +631,10 @@ html[data-theme="dark"] .icon-delete {
 
 /* Bio Icon Styling */
 .icon-bio {
-    color: #ff9500;
-    background: rgba(255, 149, 0, 0.08);
-    border-color: rgba(255, 149, 0, 0.2);
-    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15);
+    color: #000000;
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
 }
 
 /* Blocked list */

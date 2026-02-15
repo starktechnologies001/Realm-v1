@@ -1783,11 +1783,11 @@ export default function MapHome() {
         });
 
         return processedUsers.map(u => {
-            // Check thought expiration (2 hours)
+            // Check thought expiration (3 hours)
             let displayThought = u.thought;
             if (u.status_updated_at) {
                 const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
-                if (diffHours > 2) displayThought = null;
+                if (diffHours > 3) displayThought = null;
             }
 
             return (
@@ -2690,7 +2690,7 @@ export default function MapHome() {
                                 <button type="submit" className="primary">Post</button>
                             </div>
                         </form>
-                        <p className="hint">Disappears in 2 hours</p>
+                        <p className="hint">Disappears in 3 hours</p>
                     </div>
                 </div>
             )}
@@ -3005,32 +3005,7 @@ export default function MapHome() {
                     }
                 }
 
-                    .controls-overlay {
-                        position: absolute;
-                        top: 80px; /* Adjusted for new search bar position */
-                        right: 20px;
-                        z-index: 1000;
-                        display: flex; 
-                        flex-direction: column; 
-                        gap: 8px;
-                    }
-                .control-btn {
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
-                    background: white;
-                    color: #555;
-                    font-size: 14px;
-                    display: flex; align-items: center; justify-content: center;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    border: none; cursor: pointer;
-                    transition: all 0.2s;
-                }
-                .control-btn:hover { transform: scale(1.05); }
-                .control-btn.active {
-                    background: #4285F4;
-                    color: white;
-                }
+
 
                 /* Report Modal Styles */
                 .report-modal-overlay {

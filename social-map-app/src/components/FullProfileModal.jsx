@@ -364,7 +364,10 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         display: flex;
                         justify-content: center;
                         align-items: center;
-                        padding: 20px;
+                        padding-top: max(20px, env(safe-area-inset-top));
+                        padding-bottom: max(20px, env(safe-area-inset-bottom));
+                        padding-left: max(20px, env(safe-area-inset-left));
+                        padding-right: max(20px, env(safe-area-inset-right));
                     }
 
                     .full-profile-modal {
@@ -388,8 +391,8 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         top: 16px; right: 16px;
                         background: rgba(255,255,255,0.05);
                         border: 1px solid rgba(255,255,255,0.1);
-                        width: 36px;
-                        height: 36px;
+                        width: 44px; /* Increased touch target */
+                        height: 44px;
                         border-radius: 50%;
                         color: rgba(255,255,255,0.6);
                         font-size: 1.4rem;

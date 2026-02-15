@@ -389,93 +389,19 @@ export default function StoryViewer({
                     align-items: flex-start; /* Align for top padding */
                     z-index: 20;
                     background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, transparent 100%);
-                    padding: 60px 20px 40px; /* Safe area for notch */
-                }
-                .user-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
-                .user-info img {
-                    width: 40px; height: 40px;
-                    border-radius: 50%;
-                    border: 2px solid rgba(255,255,255,0.8);
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                }
-                .meta {
-                    display: flex;
-                    flex-direction: column;
-                }
-                .username { 
-                    font-weight: 700; color: #fff; font-size: 15px; 
-                    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-                }
-                .timestamp { 
-                    font-size: 12px; opacity: 0.9; color: #eee; 
-                    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-                }
-                
-                .actions {
-                    display: flex;
-                    gap: 12px;
-                }
-                
-                .action-btn {
-                    background: rgba(25, 25, 25, 0.4);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    color: white;
-                    width: 40px; height: 40px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 50%;
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
-                    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-                    cursor: pointer;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                }
-                .action-btn:active { transform: scale(0.92); }
-                .action-btn:hover {
-                    background: rgba(255, 255, 255, 0.15);
-                    border-color: rgba(255, 255, 255, 0.3);
-                }
-                .action-btn svg {
-                    width: 20px; height: 20px;
-                    stroke-width: 2;
-                    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
-                }
-                .delete-btn:hover {
-                    background: rgba(255, 59, 48, 0.25);
-                    border-color: rgba(255, 59, 48, 0.5);
-                }
-
-                .story-image {
-                    width: 100%; height: 100%;
-                    object-fit: contain;
-                    background: #000;
-                }
-
-                .story-caption {
-                    position: absolute;
-                    bottom: 100px; /* Above gestures area */
-                    left: 20px; right: 20px;
-                    text-align: center;
-                    color: white;
-                    font-size: 18px;
-                    line-height: 1.4;
-                    padding: 12px 16px;
-                    background: rgba(0, 0, 0, 0.4);
-                    border-radius: 16px;
-                    backdrop-filter: blur(8px);
-                    -webkit-backdrop-filter: blur(8px);
-                    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+                    padding-top: max(20px, env(safe-area-inset-top)); /* Dynamic Safe Area */
+                    padding-left: max(20px, env(safe-area-inset-left));
+                    padding-right: max(20px, env(safe-area-inset-right));
+                    padding-bottom: 40px;
                 }
 
                 .story-footer {
                     position: absolute;
                     bottom: 0; left: 0; right: 0;
-                    padding: 20px 20px 40px; /* Bottom safe area */
+                    padding-bottom: max(20px, env(safe-area-inset-bottom)); /* Dynamic Safe Area */
+                    padding-left: max(20px, env(safe-area-inset-left));
+                    padding-right: max(20px, env(safe-area-inset-right));
+                    padding-top: 20px;
                     background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);
                     z-index: 20;
                     display: flex;

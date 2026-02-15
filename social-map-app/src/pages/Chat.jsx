@@ -948,6 +948,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
                     padding: 16px 20px 10px 20px;
+                    padding-top: max(16px, env(safe-area-inset-top)); /* Safe area top */
                     border-bottom: 0.5px solid var(--separator);
                 }
 
@@ -4189,9 +4190,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .light-theme .input-icon-btn { color: #555; }
 
                 .chat-room-header {
-                    padding: 8px 12px; display: flex; align-items: center; gap: 10px;
+                    padding: 8px 12px; 
+                    padding-top: max(8px, env(safe-area-inset-top)); /* Safe area top */
+                    display: flex; align-items: center; gap: 10px;
                     background: rgba(20,20,20,0.95); border-bottom: 1px solid #333; color: white;
-                    height: 60px; /* Fixed height for consistency */
+                    height: auto; /* Allow growth */
+                    min-height: 60px; /* Maintain minimum height */
                 }
                 .back-btn { background: none; color: white; font-size: 1.5rem; border: none; padding: 0 8px; cursor: pointer; }
                 .header-user { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; /* Enable truncation */ }

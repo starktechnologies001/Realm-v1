@@ -23,6 +23,11 @@
 
   /* Font */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Safe Area Insets */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
 }
 
 /* Dark Theme */
@@ -78,7 +83,7 @@ button {
 
 #root {
   width: 100%;
-  height: 100vh;
+  height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
   display: flex;
   flex-direction: column;
 }
