@@ -12,7 +12,6 @@ import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
-import LocationPermissionModal from '../components/LocationPermissionModal';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import StoryViewer from '../components/StoryViewer';
 import { uploadToStorage } from '../utils/fileUpload';
@@ -98,7 +97,7 @@ function RecenterControl({ lat, lng }) {
         <div 
             className="leaflet-bottom leaflet-right" 
             style={{ 
-                bottom: '75px', /* Shifted down again */
+                bottom: 'calc(80px + env(safe-area-inset-bottom))', /* Shifted up to clear BottomNav + Safe Area */
                 right: '8px',   /* Shifted right again */
                 zIndex: 400,
                 pointerEvents: 'auto',
@@ -147,16 +146,44 @@ function RecenterControl({ lat, lng }) {
     );
 }
 
-function RecenterAutomatically({ lat, lng }) {
+function RecenterAutomatically({ lat, lng, mapMode }) {
     const map = useMap();
     const hasCentered = useRef(false);
 
+    // Initial Center (with delay to ensure map size is correct on tab switch)
     useEffect(() => {
         if (lat && lng && !hasCentered.current) {
-            map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
-            hasCentered.current = true;
+            // Calculate Target Center with Mobile Offset (Visual Center)
+            // Use setView (Instant) to prevent flying/flickering on load
+            const zoomLevel = 17; // Fits ~300m radius circle nicely on mobile
+            let targetLat = lat;
+            let targetLng = lng;
+            const isMobile = window.innerWidth <= 768;
+
+            if (isMobile) {
+                // User requested avatar in exact center
+                // We previously offset it, but now we revert to geometric center
+                targetLat = lat;
+                targetLng = lng;
+            }
+
+            // Small timeout to allow map sizing, then SNAP.
+            // We use setView(..., { animate: false }) for instant, flicker-free positioning
+            const timer = setTimeout(() => {
+                 map.setView([targetLat, targetLng], zoomLevel, { animate: false });
+                 hasCentered.current = true;
+            }, 50); // Reduced delay for snappier feel
+            
+            return () => clearTimeout(timer);
         }
     }, [lat, lng, map]);
+
+    // Re-center on Map Mode Switch
+    useEffect(() => {
+        if (lat && lng) {
+            map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 1 });
+        }
+    }, [mapMode, lat, lng, map]);
 
     return null;
 }
@@ -166,10 +193,9 @@ function UserSelectionController({ selectedUser }) {
     const map = useMap();
 
     useEffect(() => {
-        console.log('🗺️ [UserSelectionController] selectedUser changed:', selectedUser);
+        // console.log('🗺️ [UserSelectionController] selectedUser changed:', selectedUser);
         
         if (!selectedUser) {
-            console.log('🗺️ [UserSelectionController] No selected user');
             return;
         }
 
@@ -239,6 +265,16 @@ export default function MapHome() {
     const [showFilters, setShowFilters] = useState(false);
     const [mapMode, setMapMode] = useState('street'); // 'street', 'hybrid', 'satellite'
 
+    // Theme & Location Context (Moved to top)
+    const { theme } = useTheme();
+    const { 
+        userLocation,
+        locationEnabled,
+        loadingLocation, // 🔥 Add this
+        startLocation,
+        stopLocation,
+    } = useLocationContext();
+
     // Notification State
     const [friendRequests, setFriendRequests] = useState([]);
 
@@ -266,15 +302,6 @@ export default function MapHome() {
 
     // Filter Options
     const FILTERS = ['All', 'Online', 'Nearby', 'Friends'];
-    const { theme } = useTheme();
-    // Global Permission Context
-    const {
-        permissionStatus,
-        setPermission,
-        resetPermission,
-        userLocation,
-        requestPermissionFromUser
-    } = useLocationContext();
 
     // Call Context
     const { startCall } = useCall();
@@ -310,14 +337,10 @@ export default function MapHome() {
     const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
     const blockedIdsRef = useRef(new Set()); // Blocked users cache
 
-    const [location, setLocation] = useState(() => {
-        const cached = localStorage.getItem('lastLocation');
-        return cached ? JSON.parse(cached) : null;
-    });
     const [nearbyUsers, setNearbyUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
-    const [loading, setLoading] = useState(!localStorage.getItem('lastLocation')); // Only load if no cache
-    const [isGhostMode, setGhostMode] = useState(false);
+    const [loading, setLoading] = useState(true);
+    // const [isGhostMode, setGhostMode] = useState(false); // 🔥 REMOVED local state
     const navigate = useNavigate();
     const routeLocation = useLocation();
 
@@ -361,41 +384,6 @@ export default function MapHome() {
             img.src = getAvatar2D(currentUser.avatar_url);
         }
     }, [nearbyUsers, currentUser?.avatar_url]);
-
-    // Live Location Sync
-    useEffect(() => {
-        if (!userLocation) return;
-
-        setLocation(prev => {
-            if (
-                prev &&
-                prev.lat === userLocation.lat &&
-                prev.lng === userLocation.lng
-            ) {
-                return prev; // ⛔ no-op
-            }
-
-            localStorage.setItem('lastLocation', JSON.stringify(userLocation));
-            return userLocation;
-        });
-
-        setCurrentUser(prev => {
-            if (!prev) return prev;
-
-            if (
-                prev.lat === userLocation.lat &&
-                prev.lng === userLocation.lng
-            ) {
-                return prev; // ⛔ no-op
-            }
-
-            return {
-                ...prev,
-                lat: userLocation.lat,
-                lng: userLocation.lng
-            };
-        });
-    }, [userLocation]);
 
 
     // Floating Thought State
@@ -662,11 +650,11 @@ export default function MapHome() {
             supabase.removeChannel(channel);
             supabase.removeChannel(friendshipChannel);
         };
-    }, [currentUser, location]);
+    }, [currentUser, userLocation]);
 
     // Poll for nearby users
     useEffect(() => {
-        if (!location || !currentUser) return;
+        if (!currentUser) return; // Wait for user, but don't need location to fetch others
 
         const fetchNearbyUsers = async () => {
             try {
@@ -779,6 +767,21 @@ export default function MapHome() {
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
 
+                        // Check Status Expiration (3 Hours)
+                        let statusMessage = u.status_message;
+                        let statusEmoji = u.status;
+                        
+                        if (u.status_updated_at) {
+                            const statusDate = new Date(u.status_updated_at);
+                            const now = new Date();
+                            const diffHours = (now - statusDate) / (1000 * 60 * 60);
+                            
+                            if (diffHours > 3) {
+                                statusMessage = null;
+                                statusEmoji = null;
+                            }
+                        }
+
                         return {
                             id: u.id,
                             name: u.username || 'User',
@@ -786,10 +789,10 @@ export default function MapHome() {
                             lng: renderLng,
                             avatar: u.avatar_url || fallbackAvatar, // Use real avatar if exists
                             originalAvatar: u.avatar_url,
-                            status: u.status,
+                            status: statusEmoji,
                             hide_status: u.hide_status,
                             show_last_seen: u.show_last_seen,
-                            thought: u.status_message,
+                            thought: statusMessage,
                             lastActive: u.last_active,
                             isLocationOn: u.is_location_on,
                             isLocationShared: true,
@@ -936,14 +939,14 @@ export default function MapHome() {
             .subscribe();
 
 
-        const interval = setInterval(fetchNearbyUsers, 5000); // Poll every 5s (keep for cleanup/timeouts)
+        const interval = setInterval(fetchNearbyUsers, 30000); // Poll every 30s (Realtime handles immediate changes)
         fetchNearbyUsers(); // Initial fetch
 
         return () => {
             clearInterval(interval);
             supabase.removeChannel(channel);
         };
-    }, [location, currentUser]);
+    }, [currentUser]); // 🔥 Removed userLocation to prevent re-fetching on every move
 
     // Live Location is now handled entirely by LocationContext.
     // We just listen to userLocation via the useEffect above.
@@ -1012,8 +1015,10 @@ export default function MapHome() {
                 // but looks like we use mixed. Let's standardize on DB structure + local adds
 
                 // Optimistically set location from DB to prevent "Acquiring Location" lag
-                if (freshProfile.latitude && freshProfile.longitude) {
-                    setLocation(prev => prev || { lat: freshProfile.latitude, lng: freshProfile.longitude });
+                // Note: Real-time location is handled by LocationContext
+                if (freshProfile.latitude && freshProfile.longitude && !userLocation) {
+                    // We could potentially seed the context here if needed, but Context handles its own startup
+                    // promoting separation of concerns.
                 }
 
                 setCurrentUser(mergedUser);
@@ -1071,7 +1076,8 @@ export default function MapHome() {
         setCurrentUser(prev => ({ ...prev, is_location_on: true }));
         
         // Request permission (will update DB on success)
-        requestPermissionFromUser();
+        startLocation();
+
     };
 
     const showToast = (msg) => {
@@ -1579,9 +1585,10 @@ export default function MapHome() {
 
         if (isSelf) {
             className += ' self';
-            if (isGhostMode) style += ' opacity: 0.5; filter: grayscale(100%);';
-        }
-
+            if (currentUser?.is_ghost_mode) {
+                style += ' opacity: 0.5; filter: grayscale(100%);';
+            }
+        }   
         // Only show thought if it exists (simplified check)
         // Add name display and include status if available
         const thoughtHTML = thought
@@ -1601,15 +1608,15 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                 </div>
             `,
-            iconSize: [55, 55],
-            iconAnchor: [27.5, 27.5],
-            popupAnchor: [0, -30]
+            iconSize: [50, 50], // Increased to 50
+            iconAnchor: [25, 25],
+            popupAnchor: [0, -27]
         });
     };
 
     // Memoize current user marker to avoid hook order issues
     const currentUserMarker = useMemo(() => {
-        if (!currentUser || !location) return null;
+        if (!currentUser || !userLocation) return null;
 
         let avatarUrl;
         if (currentUser.avatar_url) {
@@ -1623,12 +1630,12 @@ export default function MapHome() {
 
         return (
             <Marker
-                position={[location.lat, location.lng]}
+                position={[userLocation.lat, userLocation.lng]}
                 icon={createAvatarIcon(avatarUrl, true, currentUser.thought, 'You')}
                 eventHandlers={{ click: () => setSelectedUser(null) }}
             />
         );
-    }, [currentUser, location?.lat, location?.lng]);
+    }, [currentUser, userLocation?.lat, userLocation?.lng]);
 
 
 
@@ -1845,108 +1852,123 @@ export default function MapHome() {
         });
     }, [filteredUsers, currentUser]);
 
+    const ghostMode = currentUser?.is_ghost_mode === true;
+
+
+    // -------------------------------------------------
+    // 🔄 SYNC LOCATION STATE
+    // -------------------------------------------------
+    useEffect(() => {
+        if (locationEnabled && currentUser && (currentUser.is_ghost_mode || !currentUser.is_location_on)) {
+            console.log("📍 [MapHome] Location enabled detected. Syncing local user state...");
+            setCurrentUser(prev => ({
+                ...prev,
+                is_ghost_mode: false,
+                is_location_on: true
+            }));
+        }
+    }, [locationEnabled, currentUser?.id]);
+
+   // -------------------------------------------------
+// 🚀 LOCATION GATES
+// -------------------------------------------
+    // 🚪 GATEKEEPING: Force Location or Ghost Mode
+    // -------------------------------------------
     
-    // ------------------------------------------------------------------
-    // 🚀 CROSS-PLATFORM PERMISSION & LOADING GATES
-    // ------------------------------------------------------------------
-
-    // 1. Permission Prompt (Highest Priority)
-    if (permissionStatus === 'prompt') {
-        return <LocationPermissionModal onSelect={handlePermissionSelect} />;
-    }
-
-    // 3. Permission Gate
-    // Block if: 
-    // A. Permission Denied (Browser)
-    // B. Profile 'is_location_on' is explicitly FALSE (User Toggle)
-    const isLocationOffInProfile = currentUser && currentUser.is_location_on === false;
-
-    if (permissionStatus === 'denied' || isLocationOffInProfile) {
+    // 1. Loading State (Prevent Flash)
+    if (loadingLocation) {
         return (
             <div style={{
-                height: '100vh',
-                width: '100vw',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'var(--bg-color)',
-                color: 'var(--text-primary)',
-                textAlign: 'center',
-                padding: '20px'
+                height: "100dvh",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                background: isDarkMode ? "#121212" : "#f5f5f5",
+                color: isDarkMode ? "rgba(255,255,255,0.7)" : "#666"
             }}>
-                <div style={{
-                    marginBottom: '20px',
-                    fontSize: '3rem',
-                    animation: 'bounce 2s infinite'
-                }}>
-                    📍
-                </div>
-                <h2>Location Required</h2>
-                <p style={{ maxWidth: '300px', marginBottom: '20px', opacity: 0.8 }}>
-                    {isLocationOffInProfile 
-                        ? "You turned off Location Services in your profile. Enable them to see the map."
-                        : "We need your location to show friends nearby. Please enable it in your device settings."}
-                </p>
-                <button
-                    onClick={async () => {
-                        // If profile setting is off, turn it on first
-                        if (isLocationOffInProfile) {
-                            await supabase.from('profiles').update({ is_location_on: true }).eq('id', currentUser.id);
-                            // Optimistically update local state
-                            setCurrentUser(prev => ({ ...prev, is_location_on: true }));
-                        }
-                        // Then request permission / reset state
-                        resetPermission();
-                        requestPermissionFromUser();
-                    }}
-                    style={{
-                        padding: '12px 24px',
-                        borderRadius: '12px',
-                        background: '#007AFF', // iOS Blue
-                        color: 'white',
-                        border: 'none',
-                        fontSize: '1rem',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(0,122,255,0.3)'
-                    }}
-                >
-                    Enable Location
-                </button>
-            </div>
-        );
-    }
-
-    // 2. Loading / Acquiring Location Gate
-    if (permissionStatus === 'granted' && !location) { 
-        return (
-            <div style={{
-                height: '100vh',
-                width: '100vw',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                background: isDarkMode ? '#121212' : '#f5f5f5',
-                color: isDarkMode ? '#fff' : '#000'
-            }}>
-                <div className="spinner" style={{ 
+                {/* Simple Pulse Loader */}
+                <div style={{ 
                     width: '40px', height: '40px', 
-                    border: '4px solid rgba(128,128,128,0.2)', 
-                    borderTop: '4px solid #4285F4', 
                     borderRadius: '50%', 
+                    border: '3px solid currentColor', 
+                    borderTopColor: 'transparent',
                     animation: 'spin 1s linear infinite',
                     marginBottom: '16px'
-                }} />
-                <h3 style={{ margin: 0 }}>Finding you...</h3>
-                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                }}></div>
+                <p>Finding you...</p>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
         );
     }
 
+    // 2. Permission Gate
+    if (!locationEnabled || ghostMode || currentUser?.is_location_on === false) {
     return (
-        <div className="map-container">
+        <div style={{
+            height: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            textAlign: "center",
+            background: isDarkMode ? "#121212" : "#f5f5f5",
+            padding: "20px"
+        }}>
+            <h2>📍 Location Required</h2>
+
+            <p style={{ maxWidth: "320px", opacity: 0.7 }}>
+                Nearo shows people near you.
+                Enable location services to continue.
+            </p>
+
+            <button
+                onClick={startLocation}
+                style={{
+                    padding: "14px 24px",
+                    borderRadius: "25px",
+                    border: "none",
+                    background: "#4285F4",
+                    color: "white",
+                    fontWeight: "600",
+                    fontSize: "16px",
+                    cursor: "pointer",
+                    marginTop: "20px"
+                }}
+            >
+                Enable Location
+            </button>
+        </div>
+    );
+}
+
+// 2️⃣ If GPS still loading
+if (!userLocation) {
+    return (
+        <div style={{
+            height: "100vh",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            background: isDarkMode ? "#121212" : "#f5f5f5"
+        }}>
+            <h3>Finding you...</h3>
+        </div>
+    );
+}
+
+// 3️⃣ If all good, render map
+return (
+    <div className="map-container" style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        width: '100%', 
+        height: '100dvh', 
+        overflow: 'hidden',
+        overscrollBehavior: 'none' 
+    }}>
             {/* PROFILE UPDATE NUDGE */}
             {currentUser && (
                 (!currentUser.avatar_url ||
@@ -2100,12 +2122,16 @@ export default function MapHome() {
             {/* Map Container */}
             <MapContainer
                 key="map-main-stable"
-                center={[location.lat, location.lng]}
-                zoom={18}
+                center={[userLocation.lat, userLocation.lng]}
+                zoom={17}
                 maxZoom={22}
-                style={{ height: '100%', width: '100%' }}
+                style={{ height: '100dvh', width: '100%', outline: 'none' }} 
                 zoomControl={false}
                 attributionControl={false}
+                scrollWheelZoom={true} // 🔥 Re-enabled per user request
+                doubleClickZoom={true}
+                dragging={true}
+                zoomAnimation={true}
             >
                 {/* Map Layers based on State */}
                 {mapMode === 'street' && (
@@ -2136,13 +2162,17 @@ export default function MapHome() {
                         keepBuffer={4}
                     />
                 )}
-
-                <RecenterAutomatically lat={location.lat} lng={location.lng} />
-                <RecenterControl lat={location.lat} lng={location.lng} />
+              {/* 3️⃣ Controls & Logic */}
+            <RecenterAutomatically 
+                lat={userLocation.lat} 
+                lng={userLocation.lng} 
+                mapMode={mapMode} // 🔥 Passing mode to trigger recenter
+            />
+                <RecenterControl lat={userLocation.lat} lng={userLocation.lng} />
                 <UserSelectionController selectedUser={selectedUser} />
 
                 <Circle
-                    center={[location.lat, location.lng]}
+                    center={[userLocation.lat, userLocation.lng]}
                     radius={300}
                     pathOptions={{
                         color: '#4285F4',
@@ -2191,22 +2221,78 @@ export default function MapHome() {
                     
                     {/* Action Buttons - Right Side */}
                     <div className="header-action-buttons">
-                        <button className="control-btn glass-panel" onClick={() => setShowThoughtInput(true)} title="Set Status">
-                            💭
+                        {/* Status / Thoughts */}
+                        <button 
+                            className="control-btn" 
+                            style={{ background: 'var(--bg-primary, #ffffff)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                            onClick={() => setShowThoughtInput(true)} 
+                            title="Set Status"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
                         </button>
+                        
+                        {/* Ghost Mode Toggle */}
                         <button
-                            className={`control-btn glass-panel ${isGhostMode ? 'active' : ''}`}
+                            className={`control-btn ${currentUser?.is_ghost_mode ? 'active' : ''}`}
+                            style={{ background: 'var(--bg-primary, #ffffff)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
                             onClick={async () => {
-                                const newMode = !isGhostMode;
-                                setGhostMode(newMode);
-                                if (currentUser) {
-                                    await supabase.from('profiles').update({ is_ghost_mode: newMode }).eq('id', currentUser.id);
-                                    showToast(newMode ? "👻 Ghost Mode ON (Hidden)" : "👁️ Ghost Mode OFF (Visible)");
+                                if (currentUser?.is_ghost_mode) {
+                                    // Currently Hidden -> Become Visible
+                                    startLocation();
+                                    showToast("👁️ Ghost Mode OFF (Visible)");
+                                } else {
+                                    // Currently Visible -> Become Hidden
+                                    await stopLocation();
+                                    showToast("👻 Ghost Mode ON (Hidden)");
                                 }
                             }}
                             title="Toggle Ghost Mode"
                         >
-                            {isGhostMode ? '👻' : '👁️'}
+                            {currentUser?.is_ghost_mode ? (
+                                /* Ghost Icon (Active/Purple) */
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D500F9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M9 19c-4.286 1.35-4.286-2.55-6-3m12 5v-3.5c0-1 .67-2.3 2-2.3.82-1 1.2-2.1 1.2-3.3 0-2.39-1.31-4.2-3.4-4.2-1.95 0-3.66 1.25-4.62 3.26-1 2.22-.38 4.7 1.8 7.15 2.15 2.5 3.1 3.9 3.12 5.3" />
+                                </svg>
+                            ) : (
+                                /* Eye Icon (Visible/Blue) */
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2962FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            )}
+                        </button>
+
+                        {/* Map View Toggle */}
+                        <button 
+                            className="control-btn"
+                            onClick={() => {
+                                const modes = ['street', 'satellite', 'hybrid'];
+                                const nextIndex = (modes.indexOf(mapMode) + 1) % modes.length;
+                                setMapMode(modes[nextIndex]);
+                            }}
+                            title="Toggle Map View"
+                            style={{ 
+                                background: 'var(--bg-primary, #ffffff)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                marginLeft: '6px', 
+                                padding: '0', 
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0, 
+                                aspectRatio: '1/1'
+                            }}
+                        >
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6D00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                                <polyline points="2 17 12 22 22 17"></polyline>
+                                <polyline points="2 12 12 17 22 12"></polyline>
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -2223,30 +2309,7 @@ export default function MapHome() {
                         </button>
                     ))}
                     
-                    {/* Map View Toggle */}
-                    <button 
-                        className="filter-chip glass-pill icon-only"
-                        onClick={() => {
-                            const modes = ['street', 'satellite', 'hybrid'];
-                            const nextIndex = (modes.indexOf(mapMode) + 1) % modes.length;
-                            setMapMode(modes[nextIndex]);
-                        }}
-                        title="Toggle Map View"
-                        style={{ 
-                            marginLeft: '6px', 
-                            padding: '6px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'black' 
-                        }}
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                            <polyline points="2 17 12 22 22 17"></polyline>
-                            <polyline points="2 12 12 17 22 12"></polyline>
-                        </svg>
-                    </button>
+                    {/* Map View Toggle Moved to Header Actions */}
                 </div>
             </div>
 

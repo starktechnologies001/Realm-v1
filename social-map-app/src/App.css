@@ -8,15 +8,15 @@
 
 .avatar-group {
     position: relative;
-    width: 55px;
-    height: 55px;
+    width: 50px; /* Increased to 50px */
+    height: 50px; /* Increased to 50px */
     overflow: visible;
     /* CRITICAL: Ensure bubble isn't clipped */
 }
 
 .thought-bubble {
     position: absolute;
-    bottom: 120%;
+    bottom: 130%; /* Increased from 120% to clear smaller avatar */
     /* Push it slightly higher */
     left: 50%;
     transform: translateX(-50%);
@@ -217,13 +217,13 @@
 }
 
 .control-btn {
-    width: 44px;
-    height: 44px;
+    width: 36px; /* Reduced from 44px */
+    height: 36px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
+    font-size: 1rem; /* Reduced from 1.2rem */
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
     padding: 0;

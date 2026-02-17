@@ -22,11 +22,16 @@ export default function Profile() {
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const { theme, updateTheme } = useTheme();
-    const { isLocationEnabled, resetPermission, setPermission, permissionStatus, requestPermissionFromUser, stopWatching } = useLocationContext();
     const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
     const wallpaperInputRef = useRef(null);
     const photoInputRef = useRef(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+    const { 
+        locationEnabled,
+        startLocation,
+        stopLocation
+    } = useLocationContext();
 
     const [cropImage, setCropImage] = useState(null); // State for cropping
 
@@ -130,11 +135,11 @@ export default function Profile() {
 
     // 🔥 Sync UI: If Location is Enabled, Ghost Mode MUST be Off
     useEffect(() => {
-        if (isLocationEnabled && user?.is_ghost_mode) {
+        if (locationEnabled && user?.is_ghost_mode) {
              console.log("🔵 [Profile] Location enabled, forcing Ghost Mode OFF in UI");
              setUser(prev => ({ ...prev, is_ghost_mode: false }));
         }
-    }, [isLocationEnabled, user?.is_ghost_mode]);
+    }, [locationEnabled, user?.is_ghost_mode]);
 
     const fetchProfile = async () => {
         try {
@@ -523,18 +528,7 @@ export default function Profile() {
                         {/* Edit Avatar Button - Restored for 3D Avatar Editing */}
 
                     </div>
-                    {/* Location Warning - Only if BOTH Profile Off AND Device Off */}
-                    {!isLocationEnabled && permissionStatus === 'denied' && (
-                        <div className="location-warning-badge">
-                            <span>📍 Location is disabled</span>
-                            <button onClick={() => { 
-                                resetPermission(); 
-                                setPermission('granted'); // Trigger request
-                            }}>
-                                Enable
-                            </button>
-                        </div>
-                    )}
+
                     {/* Bio Section */}
                     <div className={`profile-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')}>
                         {user.bio || "Bio"}
@@ -663,30 +657,35 @@ export default function Profile() {
                         <div className="menu-content">
                             <span className="menu-label">Location Services</span>
                             <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                {isLocationEnabled ? 'Visible on map' : 'Location hidden'}
+                                {locationEnabled ? 'Visible on map' : 'Location hidden'}
                             </span>
                         </div>
                         <label className="toggle-switch">
                             <input 
                                 type="checkbox" 
-                                checked={isLocationEnabled}
+                                checked={locationEnabled}
                                 onChange={async (e) => {
                                     const checked = e.target.checked;
-                                    console.log("🔵 [Profile] Location Toggle Clicked:", checked);
+                                    console.log("🔵 [Profile] Location Toggle:", checked);
+
                                     if (checked) {
-                                        setPermission('granted');
-                                        console.log("🔵 [Profile] Manually enabling Location (Ghost Mode OFF)");
-                                        // Optimistic Update
-                                        setUser({ ...user, is_ghost_mode: false });
-                                        requestPermissionFromUser(); 
+                                        // 1️⃣ Start GPS (this triggers browser permission automatically)
+                                        startLocation();        
+                                        // 2️⃣ Update profile DB
+                                        await updateProfile({
+                                            is_ghost_mode: false
+                                        });
+
                                     } else {
-                                        setPermission('denied');
-                                        console.log("🔵 [Profile] Manually disabling Location (Ghost Mode ON)");
-                                        // Optimistic Update
-                                        setUser({ ...user, is_ghost_mode: true });
-                                        stopWatching(); 
+                                        // 1️⃣ Stop GPS tracking
+                                        stopLocation();
+                                        // 2️⃣ Update profile DB
+                                        await updateProfile({
+                                            is_ghost_mode: true
+                                        });
                                     }
-                                }}
+                                }}  
+
                             />
                             <span className="toggle-slider"></span>
                         </label>
@@ -710,16 +709,14 @@ export default function Profile() {
                                     const isGhost = e.target.checked;
                                     console.log("🟣 [Profile] Ghost Mode Toggle Clicked:", isGhost);
                                     
-                                    // 1. Optimistic Local Update Only (No DB call here)
+                                    // 1. Optimistic Local Update
                                     setUser({ ...user, is_ghost_mode: isGhost });
 
-                                    // 2. Delegate DB & Hardware to Location Context
+                                    // 2. Delegate to Location Context
                                     if (isGhost) {
-                                        setPermission('denied');
-                                        stopWatching(); // Set Ghost:TRUE, Location:FALSE
+                                        stopLocation(); 
                                     } else {
-                                        setPermission('granted');
-                                        requestPermissionFromUser(); // Set Ghost:FALSE, Location:TRUE
+                                        startLocation();
                                     }
                                 }}
                             />

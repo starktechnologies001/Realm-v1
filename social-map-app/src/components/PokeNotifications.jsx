@@ -256,6 +256,7 @@ export default function PokeNotifications({ currentUser }) {
                     top: 70px;
                     right: 20px;
                     width: 320px;
+                    max-width: 90vw; /* Prevent overflow on tiny screens */
                     max-height: 400px;
                     background: rgba(30, 30, 30, 0.98);
                     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -385,6 +386,41 @@ export default function PokeNotifications({ currentUser }) {
                 .decline-btn:hover {
                     transform: scale(1.1);
                     box-shadow: 0 4px 15px rgba(255, 85, 85, 0.5);
+                }
+
+                /* Mobile Optimizations */
+                @media (max-width: 480px) {
+                    .poke-notifications-panel {
+                        width: auto;
+                        left: 16px;
+                        right: 16px;
+                        max-width: 340px; /* Ensure it doesn't get too wide on larger mobiles */
+                        margin: 0 auto; /* Center if constrained by max-width */
+                    }
+
+                    .poke-item {
+                        padding: 10px 12px;
+                        gap: 10px;
+                    }
+
+                    .poke-avatar {
+                        width: 38px;
+                        height: 38px;
+                    }
+
+                    .poke-info strong {
+                        font-size: 0.9rem;
+                    }
+                    
+                    .poke-info span {
+                        font-size: 0.75rem;
+                    }
+
+                    .accept-btn, .decline-btn {
+                        width: 32px;
+                        height: 32px;
+                        font-size: 1rem;
+                    }
                 }
             `}</style>
         </>

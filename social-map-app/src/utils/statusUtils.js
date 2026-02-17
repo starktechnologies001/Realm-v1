@@ -37,16 +37,14 @@ export function canViewStatus(viewer, targetUser) {
 export function hasActiveStatus(user) {
     if (!user) return false;
     
-    // Check if user has story (media status) OR thought (text status)
+    // Check if user has story (media status)
+    // User requested ring ONLY for "uploaded" status (Stories), not Thoughts
     const hasStory = user.hasStory === true;
-    const hasThought = user.thought && user.thought.trim().length > 0;
     
     console.log('🔍 [hasActiveStatus] Checking user:', user.name);
     console.log('🔍 [hasActiveStatus] hasStory:', hasStory);
-    console.log('🔍 [hasActiveStatus] hasThought:', hasThought);
-    console.log('🔍 [hasActiveStatus] user.thought:', user.thought);
     
-    if (!hasStory && !hasThought) return false;
+    if (!hasStory) return false;
     
     // Optional: Check if status is not expired (if timestamp available)
     // Stories typically expire after 24 hours

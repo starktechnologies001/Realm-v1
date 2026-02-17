@@ -95,6 +95,49 @@ export default function Chat() {
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
     const { isLocationEnabled } = useLocationContext();
 
+    // ------------------------------------------------------------------
+    // 🔗 URL PERSISTENCE LOGIC (Re-open chat on refresh)
+    // ------------------------------------------------------------------
+    
+    // 1. Sync URL with activeChatUser
+    useEffect(() => {
+        if (activeChatUser) {
+            // Update URL without reload
+            const newUrl = `${window.location.pathname}?chatId=${activeChatUser.id}`;
+            window.history.replaceState(null, '', newUrl);
+        } else {
+            // Clear param
+            window.history.replaceState(null, '', window.location.pathname);
+        }
+    }, [activeChatUser]);
+
+    // 2. Restore chat from URL on Load
+    useEffect(() => {
+        // Only run if we have chats loaded and no active user yet
+        if (!activeChatUser && chats.length > 0) {
+            const params = new URLSearchParams(location.search);
+            const chatId = params.get('chatId');
+
+            if (chatId) {
+                // Find user in cached chats
+                const savedChat = chats.find(c => c.id === chatId);
+                if (savedChat) {
+                    // Construct full profile object from cached chat data
+                    const userProfile = {
+                        id: savedChat.id,
+                        username: savedChat.name, // Fallback if username missing
+                        full_name: savedChat.name, 
+                        avatar_url: savedChat.avatar,
+                        status: 'Online', // Optimistic, will update via presence
+                        last_seen: savedChat.time
+                    };
+                    console.log("🔄 Restoring chat session for:", userProfile.username);
+                    setActiveChatUser(userProfile);
+                }
+            }
+        }
+    }, [location.search, chats, activeChatUser]);
+
     // Refactored fetchChats to be a pure function that returns the chat data
     const fetchChats = async (userId) => {
         // 1. Fetch all accepted friendships (for "Friend" status, if needed later)
@@ -1162,6 +1205,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
                 .avatar-wrapper {
                     position: relative;
+                    overflow: visible; /* 🔥 Ensure badges aren't cut */
+                    flex-shrink: 0;
                 }
 
                 .chat-avatar {
@@ -1171,6 +1216,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     object-fit: cover;
                     background-color: #e5e5ea;
                     display: block; /* Fix phantom vertical space */
+                    flex-shrink: 0; /* 🔥 Prevent crushing */
+                    border: 1px solid rgba(0,0,0,0.05); /* Subtle border define edges */
                 }
 
                 .online-badge {

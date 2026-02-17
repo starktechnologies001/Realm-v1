@@ -19,6 +19,7 @@
     "face-api.js": "^0.22.2",
     "framer-motion": "^12.23.26",
     "leaflet": "^1.9.4",
+    "lucide-react": "^0.564.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-easy-crop": "^5.5.6",

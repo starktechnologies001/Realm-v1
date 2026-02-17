@@ -963,6 +963,7 @@ useEffect(() => {
 
         .login-container {
           min-height: 100vh;
+          min-height: 100dvh; /* Mobile viewport fix */
           display: flex;
           background-color: #050505;
           background-image: 
@@ -970,6 +971,7 @@ useEffect(() => {
               radial-gradient(circle at 100% 100%, rgba(10, 132, 255, 0.05) 0%, transparent 40%);
           font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
           padding: 20px;
+          padding-bottom: env(safe-area-inset-bottom); /* Safe area */
           overflow-y: auto;
           box-sizing: border-box;
         }
@@ -990,6 +992,16 @@ useEffect(() => {
           margin: auto;
           position: relative;
           overflow: hidden;
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 32px 24px;
+                border-radius: 20px;
+            }
+            .app-title {
+                font-size: 6rem; /* Slightly smaller on very small screens */
+            }
         }
         
         /* Subtle shine effect */

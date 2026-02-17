@@ -4,6 +4,7 @@ import BottomNav from './BottomNav';
 import { supabase } from '../supabaseClient';
 
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 
 export default function Layout() {
     const [checkingAuth, setCheckingAuth] = useState(true);
@@ -202,12 +203,17 @@ export default function Layout() {
         };
     }, [checkingAuth]);
 
+    const swipeHandlers = useSwipeNavigation();
+
     if (checkingAuth) {
         return <div style={{height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#121212', color: '#fff'}}>Loading...</div>;
     }
 
     return (
-        <div style={{ paddingBottom: 60 }}> {/* Pad content to not be hidden by nav */}
+        <div 
+            style={{ paddingBottom: 60, minHeight: '100dvh' }} 
+            {...swipeHandlers}
+        > 
             <Outlet />
             <BottomNav 
                 friendRequestCount={friendRequestCount}
