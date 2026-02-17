@@ -35,16 +35,22 @@ export function LocationProvider({ children }) {
   // 🚀 START LOCATION (Device Permission Trigger)
   // -------------------------------------------------
   const startLocation = () => {
+    console.log("🚀 startLocation called");
+    
     if (!navigator.geolocation) {
       alert("Geolocation not supported on this device.");
       setLoadingLocation(false);
       return;
     }
 
-    // console.log("📍 Requesting device location...");
+    console.log("📍 Requesting device location...");
+    
+    // Show immediate feedback
+    setLoadingLocation(true);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        console.log("✅ Location granted:", position);
 
         const newLoc = {
           lat: position.coords.latitude,
@@ -78,12 +84,14 @@ export function LocationProvider({ children }) {
       },
       (error) => {
         console.log("❌ Location error:", error);
+        console.log("Error code:", error.code, "Message:", error.message);
 
         if (error.code === 1) {
-             // Check if we already alerted recently to avoid spam (optional)
-             // alert("📍 Location Access Denied...");
+             alert("📍 Location permission denied. Please enable location in your browser settings.");
+        } else if (error.code === 2) {
+             alert("📍 Location unavailable. Please check your device settings.");
         } else if (error.code === 3) {
-             console.log("⚠️ Location timeout - retrying...");
+             alert("📍 Location request timed out. Please try again.");
         }
 
         setLocationEnabled(false);
