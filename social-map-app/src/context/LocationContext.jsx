@@ -1,56 +1,29 @@
-import React, { createContext, useContext, useState, useRef, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
 const LocationContext = createContext();
 
 export function LocationProvider({ children }) {
 
-  // ⚡️ LOAD CACHED STATE (Instant Load)
-  const [userLocation, setUserLocation] = useState(() => {
-    try {
-        const cached = localStorage.getItem('cached_user_location');
-        return cached ? JSON.parse(cached) : null;
-    } catch { return null; }
-  });
-
-  const [locationEnabled, setLocationEnabled] = useState(() => {
-    return localStorage.getItem('cached_location_enabled') === 'true';
-  });
-
-  const [ghostMode, setGhostMode] = useState(() => {
-     // Default to true if nothing cached, for safety
-     const cached = localStorage.getItem('cached_ghost_mode');
-     return cached ? cached === 'true' : true;
-  });
-
-  // If we have a cached location, we aren't "loading" visually
-  const [loadingLocation, setLoadingLocation] = useState(() => {
-      // If we have location and it's enabled, we are ready to show map
-      return !(localStorage.getItem('cached_user_location') && localStorage.getItem('cached_location_enabled') === 'true');
-  }); 
-  
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
   const watchIdRef = useRef(null);
 
-  // -------------------------------------------------
-  // 🚀 START LOCATION (Device Permission Trigger)
-  // -------------------------------------------------
-  const startLocation = () => {
-    console.log("🚀 startLocation called");
-    
+  // ----------------------------------------
+  // 🔹 START LOCATION (called from MapHome button)
+  // ----------------------------------------
+  const startLocation = async () => {
+
     if (!navigator.geolocation) {
-      alert("Geolocation not supported on this device.");
-      setLoadingLocation(false);
+      console.log("Geolocation not supported");
       return;
     }
 
-    console.log("📍 Requesting device location...");
-    
-    // Show immediate feedback
     setLoadingLocation(true);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        console.log("✅ Location granted:", position);
 
         const newLoc = {
           lat: position.coords.latitude,
@@ -59,105 +32,80 @@ export function LocationProvider({ children }) {
 
         setUserLocation(newLoc);
         setLocationEnabled(true);
-        setGhostMode(false);
-        setLoadingLocation(false); 
 
-        // 💾 Cache Logic
-        localStorage.setItem('cached_user_location', JSON.stringify(newLoc));
-        localStorage.setItem('cached_location_enabled', 'true');
-        localStorage.setItem('cached_ghost_mode', 'false');
+        startWatching();
 
+        // 🔥 Update DB
         const { data: { session } } = await supabase.auth.getSession();
-
         if (session?.user) {
           await supabase.from("profiles").update({
             latitude: newLoc.lat,
             longitude: newLoc.lng,
-            last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
-            is_location_on: true,
-            is_ghost_mode: false
+            is_ghost_mode: false,
+            is_location_on: true
           }).eq("id", session.user.id);
         }
 
-        lastUpdateRef.current = Date.now(); // Prevent immediate second update
-        startWatching();
+        setLoadingLocation(false);
       },
-      (error) => {
-        console.log("❌ Location error:", error);
-        console.log("Error code:", error.code, "Message:", error.message);
 
-        if (error.code === 1) {
-             alert("📍 Location permission denied. Please enable location in your browser settings.");
-        } else if (error.code === 2) {
-             alert("📍 Location unavailable. Please check your device settings.");
-        } else if (error.code === 3) {
-             alert("📍 Location request timed out. Please try again.");
-        }
+      async (error) => {
+        console.log("❌ Location error:", error);
 
         setLocationEnabled(false);
-        setLoadingLocation(false); // ✅ Failed but check done
+        setUserLocation(null);
+        setLoadingLocation(false);
+
+        // If denied, also sync DB
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase.from("profiles").update({
+            is_location_on: false,
+            is_ghost_mode: true
+          }).eq("id", session.user.id);
+        }
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 30000,
-      }
+
+      { enableHighAccuracy: true }
     );
   };
 
-  // -------------------------------------------------
-  // 🔄 LIVE LOCATION TRACKING
-  // -------------------------------------------------
-  // -------------------------------------------------
-  // 🔄 LIVE LOCATION TRACKING
-  // -------------------------------------------------
-  const lastUpdateRef = useRef(0); // For throttling
-
+  // ----------------------------------------
+  // 🔹 WATCH LIVE MOVEMENT
+  // ----------------------------------------
   const startWatching = () => {
+
     if (watchIdRef.current) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
-      async (position) => {
+      async (pos) => {
+
         const newLoc = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
         };
 
         setUserLocation(newLoc);
-        localStorage.setItem('cached_user_location', JSON.stringify(newLoc)); // 💾 Sync cache
 
-        // Throttled DB Update (every 5s)
-        const now = Date.now();
-        if (now - lastUpdateRef.current > 5000) {
-            lastUpdateRef.current = now;
-            
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                 await supabase.from("profiles").update({
-                    latitude: newLoc.lat,
-                    longitude: newLoc.lng,
-                    last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
-                    // Keep status active
-                    is_location_on: true
-                  }).eq("id", session.user.id);
-            }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase.from("profiles").update({
+            latitude: newLoc.lat,
+            longitude: newLoc.lng
+          }).eq("id", session.user.id);
         }
+
       },
-      (err) => {
-        console.log("⚠️ Live tracking error:", err);
-      },
-      { 
-        enableHighAccuracy: true,
-        maximumAge: 0, 
-        timeout: 10000 
-      }
+      (err) => console.log("Watch error:", err),
+      { enableHighAccuracy: true }
     );
   };
 
-  // -------------------------------------------------
-  // 🛑 STOP LOCATION (Ghost Mode ON)
-  // -------------------------------------------------
+  // ----------------------------------------
+  // 🔹 STOP LOCATION (Ghost Mode ON)
+  // ----------------------------------------
   const stopLocation = async () => {
+
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -165,59 +113,36 @@ export function LocationProvider({ children }) {
 
     setUserLocation(null);
     setLocationEnabled(false);
-    setGhostMode(true);
-    setLoadingLocation(false);
-
-    // 🧹 Clear Cache
-    localStorage.removeItem('cached_user_location');
-    localStorage.setItem('cached_location_enabled', 'false');
-    localStorage.setItem('cached_ghost_mode', 'true');
 
     const { data: { session } } = await supabase.auth.getSession();
-
     if (session?.user) {
       await supabase.from("profiles").update({
         latitude: null,
         longitude: null,
-        last_location: null,
         is_location_on: false,
         is_ghost_mode: true
       }).eq("id", session.user.id);
     }
   };
 
-  // -------------------------------------------------
-  // 🔁 AUTO SYNC FROM DATABASE ON LOGIN
-  // -------------------------------------------------
+  // ----------------------------------------
+  // 🔹 AUTO CHECK ON LOAD (No auto popup)
+  // ----------------------------------------
   useEffect(() => {
-    const syncFromDatabase = async () => {
+    if (!navigator.permissions) return;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-          setLoadingLocation(false);
-          return;
+    navigator.permissions.query({ name: "geolocation" }).then((result) => {
+
+      if (result.state === "granted") {
+        startLocation();
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("is_location_on, is_ghost_mode")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!profile) {
-          setLoadingLocation(false); 
-          return;
+      if (result.state === "denied") {
+        setLocationEnabled(false);
+        setUserLocation(null);
       }
+    });
 
-      // If user INTENDS to be on, try starting
-      if (profile.is_location_on && !profile.is_ghost_mode) {
-        startLocation(); // This triggers async geolocation which sets loading=false when done/error
-      } else {
-        stopLocation(); // Sets loading=false immediately
-      }
-    };
-
-    syncFromDatabase();
   }, []);
 
   return (
@@ -225,8 +150,7 @@ export function LocationProvider({ children }) {
       value={{
         userLocation,
         locationEnabled,
-        ghostMode,
-        loadingLocation, // 🔥 Exposed
+        loadingLocation,
         startLocation,
         stopLocation
       }}
