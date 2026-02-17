@@ -88,16 +88,16 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 .eq('id', user.id)
                 .maybeSingle();
 
-            // 2. Fetch Shared Media (Images)
-            // Only if we are friends or owner (don't show for public strangers usually, but user asked for "shared" so presumably implies interaction)
-            if (isFriend || isOwner) {
+            // 2. Fetch Shared Media (Images & Files)
+            // Show for anyone we have history with, not just friends
+            if (currentUser && user) {
                 const { data: mediaMessages } = await supabase
                     .from('messages')
-                    .select('id, image_url, created_at')
+                    .select('id, image_url, content, message_type, created_at')
                     .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
-                    .eq('message_type', 'image')
+                    .in('message_type', ['image', 'attachment'])
                     .order('created_at', { ascending: false })
-                    .limit(9); // Show last 9 images
+                    .limit(9); // Show last 9 items
                 
                 if (mediaMessages) {
                     setSharedMedia(mediaMessages);
@@ -246,6 +246,14 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         <h2>{user.name}</h2>
                         {stats.username && <span className="fp-username">@{stats.username}</span>}
 
+                        {/* Poke Pill Button for Non-Friends */}
+                        {!isFriend && !isOwner && (
+                            <button className="fp-poke-pill" onClick={() => onAction('poke', user)}>
+                                <span style={{ marginRight: '6px' }}>👋</span> 
+                                {user.friendshipStatus === 'pending' ? 'Poke Sent' : 'Poke'}
+                            </button>
+                        )}
+
                         {user.status && <div className="fp-status-tag">{user.status}</div>}
                     </div>
 
@@ -277,7 +285,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     {sharedMedia.length > 0 && (
                         <div className="fp-media-section">
                              <div className="fp-media-header">
-                                <h3>SHARED MEDIA</h3>
+                                <h3>SHARED MEDIA & FILES</h3>
                                 <span className="fp-media-count">{sharedMedia.length} Recent</span>
                             </div>
                             <div className="fp-media-grid">
@@ -285,9 +293,16 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                                     <div 
                                         key={media.id} 
                                         className="fp-media-item"
-                                        onClick={() => setViewingMedia(media.image_url)}
+                                        onClick={() => media.message_type === 'image' ? setViewingMedia(media.image_url) : window.open(media.image_url, '_blank')}
                                     >
-                                        <img src={media.image_url} alt="Shared" loading="lazy" />
+                                        {media.message_type === 'image' ? (
+                                            <img src={media.image_url} alt="Shared" loading="lazy" />
+                                        ) : (
+                                            <div className="fp-file-placeholder">
+                                                <span style={{ fontSize: '24px' }}>📄</span>
+                                                <span className="fp-file-name">{media.content || 'File'}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -384,6 +399,29 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
                         max-height: 90vh;
                         overflow-y: auto;
+                    }
+
+                    .fp-poke-pill {
+                        margin-top: 10px;
+                        background: rgba(255, 105, 180, 0.2); 
+                        color: #FF69B4;
+                        border: 1px solid rgba(255, 105, 180, 0.4);
+                        padding: 6px 16px;
+                        border-radius: 20px;
+                        font-size: 0.85rem;
+                        font-weight: 600;
+                        cursor: pointer;
+                        display: flex; align-items: center;
+                        transition: all 0.2s;
+                        box-shadow: 0 2px 8px rgba(255, 105, 180, 0.1);
+                    }
+                    .fp-poke-pill:hover {
+                        background: rgba(255, 105, 180, 0.3);
+                        transform: translateY(-1px);
+                        box-shadow: 0 4px 12px rgba(255, 105, 180, 0.2);
+                    }
+                    .fp-poke-pill:active {
+                        transform: scale(0.95);
                     }
 
                     .close-btn {
@@ -613,6 +651,28 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                         width: 100%;
                         height: 100%;
                         object-fit: cover;
+                    }
+                    
+                    .fp-file-placeholder {
+                        width: 100%;
+                        height: 100%;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        background: rgba(255, 255, 255, 0.08);
+                        color: rgba(255, 255, 255, 0.7);
+                        gap: 4px;
+                        padding: 8px;
+                        text-align: center;
+                    }
+
+                    .fp-file-name {
+                        font-size: 0.65rem;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        width: 100%;
                     }
 
                     /* Media Viewer Overlay */

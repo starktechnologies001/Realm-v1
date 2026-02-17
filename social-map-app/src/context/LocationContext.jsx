@@ -73,6 +73,7 @@ export function LocationProvider({ children }) {
           }).eq("id", session.user.id);
         }
 
+        lastUpdateRef.current = Date.now(); // Prevent immediate second update
         startWatching();
       },
       (error) => {
@@ -99,6 +100,11 @@ export function LocationProvider({ children }) {
   // -------------------------------------------------
   // 🔄 LIVE LOCATION TRACKING
   // -------------------------------------------------
+  // -------------------------------------------------
+  // 🔄 LIVE LOCATION TRACKING
+  // -------------------------------------------------
+  const lastUpdateRef = useRef(0); // For throttling
+
   const startWatching = () => {
     if (watchIdRef.current) return;
 
@@ -112,16 +118,31 @@ export function LocationProvider({ children }) {
         setUserLocation(newLoc);
         localStorage.setItem('cached_user_location', JSON.stringify(newLoc)); // 💾 Sync cache
 
-        // Optional: Update DB on move (throttle this in real app)
-        /* 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) { ... }
-        */
+        // Throttled DB Update (every 5s)
+        const now = Date.now();
+        if (now - lastUpdateRef.current > 5000) {
+            lastUpdateRef.current = now;
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                 await supabase.from("profiles").update({
+                    latitude: newLoc.lat,
+                    longitude: newLoc.lng,
+                    last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                    // Keep status active
+                    is_location_on: true
+                  }).eq("id", session.user.id);
+            }
+        }
       },
-      () => {
-        console.log("⚠️ Live tracking stopped");
+      (err) => {
+        console.log("⚠️ Live tracking error:", err);
       },
-      { enableHighAccuracy: true }
+      { 
+        enableHighAccuracy: true,
+        maximumAge: 0, 
+        timeout: 10000 
+      }
     );
   };
 

@@ -146,6 +146,7 @@ function RecenterControl({ lat, lng }) {
     );
 }
 
+// Component to handle automatic recentering
 function RecenterAutomatically({ lat, lng, mapMode }) {
     const map = useMap();
     const hasCentered = useRef(false);
@@ -178,12 +179,14 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
         }
     }, [lat, lng, map]);
 
-    // Re-center on Map Mode Switch
+    // Re-center ONLY on Map Mode Switch
+    // Remove lat/lng from dependency array to prevent map from moving when user moves/updates location
     useEffect(() => {
         if (lat && lng) {
             map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 1 });
         }
-    }, [mapMode, lat, lng, map]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mapMode, map]);
 
     return null;
 }
@@ -839,9 +842,9 @@ export default function MapHome() {
                         // Prepare consistent avatar logic
                         let mapAvatar = getAvatar2D(updatedUser.avatar_url);
 
-                        // Jitter coordinates slightly
-                        const renderLat = updatedUser.latitude + (Math.random() - 0.5) * 0.0002;
-                        const renderLng = updatedUser.longitude + (Math.random() - 0.5) * 0.0002;
+                        // Use EXACT coordinates for smooth updates (No Jitter on updates)
+                        const renderLat = updatedUser.latitude;
+                        const renderLng = updatedUser.longitude;
 
                         const newUserObj = {
                             id: updatedUser.id,
@@ -1745,7 +1748,8 @@ export default function MapHome() {
         // 1. Sort for stability
         const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
         const clusters = [];
-        const CLUSTER_THRESHOLD = 0.0012; // Increased to ~130m to catch visual overlaps
+        // Threshold: ~330m covers marker size even at Zoom 15. Ensures 1m-apart users get spiraled.
+        const CLUSTER_THRESHOLD = 0.003; 
 
         // 2. Cluster Users
         sortedUsers.forEach(u => {
@@ -1765,7 +1769,7 @@ export default function MapHome() {
 
         // 3. Apply Spiral Layout
         const processedUsers = [];
-        const SPIRAL_SPACING = 0.0008; // Increased spacing to prevent visual overlap (~90m separation)
+        const SPIRAL_SPACING = 0.0015; // Increased spacing for clear separation
 
         clusters.forEach(cluster => {
             if (cluster.length === 1) {
@@ -2761,7 +2765,7 @@ return (
 
             <div className="map-ui-overlay">
                 <div className="stats-card">
-                    <span>{activeFilter === 'Nearby' ? 'Checking 300m radius' : activeFilter === 'Online' ? 'Active in last 2m' : activeFilter + ' View'}</span>
+                    <span>All View</span>
                     <div className="stats-divider"></div>
                     <strong>{filteredUsers.length} Visible</strong>
                 </div>
@@ -2970,15 +2974,31 @@ return (
                     z-index: 999;
                     pointer-events: none; 
                 }
+                
+                /* SMOOTH MARKER ANIMATIONS - REVERTED */
+                /* User requested "show as previous" - effectively disabling smooth sliding 
+                   to prevent spiral chaos or unwanted motion blur. */
+                .leaflet-marker-icon {
+                    /* transition: transform 0.8s ...; REMOVED */
+                    opacity: 1; 
+                }
+                
+                /* Class specific for avatars */
+                .leaflet-marker-icon.custom-avatar-icon {
+                    /* will-change: transform, opacity; REMOVED */
+                }
+
                 .stats-card {
                     pointer-events: auto;
                     background: white;
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                    padding: 8px 20px;
+                    border-radius: 50px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
                     color: #333;
                     display: flex; align-items: center; gap: 12px;
-                    font-size: 0.9rem;
+                    font-size: 0.95rem;
+                    font-weight: 500;
+                    z-index: 2000;
                 }
                 
                 /* Dark Mode Stats Card - Keep it white with black text */
@@ -2994,7 +3014,7 @@ return (
                 }
                 
                 /* System theme block removed */
-                .stats-divider { width: 1px; height: 16px; background: #eee; }
+                .stats-divider { width: 1px; height: 18px; background: #bbb; }
                 /* Controls and Thought Input Styles kept minimal here, mostly moved to App.css or generic */
                 /* Dark Map Tiles Filter */
                 .dark-map-tiles {

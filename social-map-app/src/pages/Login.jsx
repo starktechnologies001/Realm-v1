@@ -105,12 +105,26 @@ useEffect(() => {
 
   checkExistingSession();
 
-  // 2️⃣ Handle fresh sign-in event
+  // 2️⃣ Handle fresh sign-in event (e.g. Google OAuth redirect)
   const { data: listener } = supabase.auth.onAuthStateChange(
-    (event, session) => {
+    async (event, session) => {
       if (event === 'SIGNED_IN' && session && mounted) {
-        const avatar = session.user?.user_metadata?.avatar_url;
-        navigate('/map', { state: { preloadedAvatar: avatar } });
+        
+        // Check if profile is complete
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('gender, status')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile && (!profile.gender || !profile.status)) {
+             // Incomplete profile -> Go to setup
+             navigate('/oauth-profile-setup');
+        } else {
+             // Complete -> Go to map
+             const avatar = session.user?.user_metadata?.avatar_url;
+             navigate('/map', { state: { preloadedAvatar: avatar } });
+        }
       }
     }
   );
