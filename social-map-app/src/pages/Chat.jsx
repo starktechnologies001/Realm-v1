@@ -4093,6 +4093,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .input-icon-btn {
                     color: #555555; background: none; border: none;
                     cursor: pointer; padding: 4px; transition: color 0.2s;
+                    width: 32px; height: 32px; flex-shrink: 0;
                 }
                 .input-icon-btn:hover { color: var(--theme-accent, #000); }
                 
@@ -4100,7 +4101,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .chat-room-container[data-theme-type="light"] .input-icon-btn:hover { color: var(--theme-accent, #333); }
                 
                 .send-btn { 
-                    width: 44px; height: 44px; border-radius: 50%; border: none;
+                    width: 36px; height: 36px; border-radius: 50%; border: none;
                     background: var(--theme-accent, #0084ff); /* Fallback blue */
                     background-image: var(--accent-gradient); /* Optional override */
                     color: white;
@@ -4108,10 +4109,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     transition: transform 0.2s;
                     flex-shrink: 0; /* Prevent shrinking on small screens */
-                    min-width: 44px; /* Force width */
+                    min-width: 36px; /* Force width */
                     margin-left: auto; /* Push to right if needed, but flex handles it */
                     z-index: 5;
                 }
+                .send-btn svg { width: 18px; height: 18px; }
                 .send-btn:hover { transform: scale(1.05); }
                 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 

@@ -1067,10 +1067,9 @@ export default function MapHome() {
 
     const handlePermissionSelect = (choice) => {
         if (choice === 'while-using' || choice === 'once') {
-            requestPermissionFromUser(); // ✅ MUST be called from click
-        } else {
-            setPermission('denied', true);
+            startLocation(); // Direct call to preserve user gesture on mobile
         }
+        // Note: Deny case intentionally does nothing - user just dismisses modal
     };
 
 
