@@ -1120,12 +1120,12 @@ useEffect(() => {
 
         .btn-primary {
           width: 100%;
-          padding: 16px;
+          padding: 12px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 14px;
+          border-radius: 12px;
           color: white;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
@@ -1176,12 +1176,12 @@ useEffect(() => {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          padding: 14px;
-          border-radius: 14px;
+          gap: 10px;
+          padding: 10px;
+          border-radius: 12px;
           border: none;
           cursor: pointer;
-          font-size: 0.95rem;
+          font-size: 0.9rem;
           transition: transform 0.2s;
         }
 
