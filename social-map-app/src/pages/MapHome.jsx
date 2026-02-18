@@ -274,7 +274,7 @@ export default function MapHome() {
         userLocation,
         locationEnabled,
         loadingLocation, // 🔥 Add this
-        startLocation,
+        requestLocation,
         stopLocation,
     } = useLocationContext();
 
@@ -1861,117 +1861,73 @@ export default function MapHome() {
     // -------------------------------------------------
     // 🔄 SYNC LOCATION STATE
     // -------------------------------------------------
+    // 🔄 Sync
     useEffect(() => {
-        if (locationEnabled && currentUser && (currentUser.is_ghost_mode || !currentUser.is_location_on)) {
-            console.log("📍 [MapHome] Location enabled detected. Syncing local user state...");
-            setCurrentUser(prev => ({
-                ...prev,
-                is_ghost_mode: false,
-                is_location_on: true
-            }));
+        if (locationEnabled && currentUser) {
+            if (currentUser.is_ghost_mode || currentUser.is_location_on === false) {
+                setCurrentUser(prev => ({
+                    ...prev,
+                    is_ghost_mode: false,
+                    is_location_on: true
+                }));
+            }
         }
-    }, [locationEnabled, currentUser?.id]);
+    }, [locationEnabled, currentUser]);
 
-   // -------------------------------------------------
-// 🚀 LOCATION GATES
-// -------------------------------------------
-    // 🚪 GATEKEEPING: Force Location or Ghost Mode
-    // -------------------------------------------
-    
-    // 1. Loading State (Prevent Flash)
+    // 1️⃣ Loading
     if (loadingLocation) {
         return (
-            <div style={{
-                height: "100dvh",
-                overflow: "hidden",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                alignItems: "center",
-                background: isDarkMode ? "#121212" : "#f5f5f5",
-                color: isDarkMode ? "rgba(255,255,255,0.7)" : "#666"
-            }}>
-                {/* Simple Pulse Loader */}
-                <div style={{ 
-                    width: '40px', height: '40px', 
-                    borderRadius: '50%', 
-                    border: '3px solid currentColor', 
-                    borderTopColor: 'transparent',
-                    animation: 'spin 1s linear infinite',
-                    marginBottom: '16px'
-                }}></div>
-                <p>Finding you...</p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <div style={{ height:"100vh", display:"flex", justifyContent:"center", alignItems:"center" }}>
+                Finding you...
             </div>
         );
     }
 
-    // 2. Permission Gate
-    if (!locationEnabled || ghostMode || currentUser?.is_location_on === false) {
+// 2️⃣ App toggle OFF (ghost mode)
+    if (currentUser?.is_location_on === false) {
+        return (
+            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center" }}>
+                <h2>📍 Location Service Off</h2>
+                <button onClick={requestLocation}>
+                    Enable Location
+                </button>
+            </div>
+        );
+    }
+
+// 3️⃣ Device location OFF
+    if (!locationEnabled) {
+            return (
+            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center" }}>
+                <h2>📍 Enable Location</h2>
+                <button onClick={requestLocation}>
+                    Enable Location
+                </button>
+            </div>
+        );
+    }
+
+// 4️⃣ Waiting GPS
+    if (!userLocation) {
+            return (
+            <div style={{ height:"100vh", display:"flex", justifyContent:"center", alignItems:"center" }}>
+                Finding you...
+            </div>
+        );
+    }
+
+
+    // 5️⃣ If all good, render map
     return (
-        <div style={{
-            height: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
-            textAlign: "center",
-            background: isDarkMode ? "#121212" : "#f5f5f5",
-            padding: "20px"
+        <div className="map-container" style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            width: '100%', 
+            height: '100dvh', 
+            overflow: 'hidden',
+            overscrollBehavior: 'none' 
         }}>
-            <h2>📍 Location Required</h2>
-
-            <p style={{ maxWidth: "320px", opacity: 0.7 }}>
-                Nearo shows people near you.
-                Enable location services to continue.
-            </p>
-
-            <button
-                onClick={startLocation}
-                style={{
-                    padding: "14px 24px",
-                    borderRadius: "25px",
-                    border: "none",
-                    background: "#4285F4",
-                    color: "white",
-                    fontWeight: "600",
-                    fontSize: "16px",
-                    cursor: "pointer",
-                    marginTop: "20px"
-                }}
-            >
-                Enable Location
-            </button>
-        </div>
-    );
-}
-
-// 2️⃣ If GPS still loading
-if (!userLocation) {
-    return (
-        <div style={{
-            height: "100vh",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            background: isDarkMode ? "#121212" : "#f5f5f5"
-        }}>
-            <h3>Finding you...</h3>
-        </div>
-    );
-}
-
-// 3️⃣ If all good, render map
-return (
-    <div className="map-container" style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        width: '100%', 
-        height: '100dvh', 
-        overflow: 'hidden',
-        overscrollBehavior: 'none' 
-    }}>
             {/* PROFILE UPDATE NUDGE */}
             {currentUser && (
                 (!currentUser.avatar_url ||
@@ -2247,7 +2203,7 @@ return (
                                     showToast("👁️ Ghost Mode OFF (Visible)");
                                 } else {
                                     // Currently Visible -> Become Hidden
-                                    await stopLocation();
+                                    stopLocation();
                                     showToast("👻 Ghost Mode ON (Hidden)");
                                 }
                             }}
