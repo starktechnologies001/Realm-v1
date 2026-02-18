@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import UserProfileCard from '../components/UserProfileCard';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { useCall } from '../context/CallContext';
 import { blockUser } from '../utils/blockUtils';
@@ -11,7 +10,6 @@ export default function Friends() {
     const [friends, setFriends] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState(null);
-    const [viewingProfile, setViewingProfile] = useState(null);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [activeTab, setActiveTab] = useState('friends');
     
@@ -195,19 +193,8 @@ export default function Friends() {
 
     const handleViewProfile = (e, friend) => {
         e.stopPropagation();
-        const userObj = {
-            id: friend.id,
-            name: friend.username,
-            avatar: friend.avatar_url || (friend.gender === 'Male' ? DEFAULT_MALE_AVATAR : friend.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR),
-            avatar_url: friend.avatar_url || (friend.gender === 'Male' ? DEFAULT_MALE_AVATAR : friend.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR),
-            status: friend.status,
-            hide_status: friend.hide_status,
-            show_last_seen: friend.show_last_seen,
-            gender: friend.gender,
-            friendshipStatus: 'accepted' // For UserProfileCard logic
-        };
-        setViewingProfile(userObj);
         setActiveMenuId(null);
+        navigate(`/profile/${friend.id}`);
     };
 
     const { startCall } = useCall(); // From CallContext
@@ -394,13 +381,7 @@ export default function Friends() {
                 )}
             </div>
 
-            {/* Profile Modal */}
-            <UserProfileCard 
-                user={viewingProfile} 
-                currentUser={currentUser}
-                onClose={() => setViewingProfile(null)} 
-                onAction={handleCardAction}
-            />
+
 
             {/* Unfriend Confirmation Modal */}
             {showUnfriendModal && (

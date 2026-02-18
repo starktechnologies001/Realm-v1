@@ -11,20 +11,25 @@ export function LocationProvider({ children }) {
   const watchIdRef = useRef(null);
 
   // ----------------------------------------
-  // 🔹 START LOCATION (called from MapHome button)
+  // 🔹 START LOCATION
+  // CRITICAL: This function must NOT be async.
+  // On iOS Safari, geolocation.getCurrentPosition MUST be called
+  // synchronously within a user gesture (click) handler.
+  // Making the function async breaks the gesture chain on iOS.
   // ----------------------------------------
-  const startLocation = async () => {
+  const startLocation = () => {
 
     if (!navigator.geolocation) {
-      console.log("Geolocation not supported");
+      alert("Geolocation is not supported by your browser.");
       return;
     }
 
     setLoadingLocation(true);
 
+    // ✅ Called synchronously — preserves user gesture on iOS Safari
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-
+      // SUCCESS
+      (position) => {
         const newLoc = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -32,41 +37,65 @@ export function LocationProvider({ children }) {
 
         setUserLocation(newLoc);
         setLocationEnabled(true);
+        setLoadingLocation(false);
 
+        // Start live tracking
         startWatching();
 
-        // 🔥 Update DB
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from("profiles").update({
-            latitude: newLoc.lat,
-            longitude: newLoc.lng,
-            is_ghost_mode: false,
-            is_location_on: true
-          }).eq("id", session.user.id);
-        }
-
-        setLoadingLocation(false);
+        // Sync to DB (async is fine here — we're inside the callback, not the gesture)
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            supabase.from("profiles").update({
+              latitude: newLoc.lat,
+              longitude: newLoc.lng,
+              last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+              is_ghost_mode: false,
+              is_location_on: true
+            }).eq("id", session.user.id);
+          }
+        });
       },
 
-      async (error) => {
-        console.log("❌ Location error:", error);
-
+      // ERROR
+      (error) => {
+        console.log("❌ Location error:", error.code, error.message);
+        setLoadingLocation(false);
         setLocationEnabled(false);
         setUserLocation(null);
-        setLoadingLocation(false);
 
-        // If denied, also sync DB
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from("profiles").update({
-            is_location_on: false,
-            is_ghost_mode: true
-          }).eq("id", session.user.id);
+        if (error.code === 1) {
+          // PERMISSION_DENIED
+          alert(
+            "📍 Location permission was denied.\n\n" +
+            "To enable:\n" +
+            "• Chrome: tap the 🔒 lock icon → Site settings → Location → Allow\n" +
+            "• Safari: Settings → Privacy → Location Services → [Browser] → Allow"
+          );
+        } else if (error.code === 2) {
+          // POSITION_UNAVAILABLE
+          alert("📍 Location unavailable. Please check your device GPS settings.");
+        } else if (error.code === 3) {
+          // TIMEOUT
+          alert("📍 Location request timed out. Please try again.");
         }
+
+        // Sync denied state to DB
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            supabase.from("profiles").update({
+              is_location_on: false,
+              is_ghost_mode: true
+            }).eq("id", session.user.id);
+          }
+        });
       },
 
-      { enableHighAccuracy: true }
+      // OPTIONS — no timeout so iOS doesn't give up too fast
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 30000,
+      }
     );
   };
 
@@ -74,38 +103,36 @@ export function LocationProvider({ children }) {
   // 🔹 WATCH LIVE MOVEMENT
   // ----------------------------------------
   const startWatching = () => {
-
     if (watchIdRef.current) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
-      async (pos) => {
-
+      (pos) => {
         const newLoc = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
-
         setUserLocation(newLoc);
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from("profiles").update({
-            latitude: newLoc.lat,
-            longitude: newLoc.lng
-          }).eq("id", session.user.id);
-        }
-
+        // Throttled DB update
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            supabase.from("profiles").update({
+              latitude: newLoc.lat,
+              longitude: newLoc.lng,
+              last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+            }).eq("id", session.user.id);
+          }
+        });
       },
-      (err) => console.log("Watch error:", err),
-      { enableHighAccuracy: true }
+      (err) => console.log("⚠️ Watch error:", err.code, err.message),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     );
   };
 
   // ----------------------------------------
   // 🔹 STOP LOCATION (Ghost Mode ON)
   // ----------------------------------------
-  const stopLocation = async () => {
-
+  const stopLocation = () => {
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -114,35 +141,46 @@ export function LocationProvider({ children }) {
     setUserLocation(null);
     setLocationEnabled(false);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await supabase.from("profiles").update({
-        latitude: null,
-        longitude: null,
-        is_location_on: false,
-        is_ghost_mode: true
-      }).eq("id", session.user.id);
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        supabase.from("profiles").update({
+          latitude: null,
+          longitude: null,
+          last_location: null,
+          is_location_on: false,
+          is_ghost_mode: true
+        }).eq("id", session.user.id);
+      }
+    });
   };
 
   // ----------------------------------------
-  // 🔹 AUTO CHECK ON LOAD (No auto popup)
+  // 🔹 AUTO-START IF ALREADY GRANTED
+  // Only auto-start if permission was previously granted.
+  // Never auto-prompt on page load (bad UX + blocked by browsers).
+  // navigator.permissions is not available on all browsers (e.g. iOS Safari < 16)
+  // so we guard with a check.
   // ----------------------------------------
   useEffect(() => {
-    if (!navigator.permissions) return;
+    if (!navigator.permissions) {
+      // iOS Safari < 16 doesn't support navigator.permissions
+      // Don't auto-start — wait for user to click the button
+      setLoadingLocation(false);
+      return;
+    }
 
     navigator.permissions.query({ name: "geolocation" }).then((result) => {
-
       if (result.state === "granted") {
+        // Already granted — safe to auto-start without a prompt
         startLocation();
+      } else {
+        // "prompt" or "denied" — wait for user gesture
+        setLoadingLocation(false);
       }
-
-      if (result.state === "denied") {
-        setLocationEnabled(false);
-        setUserLocation(null);
-      }
+    }).catch(() => {
+      // permissions.query failed — just wait for user gesture
+      setLoadingLocation(false);
     });
-
   }, []);
 
   return (
@@ -152,7 +190,7 @@ export function LocationProvider({ children }) {
         locationEnabled,
         loadingLocation,
         startLocation,
-        stopLocation
+        stopLocation,
       }}
     >
       {children}

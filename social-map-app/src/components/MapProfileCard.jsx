@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
 import { calculateDistance, formatDistance } from '../utils/distanceUtils';
@@ -7,6 +8,7 @@ import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser }) {
     if (!user) return null;
+    const navigate = useNavigate();
 
     // Debug: Log user data to see what's available
     console.log('🔵 [MapProfileCard] User data:', user);
@@ -323,7 +325,10 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
 
                         <button 
                             className="action-btn"
-                            onClick={() => onAction('view-profile', user)}
+                            onClick={() => {
+                                onClose();
+                                navigate(`/profile/${user.id}`);
+                            }}
                         >
                             <span className="icon">👤</span>
                             <span className="label">Profile</span>

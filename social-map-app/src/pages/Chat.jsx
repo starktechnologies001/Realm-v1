@@ -852,7 +852,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                         </>
                     ) : (
                         <>
-                            <h1>Chats</h1>
+                            <h1 className="page-title">Chats</h1>
                             <div className="header-actions">
                                 {/* Status and Settings removed as per user request */}
                             </div>
@@ -1006,9 +1006,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
                 .page-title {
                     margin: 0;
-                    font-size: 17px; /* Standard nav title size */
+                    font-size: 17px;
                     font-weight: 600;
-                    letter-spacing: -0.4px;
+                    letter-spacing: -0.3px;
                     color: var(--text-primary);
                 }
 
@@ -1040,14 +1040,14 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .search-bar {
-                    background: rgba(118, 118, 128, 0.12); /* iOS search bar grey */
-                    border-radius: 10px;
-                    padding: 6px 10px;
+                    background: rgba(118, 118, 128, 0.10);
+                    border-radius: 12px;
+                    padding: 7px 12px;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 7px;
                     margin-bottom: 2px;
-                    height: 32px;
+                    height: 36px;
                 }
 
                 .search-icon {
@@ -1060,7 +1060,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     border: none;
                     outline: none;
                     color: var(--text-primary);
-                    font-size: 17px;
+                    font-size: 14px;
                     width: 100%;
                 }
                 .search-bar input::placeholder {
@@ -1088,16 +1088,15 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     }
                 }
 
-                /* Tab Styles - Segmented Control / Pill Toggle */
+                /* Tab Styles */
                 .chat-tabs {
                     display: flex;
-                    background-color: #f2f2f7; /* iOS System Gray 6 */
-                    border-radius: 100px; /* Fully rounded */
+                    background-color: rgba(118,118,128,0.12);
+                    border-radius: 10px;
                     padding: 2px;
-                    margin-bottom: 12px;
-                    position: relative;
-                    height: 32px;
-                    width: 100%; /* Or fixed width if preferred, but 100% is safe */
+                    margin-bottom: 10px;
+                    height: 34px;
+                    width: 100%;
                     box-sizing: border-box;
                 }
                 
@@ -1108,19 +1107,19 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     justify-content: center;
                     font-size: 13px;
                     font-weight: 600;
-                    color: var(--text-primary);
+                    color: var(--text-secondary);
                     background: transparent;
                     border: none;
-                    border-radius: 100px; /* Match container */
+                    border-radius: 8px;
                     cursor: pointer;
-                    z-index: 1;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    transition: all 0.18s ease;
+                    letter-spacing: -0.1px;
                 }
                 
                 .tab-btn.active {
-                    background-color: #1c1c1e; /* Black/Dark Gray */
-                    color: white;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    background-color: var(--bg-primary, #fff);
+                    color: var(--text-primary);
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
                 }
                 
                 .tab-btn.active::after {
@@ -1138,11 +1137,15 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                      }
                 }
                 html[data-theme="dark"] .chat-tabs {
-                    background-color: #1c1c1e;
+                    background-color: rgba(255,255,255,0.07);
+                }
+                html[data-theme="dark"] .tab-btn {
+                    color: rgba(255,255,255,0.5);
                 }
                 html[data-theme="dark"] .tab-btn.active {
-                    background-color: #3a3a3c;
-                    color: white;
+                    background-color: rgba(255,255,255,0.12);
+                    color: rgba(255,255,255,0.95);
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
                 }
 
                 .chat-list-scroll {
@@ -1152,11 +1155,10 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 .chat-item {
                     display: flex;
                     align-items: center;
-                    padding: 12px 20px;
+                    padding: 10px 20px;
                     gap: 12px;
                     cursor: pointer;
-                    transition: background 0.2s;
-                    border-bottom: none; /* Separator removed */
+                    transition: background 0.15s;
                 }
                 
                 .chat-item:active {
@@ -1210,14 +1212,14 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .chat-avatar {
-                    width: 42px;
-                    height: 42px;
+                    width: 46px;
+                    height: 46px;
                     border-radius: 50%;
                     object-fit: cover;
                     background-color: #e5e5ea;
-                    display: block; /* Fix phantom vertical space */
-                    flex-shrink: 0; /* 🔥 Prevent crushing */
-                    border: 1px solid rgba(0,0,0,0.05); /* Subtle border define edges */
+                    display: block;
+                    flex-shrink: 0;
+                    border: 1.5px solid rgba(0,0,0,0.06);
                 }
 
                 .online-badge {
@@ -1247,15 +1249,18 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .chat-name {
-                    font-size: 16px;
+                    font-size: 15px;
                     font-weight: 600;
                     color: var(--text-primary);
                     margin-bottom: 0;
+                    letter-spacing: -0.1px;
                 }
 
                 .chat-time {
-                    font-size: 14px;
+                    font-size: 12px;
                     color: var(--text-secondary);
+                    opacity: 0.7;
+                    letter-spacing: 0;
                 }
 
                 .chat-msg-row {
@@ -1266,19 +1271,18 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
                 .chat-preview {
                     margin: 0;
-                    font-size: 15px;
+                    font-size: 13px;
                     color: var(--text-secondary);
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     max-width: 85%;
                     line-height: 1.3;
+                    opacity: 0.75;
                 }
 
                 .chat-item.unread {
-                    background: linear-gradient(90deg, rgba(66, 133, 244, 0.08) 0%, rgba(66, 133, 244, 0.02) 100%);
-                    border-left: 3px solid #4285F4;
-                    padding-left: 17px; /* Compensate for border */
+                    background: transparent;
                 }
 
                 .chat-item.unread .chat-name {
@@ -1287,18 +1291,17 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
                 .chat-item.unread .chat-preview {
                     color: var(--text-primary) !important;
-                    font-weight: 600; /* Slightly less bold than name */
+                    font-weight: 500;
+                    opacity: 0.85;
                 }
 
-                /* Dark mode unread background highlight */
+                /* Dark mode unread */
                 html[data-theme="dark"] .chat-item.unread {
-                    background: linear-gradient(90deg, rgba(66, 133, 244, 0.12) 0%, rgba(66, 133, 244, 0.03) 100%) !important;
-                    border-left-color: #5a9fff;
+                    background: transparent;
                 }
                 @media (prefers-color-scheme: dark) {
                     html[data-theme="system"] .chat-item.unread {
-                         background: linear-gradient(90deg, rgba(66, 133, 244, 0.12) 0%, rgba(66, 133, 244, 0.03) 100%) !important;
-                         border-left-color: #5a9fff;
+                        background: transparent;
                     }
                 }
 
@@ -1496,6 +1499,30 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
     // Emoji Picker State
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const emojiPickerRef = useRef(null);
+    const emojiBtnRef = useRef(null);
+
+    // Close emoji picker when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (
+                showEmojiPicker &&
+                emojiPickerRef.current &&
+                !emojiPickerRef.current.contains(event.target) &&
+                emojiBtnRef.current &&
+                !emojiBtnRef.current.contains(event.target)
+            ) {
+                setShowEmojiPicker(false);
+            }
+        };
+
+        if (showEmojiPicker) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showEmojiPicker]);
     
     // Reply-to message state
     const [replyToMessage, setReplyToMessage] = useState(null);
@@ -3643,6 +3670,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                     {/* Emoji Picker Button (Moved to Left) */}
                     <button 
+                        ref={emojiBtnRef}
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
                         className="input-icon-btn emoji-btn"
                         title="Add emoji"
@@ -3670,7 +3698,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             {/* Emoji Picker Popup using Library */}
             {showEmojiPicker && (
-                <div className="emoji-picker-popup" onClick={(e) => e.stopPropagation()}>
+                <div ref={emojiPickerRef} className="emoji-picker-popup" onClick={(e) => e.stopPropagation()}>
                     <EmojiPicker 
                         onEmojiClick={handleEmojiSelect}
                         theme="dark"
@@ -4046,6 +4074,23 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     z-index: 10;
                 }
                 
+                @media (max-width: 768px) {
+                    .chat-input-container {
+                        padding: 10px 12px; /* Tighter padding on mobile */
+                        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+                    }
+                    .glass-input-bar {
+                        padding: 4px 4px 4px 12px !important; /* Less internal padding */
+                        gap: 4px !important; /* Smaller gap */
+                    }
+                    .input-icon-btn, .attachment-btn {
+                        width: 32px; height: 32px; padding: 2px;
+                    }
+                    .emoji-btn {
+                        margin-right: 2px !important;
+                    }
+                }
+                
                 /* Light theme override for input area (Redundant but safe) */
                 .chat-room-container[data-theme-type="light"] .chat-input-container {
                      background: #ffffff;
@@ -4080,6 +4125,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     flex: 1; background: transparent !important; border: none; outline: none;
                     color: #000000 !important; /* Force black text */
                     font-size: 1rem; padding: 8px 0;
+                    min-width: 0; /* Allow shrinking */
                 }
                 .msg-input::placeholder { color: #888888; }
                 
@@ -4110,7 +4156,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     transition: transform 0.2s;
                     flex-shrink: 0; /* Prevent shrinking on small screens */
                     min-width: 36px; /* Force width */
-                    margin-left: auto; /* Push to right if needed, but flex handles it */
+                    margin-left: 8px; /* Fixed margin instead of auto */
                     z-index: 5;
                 }
                 .send-btn svg { width: 18px; height: 18px; }

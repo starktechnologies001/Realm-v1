@@ -11,6 +11,7 @@ import UpdatePassword from './pages/UpdatePassword';
 import OAuthProfileSetup from './pages/OAuthProfileSetup';
 import BlockedUsers from './pages/BlockedUsers';
 import LegalPage from './pages/LegalPage';
+import UserProfilePage from './pages/UserProfilePage';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
@@ -55,6 +56,7 @@ function App() {
                 <Route path="/friends" element={<Friends />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/profile/:userId" element={<UserProfilePage />} />
               </Route>
 
               <Route path="/confirm-email" element={<ConfirmEmail />} />

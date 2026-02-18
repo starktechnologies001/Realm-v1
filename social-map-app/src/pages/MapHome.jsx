@@ -150,43 +150,30 @@ function RecenterControl({ lat, lng }) {
 function RecenterAutomatically({ lat, lng, mapMode }) {
     const map = useMap();
     const hasCentered = useRef(false);
+    const prevMapMode = useRef(mapMode); // Track previous mapMode to detect real changes
 
-    // Initial Center (with delay to ensure map size is correct on tab switch)
+    // Initial Center — only once, on first valid location
     useEffect(() => {
         if (lat && lng && !hasCentered.current) {
-            // Calculate Target Center with Mobile Offset (Visual Center)
-            // Use setView (Instant) to prevent flying/flickering on load
-            const zoomLevel = 17; // Fits ~300m radius circle nicely on mobile
-            let targetLat = lat;
-            let targetLng = lng;
-            const isMobile = window.innerWidth <= 768;
-
-            if (isMobile) {
-                // User requested avatar in exact center
-                // We previously offset it, but now we revert to geometric center
-                targetLat = lat;
-                targetLng = lng;
-            }
-
-            // Small timeout to allow map sizing, then SNAP.
-            // We use setView(..., { animate: false }) for instant, flicker-free positioning
+            const zoomLevel = 17;
             const timer = setTimeout(() => {
-                 map.setView([targetLat, targetLng], zoomLevel, { animate: false });
+                 map.setView([lat, lng], zoomLevel, { animate: false });
                  hasCentered.current = true;
-            }, 50); // Reduced delay for snappier feel
-            
+            }, 50);
             return () => clearTimeout(timer);
         }
     }, [lat, lng, map]);
 
-    // Re-center ONLY on Map Mode Switch
-    // Remove lat/lng from dependency array to prevent map from moving when user moves/updates location
+    // Re-center ONLY when map mode actually switches (not on mount)
     useEffect(() => {
-        if (lat && lng) {
-            map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 1 });
+        if (prevMapMode.current !== mapMode) {
+            prevMapMode.current = mapMode;
+            if (lat && lng) {
+                map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 1 });
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mapMode, map]);
+    }, [mapMode]);
 
     return null;
 }
@@ -1647,78 +1634,44 @@ export default function MapHome() {
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
 
-    // --- FILTERING & SEARCH LOGIC ---
+    // --- FILTERING LOGIC ---
     const filteredUsers = useMemo(() => {
         if (!nearbyUsers || !currentUser) return [];
 
-        let users = nearbyUsers;
+        // ✅ GLOBAL GATE: Only show users whose location is ON
+        const visibleUsers = nearbyUsers.filter(u => u.is_location_on === true);
 
-        // 1. Search Filter (High Priority)
-        if (searchQuery && searchQuery.trim().length > 0) {
-            const query = searchQuery.toLowerCase().trim();
-            users = users.filter(u => 
-                u.name.toLowerCase().includes(query)
-            );
-            // Search overrides other filters usually, but let's apply it first
-            // If we want search to search *within* filters, we keep this order.
-            // Requirement: "Search result overrides filter temporarily" -> implies search searches ALL users
-            // So if search is active, we might skip the category filter? 
-            // "Search result overrides filter temporarily" usually means: Filter is ignored if searching.
-            
-            // If I search "John", I want to find John even if he is Offline (unless I specifically want Online Johns?)
-            // UX Rule: "Do not hide other avatars (unless a filter is active)"
-            // Interpretation: Search highlights/zooms, but if I type, maybe list filters?
-            // "When search result is selected... map smooth animate... highlight... do not hide others"
-            
-            // Actually, usually "Find People" is a separate mode or just filters the list.
-            // If I type in search bar, usually the map doesn't filter immediately until I select? OR it filters real-time?
-            // "Find People – Search by Name... When search result is selected..."
-            // This implies the search bar might be an autocomplete dropdown?
-            // Current UI is just a text input.
-            // Let's make it filter the visible map markers for now, OR providing a list to select from.
-            
-            // Let's implement: Active Search = Filter Map View to matches (common pattern) 
-            // OR returns list to select.
-            // Given "Do not hide other avatars", the search might be a "Highlighter".
-            // Implementation: We will use a separate 'searchResults' list for the dropdown, 
-            // but 'filteredUsers' for the map will respect the TABS (All/Online/etc).
-            // UNLESS user explicitly filters by name.
-            
-            // Let's stick to simple: Search filters the list.
-            // But the requirement says "Do not hide other avatars (unless a filter is active)".
-            // This implies search should ZOOM to user, not necessarily hide others.
-            // But if I want to "Find" someone, hiding others is helpful.
-            // Let's stick to the requester's note: "Search → Focus map on user".
-            // So search input shouldn't remove markers?
-            // But usually search bars filter the dataset.
-            
-            // Let's implement Search as a "Selection" mechanism.
-            // The search bar will show a set of results (dropdown).
-            // When clicked, it sets 'selectedUser'.
-            // It does NOT filter `displayedUsers` on the map (unless we want to).
-            // So `filteredUsers` below is purely for the TABS.
-        }
+        // My current location (from live GPS context, fallback to DB coords)
+        const myLat = userLocation?.lat ?? currentUser?.latitude;
+        const myLng = userLocation?.lng ?? currentUser?.longitude;
 
         switch (activeFilter) {
             case 'Online':
-                return users.filter(u => {
+                // Show users who are actively using the app (last seen < 5 minutes)
+                return visibleUsers.filter(u => {
                     if (!u.lastActive) return false;
-                    const diff = Date.now() - new Date(u.lastActive).getTime();
-                    return diff < 2 * 60 * 1000; // < 2 minutes
+                    const diffMs = Date.now() - new Date(u.lastActive).getTime();
+                    return diffMs < 5 * 60 * 1000; // active within 5 minutes
                 });
+
             case 'Nearby':
-                return users.filter(u => {
-                    if (!currentUser.lat || !currentUser.lng) return false;
-                    const dist = calculateDistance(currentUser.lat, currentUser.lng, u.lat, u.lng);
-                    return dist <= 300; // 300 meters
+                // Show users within 300 metres of the current user
+                return visibleUsers.filter(u => {
+                    if (!myLat || !myLng) return false;
+                    const dist = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng) * 1000; // metres
+                    return dist <= 300;
                 });
+
             case 'Friends':
-                return users.filter(u => u.friendshipStatus === 'accepted');
+                // Show only accepted friends
+                return visibleUsers.filter(u => u.friendshipStatus === 'accepted');
+
             case 'All':
             default:
-                return users;
+                // Show everyone with location ON
+                return visibleUsers;
         }
-    }, [nearbyUsers, activeFilter, currentUser, searchQuery]);
+    }, [nearbyUsers, activeFilter, currentUser, userLocation]);
 
     // Search Suggestions (derived from ALL users, ignoring current tab filter to find anyone)
     const searchResults = useMemo(() => {
@@ -1768,7 +1721,12 @@ export default function MapHome() {
 
         // 3. Apply Spiral Layout
         const processedUsers = [];
-        const SPIRAL_SPACING = 0.0015; // Increased spacing for clear separation
+        // ~0.0003 deg ≈ 33m per step — guarantees avatars are visually separated
+        // even at max zoom (zoom 19 = ~0.3m/px, avatar ~50px = ~15m)
+        const SPIRAL_SPACING = 0.0003;
+        // Minimum radius so even the first user in a cluster doesn't sit at the exact center
+        // when there are multiple users (prevents z-index stacking hiding avatars)
+        const MIN_RADIUS = SPIRAL_SPACING;
 
         clusters.forEach(cluster => {
             if (cluster.length === 1) {
@@ -1780,8 +1738,9 @@ export default function MapHome() {
 
                 cluster.forEach((u, i) => {
                     // Archimedean Spiral / Golden Angle Packing
-                    const angle = i * 2.4; // ~137.5 degrees
-                    const radius = SPIRAL_SPACING * Math.sqrt(i);
+                    // i+1 ensures radius is never 0 — every user gets a unique position
+                    const angle = i * 2.4; // ~137.5 degrees (golden angle)
+                    const radius = MIN_RADIUS + SPIRAL_SPACING * Math.sqrt(i + 1);
 
                     processedUsers.push({
                         ...u,
@@ -1877,28 +1836,174 @@ export default function MapHome() {
     // 1️⃣ Loading
     if (loadingLocation) {
         return (
-            <div style={{ height:"100vh", display:"flex", justifyContent:"center", alignItems:"center" }}>
-                Finding you...
+            <div style={{
+                height:"100dvh", display:"flex", flexDirection:"column",
+                justifyContent:"center", alignItems:"center",
+                background: isDarkMode ? "#111113" : "#fafafa",
+                gap:"18px"
+            }}>
+                <style>{`
+                    @keyframes loc-spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                    @keyframes loc-fade { 0%,100%{opacity:.3} 50%{opacity:1} }
+                `}</style>
+                <div style={{ position:"relative", width:"56px", height:"56px" }}>
+                    <div style={{
+                        position:"absolute", inset:0, borderRadius:"50%",
+                        border: isDarkMode ? "2px solid rgba(255,255,255,.08)" : "2px solid rgba(0,0,0,.06)"
+                    }}/>
+                    <div style={{
+                        position:"absolute", inset:0, borderRadius:"50%",
+                        border:"2px solid transparent",
+                        borderTopColor: isDarkMode ? "rgba(255,255,255,.6)" : "#6c47ff",
+                        animation:"loc-spin 0.9s linear infinite"
+                    }}/>
+                    <div style={{
+                        position:"absolute", inset:"14px", borderRadius:"50%",
+                        background: isDarkMode ? "rgba(255,255,255,.06)" : "rgba(108,71,255,.08)",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:"16px"
+                    }}>📍</div>
+                </div>
+                <p style={{
+                    color: isDarkMode ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.4)",
+                    fontSize:"14px", margin:0, letterSpacing:"0.3px"
+                }}>Finding your location…</p>
             </div>
         );
     }
 
-    // 2️⃣ Location disabled inside app
+    // 2️⃣ Location disabled — permission screen
     if (!locationEnabled) {
+        const dark = isDarkMode;
         return (
-            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", background: isDarkMode ? "#121212" : "#f5f5f5", gap: "16px" }}>
-                <h2 style={{ color: isDarkMode ? "#fff" : "#000" }}>📍 Enable Location</h2>
-                <p style={{ opacity: 0.7, maxWidth: "300px", textAlign: "center" }}>Nearo shows people near you. Enable location to continue.</p>
-                <button onClick={startLocation} style={{ padding: "14px 28px", borderRadius: "25px", border: "none", background: "#4285F4", color: "white", fontWeight: "600", fontSize: "16px", cursor: "pointer" }}>Enable Location</button>
+            <div style={{
+                height:"100dvh", display:"flex", flexDirection:"column",
+                justifyContent:"center", alignItems:"center",
+                background: dark ? "#111113" : "#fafafa",
+                padding:"32px", textAlign:"center"
+            }}>
+                <style>{`
+                    @keyframes loc-float {
+                        0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)}
+                    }
+                `}</style>
+
+                {/* Floating map pin icon */}
+                <div style={{
+                    width:"88px", height:"88px", borderRadius:"28px",
+                    background: dark
+                        ? "linear-gradient(145deg,#1e1e24,#2a2a35)"
+                        : "linear-gradient(145deg,#ffffff,#f0eeff)",
+                    boxShadow: dark
+                        ? "0 20px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06)"
+                        : "0 20px 60px rgba(108,71,255,.15), inset 0 1px 0 rgba(255,255,255,.9)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:"40px", marginBottom:"32px",
+                    animation:"loc-float 3s ease-in-out infinite"
+                }}>📍</div>
+
+                {/* Heading */}
+                <h2 style={{
+                    margin:"0 0 10px", fontSize:"24px", fontWeight:700,
+                    color: dark ? "#f0f0f0" : "#1a1a2e",
+                    letterSpacing:"-0.5px"
+                }}>Share Your Location</h2>
+
+                {/* Subtext */}
+                <p style={{
+                    margin:"0 0 32px", fontSize:"14px", lineHeight:1.7,
+                    color: dark ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.45)",
+                    maxWidth:"270px"
+                }}>
+                    See who's around you in real time. Your location is only visible while you're active.
+                </p>
+
+                {/* Feature pills — compact horizontal */}
+                <div style={{ display:"flex", gap:"8px", marginBottom:"32px", flexWrap:"wrap", justifyContent:"center" }}>
+                    {[
+                        ["👥", "Nearby people"],
+                        ["🔒", "Private"],
+                        ["⚡", "Real-time"]
+                    ].map(([icon, label]) => (
+                        <div key={label} style={{
+                            display:"flex", alignItems:"center", gap:"5px",
+                            padding:"5px 11px", borderRadius:"20px",
+                            background: dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.05)",
+                            border: dark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.07)",
+                        }}>
+                            <span style={{ fontSize:"13px" }}>{icon}</span>
+                            <span style={{ fontSize:"12px", fontWeight:500, color: dark ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.55)" }}>{label}</span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* CTA Button */}
+                <button
+                    onClick={startLocation}
+                    style={{
+                        width:"100%", maxWidth:"260px",
+                        padding:"15px 0", borderRadius:"16px", border:"none",
+                        background: dark
+                            ? "linear-gradient(135deg,#7c5cfc,#5b3fd4)"
+                            : "linear-gradient(135deg,#6c47ff,#4f2fe8)",
+                        color:"white", fontWeight:700, fontSize:"16px",
+                        cursor:"pointer", letterSpacing:"0.2px",
+                        boxShadow: "0 8px 32px rgba(108,71,255,.35)",
+                        transition:"transform 0.15s, box-shadow 0.15s"
+                    }}
+                    onMouseDown={e => { e.currentTarget.style.transform="scale(0.97)"; e.currentTarget.style.boxShadow="0 4px 16px rgba(108,71,255,.25)"; }}
+                    onMouseUp={e => { e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow="0 8px 32px rgba(108,71,255,.35)"; }}
+                    onTouchStart={e => { e.currentTarget.style.transform="scale(0.97)"; }}
+                    onTouchEnd={e => { e.currentTarget.style.transform="scale(1)"; }}
+                >
+                    Enable Location
+                </button>
+
+                <p style={{
+                    marginTop:"14px", fontSize:"12px",
+                    color: dark ? "rgba(255,255,255,.2)" : "rgba(0,0,0,.25)"
+                }}>You can disable this anytime</p>
             </div>
         );
     }
 
-        // 4️⃣ Waiting GPS
+    // 3️⃣ Waiting for GPS fix
     if (!userLocation) {
         return (
-            <div style={{ height:"100vh", display:"flex", justifyContent:"center", alignItems:"center" }}>
-                Finding you...
+            <div style={{
+                height:"100dvh", display:"flex", flexDirection:"column",
+                justifyContent:"center", alignItems:"center",
+                background: isDarkMode ? "#111113" : "#fafafa",
+                gap:"18px"
+            }}>
+                <style>{`
+                    @keyframes loc-spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+                `}</style>
+                <div style={{ position:"relative", width:"56px", height:"56px" }}>
+                    <div style={{
+                        position:"absolute", inset:0, borderRadius:"50%",
+                        border: isDarkMode ? "2px solid rgba(255,255,255,.08)" : "2px solid rgba(0,0,0,.06)"
+                    }}/>
+                    <div style={{
+                        position:"absolute", inset:0, borderRadius:"50%",
+                        border:"2px solid transparent",
+                        borderTopColor: isDarkMode ? "rgba(255,255,255,.6)" : "#6c47ff",
+                        animation:"loc-spin 0.9s linear infinite"
+                    }}/>
+                    <div style={{
+                        position:"absolute", inset:"14px", borderRadius:"50%",
+                        background: isDarkMode ? "rgba(255,255,255,.06)" : "rgba(108,71,255,.08)",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:"16px"
+                    }}>📡</div>
+                </div>
+                <p style={{
+                    color: isDarkMode ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.4)",
+                    fontSize:"14px", margin:0, letterSpacing:"0.3px"
+                }}>Getting your precise location…</p>
             </div>
         );
     }
@@ -2142,7 +2247,9 @@ export default function MapHome() {
             <div className="map-header-controls">
                 <div className="header-top-row">
                     <div className="search-bar-container glass-panel">
-                        <span className="search-icon">🔍</span>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.4, flexShrink:0 }}>
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
                         <input 
                             type="text" 
                             placeholder="Find people..." 
@@ -2175,8 +2282,8 @@ export default function MapHome() {
                             onClick={() => setShowThoughtInput(true)} 
                             title="Set Status"
                         >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                             </svg>
                         </button>
                         
@@ -2198,15 +2305,16 @@ export default function MapHome() {
                             title="Toggle Ghost Mode"
                         >
                             {currentUser?.is_ghost_mode ? (
-                                /* Ghost Icon (Active/Purple) */
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D500F9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M9 19c-4.286 1.35-4.286-2.55-6-3m12 5v-3.5c0-1 .67-2.3 2-2.3.82-1 1.2-2.1 1.2-3.3 0-2.39-1.31-4.2-3.4-4.2-1.95 0-3.66 1.25-4.62 3.26-1 2.22-.38 4.7 1.8 7.15 2.15 2.5 3.1 3.9 3.12 5.3" />
+                                /* Ghost/Hidden icon */
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6c47ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
                                 </svg>
                             ) : (
-                                /* Eye Icon (Visible/Blue) */
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2962FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
+                                /* Eye/Visible icon */
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
                                 </svg>
                             )}
                         </button>
@@ -2235,10 +2343,10 @@ export default function MapHome() {
                                 aspectRatio: '1/1'
                             }}
                         >
-                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6D00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                                <polyline points="2 17 12 22 22 17"></polyline>
-                                <polyline points="2 12 12 17 22 12"></polyline>
+                             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                                <polyline points="2 17 12 22 22 17"/>
+                                <polyline points="2 12 12 17 22 12"/>
                             </svg>
                         </button>
                     </div>
@@ -2315,7 +2423,7 @@ export default function MapHome() {
                 .search-bar-container input {
                     border: none;
                     background: transparent;
-                    font-size: 1rem;
+                    font-size: 13px;
                     width: 100%;
                     color: inherit;
                     outline: none;
@@ -2333,9 +2441,9 @@ export default function MapHome() {
                 .filter-scroll::-webkit-scrollbar { display: none; }
 
                 .filter-chip {
-                    padding: 8px 16px;
+                    padding: 6px 12px;
                     white-space: nowrap;
-                    font-size: 0.9rem;
+                    font-size: 12px;
                     font-weight: 500;
                     color: inherit;
                     cursor: pointer;
@@ -2343,9 +2451,9 @@ export default function MapHome() {
                 }
 
                 .filter-chip.active {
-                    background: #4285F4;
+                    background: #6c47ff;
                     color: white;
-                    border-color: #4285F4;
+                    border-color: #6c47ff;
                 }
 
                 .search-results-dropdown {
