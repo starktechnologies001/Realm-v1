@@ -273,8 +273,8 @@ export default function MapHome() {
     const { 
         userLocation,
         locationEnabled,
-        loadingLocation, // 🔥 Add this
-        requestLocation,
+        loadingLocation,
+        startLocation,
         stopLocation,
     } = useLocationContext();
 
@@ -1883,38 +1883,26 @@ export default function MapHome() {
         );
     }
 
-// 2️⃣ App toggle OFF (ghost mode)
-    if (currentUser?.is_location_on === false) {
-        return (
-            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center" }}>
-                <h2>📍 Location Service Off</h2>
-                <button onClick={requestLocation}>
-                    Enable Location
-                </button>
-            </div>
-        );
-    }
-
-// 3️⃣ Device location OFF
+    // 2️⃣ Location disabled inside app
     if (!locationEnabled) {
-            return (
-            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center" }}>
-                <h2>📍 Enable Location</h2>
-                <button onClick={requestLocation}>
-                    Enable Location
-                </button>
+        return (
+            <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", background: isDarkMode ? "#121212" : "#f5f5f5", gap: "16px" }}>
+                <h2 style={{ color: isDarkMode ? "#fff" : "#000" }}>📍 Enable Location</h2>
+                <p style={{ opacity: 0.7, maxWidth: "300px", textAlign: "center" }}>Nearo shows people near you. Enable location to continue.</p>
+                <button onClick={startLocation} style={{ padding: "14px 28px", borderRadius: "25px", border: "none", background: "#4285F4", color: "white", fontWeight: "600", fontSize: "16px", cursor: "pointer" }}>Enable Location</button>
             </div>
         );
     }
 
-// 4️⃣ Waiting GPS
+        // 4️⃣ Waiting GPS
     if (!userLocation) {
-            return (
+        return (
             <div style={{ height:"100vh", display:"flex", justifyContent:"center", alignItems:"center" }}>
                 Finding you...
             </div>
         );
     }
+
 
 
     // 5️⃣ If all good, render map
@@ -2199,11 +2187,11 @@ export default function MapHome() {
                             onClick={async () => {
                                 if (currentUser?.is_ghost_mode) {
                                     // Currently Hidden -> Become Visible
-                                    startLocation();
+                                    requestLocation();
                                     showToast("👁️ Ghost Mode OFF (Visible)");
                                 } else {
                                     // Currently Visible -> Become Hidden
-                                    stopLocation();
+                                    disableLocation();
                                     showToast("👻 Ghost Mode ON (Hidden)");
                                 }
                             }}
