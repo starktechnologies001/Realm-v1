@@ -382,7 +382,7 @@ export default function MapHome() {
 
     // --- Onboarding State ---
     const [showProfileSetup, setShowProfileSetup] = useState(false);
-    const [setupData, setSetupData] = useState({ gender: '', status: '', username: '' });
+    const [setupData, setSetupData] = useState({ gender: '', status: '', relationshipStatus: '', username: '' });
     // New state for modal upload
     const [avatarFile, setAvatarFile] = useState(null);
     const [avatarPreview, setAvatarPreview] = useState(null);
@@ -416,7 +416,8 @@ export default function MapHome() {
                     setSetupData({
                         username: profile.username,
                         gender: profile.gender || '',
-                        status: profile.status || ''
+                        status: profile.status || '',
+                        relationshipStatus: profile.relationship_status || '',
                     });
                     setShowProfileSetup(true);
                 }
@@ -452,6 +453,7 @@ export default function MapHome() {
                     setSetupData({
                         gender: profile.gender || '',
                         status: profile.status || '',
+                        relationshipStatus: profile.relationship_status || '',
                         username: profile.username || defaultUsername
                     });
                     setShowProfileSetup(true);
@@ -523,7 +525,7 @@ export default function MapHome() {
     const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
-        if (!currentUser) return;
+        if (!currentUser?.id) return;
 
         // Fetch initial count
         const fetchUnread = async () => {
@@ -647,6 +649,8 @@ export default function MapHome() {
         if (!currentUser) return; // Wait for user, but don't need location to fetch others
 
         const fetchNearbyUsers = async () => {
+            if (!currentUser?.id) return; // Prevent API calls if user not loaded
+
             try {
                 // Fetch blocked user IDs (both directions - users I blocked and users who blocked me)
                 const [blockedByMe, blockedMe] = await Promise.all([
@@ -663,10 +667,10 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on')
                         .neq('id', currentUser.id)
-                        .eq('is_ghost_mode', false) // 🔥 Hide if ghost mode
-                        .eq('is_location_on', true) // 🔥 Strict: Hide if location off or null
+                        .or('is_ghost_mode.eq.false,is_ghost_mode.is.null') // Allow NULL as false (visible)
+                        .eq('is_location_on', true)
                         .not('latitude', 'is', null)
                         .not('longitude', 'is', null),
 
@@ -738,9 +742,27 @@ export default function MapHome() {
                     });
                 }
 
+                // Debug: Log raw fetch results
+                if (profilesResult.error) {
+                    console.error('❌ [MapHome] Fetch Error:', profilesResult.error);
+                }
+                console.log('📍 [MapHome] Raw Profiles Fetched:', profilesResult.data?.length, profilesResult.data);
+
                 // Filter and map users (exclude blocked users, those with location off, AND current user)
-                const validUsers = profilesResult.data
-                    .filter(u => !allBlockedIds.has(u.id) && u.id !== currentUser.id && u.is_location_on !== false)
+                const validUsers = (profilesResult.data || [])
+                    .filter(u => {
+                        const isBlocked = allBlockedIds.has(u.id);
+                        const isMe = u.id === currentUser.id;
+                        const isLocationOff = u.is_location_on === false; // Strict check? Or checking for NULL?
+                        // Query already filters .eq('is_location_on', true). So u.is_location_on SHOULD be true.
+                        // But if query failed to filter?
+                        
+                        if (isBlocked || isMe || isLocationOff) {
+                            // console.log(`🚫 Filtering User ${u.username}: Blocked=${isBlocked}, Me=${isMe}, LocOff=${isLocationOff}`);
+                            return false;
+                        }
+                        return true;
+                    })
                     .map(u => {
                         // Use actual avatar if available, otherwise gender-based fallback
                         const safeName = encodeURIComponent(u.username || u.full_name || 'User');
@@ -751,8 +773,11 @@ export default function MapHome() {
                         else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
 
                         // Micro-jitter for initial load
-                        const renderLat = u.latitude + (Math.random() - 0.5) * 0.0002;
-                        const renderLng = u.longitude + (Math.random() - 0.5) * 0.0002;
+                        // Ensure we work with Numbers
+                        const lat = parseFloat(u.latitude);
+                        const lng = parseFloat(u.longitude);
+                        const renderLat = lat + (Math.random() - 0.5) * 0.0002;
+                        const renderLng = lng + (Math.random() - 0.5) * 0.0002;
 
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
@@ -782,6 +807,7 @@ export default function MapHome() {
                             status: statusEmoji,
                             hide_status: u.hide_status,
                             show_last_seen: u.show_last_seen,
+                            relationshipStatus: u.relationship_status,
                             thought: statusMessage,
                             lastActive: u.last_active,
                             isLocationOn: u.is_location_on,
@@ -789,12 +815,15 @@ export default function MapHome() {
                             friendshipStatus: fData?.status || null,
                             friendshipId: fData?.id || null,
                             is_public: u.is_public,
+                            status_updated_at: u.status_updated_at, // 🔥 Critical for expiration check
                             // PRIVACY CHECK: Only show story if public OR friends
                             hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
                             hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
                         };
                     });
 
+                console.log("📍 [MapHome] Fetched Users:", validUsers.length, validUsers);
+                validUsers.forEach(u => console.log(`   - ${u.name}: ${u.lat}, ${u.lng} (Avatar: ${u.avatar ? 'Yes' : 'No'})`));
                 setNearbyUsers(validUsers);
             } catch (err) {
                 console.error(err);
@@ -818,7 +847,10 @@ export default function MapHome() {
                 }
 
                 // Check visibility criteria
-                const hasLocation = updatedUser.latitude && updatedUser.longitude;
+                const hasLocation =
+                    updatedUser.latitude != null &&
+                    updatedUser.longitude != null;
+
                 const isVisible = !updatedUser.is_ghost_mode && hasLocation && updatedUser.is_location_on === true;
 
                 setNearbyUsers(prev => {
@@ -830,8 +862,9 @@ export default function MapHome() {
                         let mapAvatar = getAvatar2D(updatedUser.avatar_url);
 
                         // Use EXACT coordinates for smooth updates (No Jitter on updates)
-                        const renderLat = updatedUser.latitude;
-                        const renderLng = updatedUser.longitude;
+                        // Use EXACT coordinates for smooth updates (No Jitter on updates)
+                        const renderLat = parseFloat(updatedUser.latitude);
+                        const renderLng = parseFloat(updatedUser.longitude);
 
                         const newUserObj = {
                             id: updatedUser.id,
@@ -844,12 +877,34 @@ export default function MapHome() {
                             thought: updatedUser.status_message,
                             lastActive: updatedUser.last_active,
                             isLocationShared: true,
+
+                            isLocationOn: updatedUser.is_location_on,
+                            relationshipStatus: updatedUser.relationship_status,
+
+                            status_updated_at: updatedUser.status_updated_at,
                             is_public: updatedUser.is_public,
-                            friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null, // Preserve local friendship state
-                            // Preserve story state but re-check privacy (e.g. if user went private)
-                            hasStory: exists ? (prev[existingIndex].hasStory && (updatedUser.is_public !== false || prev[existingIndex].friendshipStatus === 'accepted')) : false,
-                            hasUnseenStory: exists ? (prev[existingIndex].hasUnseenStory && (updatedUser.is_public !== false || prev[existingIndex].friendshipStatus === 'accepted')) : false
+
+                            friendshipStatus: exists
+                                ? prev[existingIndex].friendshipStatus
+                                : null,
+
+                            hasStory: exists
+                                ? (
+                                    prev[existingIndex].hasStory &&
+                                    (updatedUser.is_public !== false ||
+                                    prev[existingIndex].friendshipStatus === 'accepted')
+                                )
+                                : false,
+
+                            hasUnseenStory: exists
+                                ? (
+                                    prev[existingIndex].hasUnseenStory &&
+                                    (updatedUser.is_public !== false ||
+                                    prev[existingIndex].friendshipStatus === 'accepted')
+                                )
+                                : false
                         };
+
 
                         if (exists) {
                             // Update existing user
@@ -887,30 +942,37 @@ export default function MapHome() {
                     const img = new Image();
                     img.src = mapAvatar;
 
-                    setNearbyUsers(prev => {
+                   setNearbyUsers(prev => {
                         // Avoid duplicates
                         if (prev.some(u => u.id === newUser.id)) return prev;
+
                         // Add new user
                         return [...prev, {
                             id: newUser.id,
                             name: newUser.username || 'User',
-                            lat: newUser.latitude,
-                            lng: newUser.longitude,
+                            lat: parseFloat(newUser.latitude),
+                            lng: parseFloat(newUser.longitude),
                             avatar: mapAvatar,
                             originalAvatar: newUser.avatar_url,
                             status: newUser.status,
                             thought: newUser.status_message,
                             lastActive: newUser.last_active,
+
                             isLocationOn: true,
                             isLocationShared: true,
+                            relationshipStatus: newUser.relationship_status,
+
+                            status_updated_at: newUser.status_updated_at,
                             is_public: newUser.is_public,
-                            friendshipStatus: null, // Default
+
+                            friendshipStatus: null,
                             hasStory: false,
                             hasUnseenStory: false
                         }];
                     });
                 }
             })
+
             // Real-time Story Updates (Ring Indicator)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stories' }, (payload) => {
                 const story = payload.new;
@@ -1101,8 +1163,8 @@ export default function MapHome() {
     };
 
     const handleCompleteSetup = async () => {
-        if (!setupData.gender || !setupData.status) {
-            showToast("Please select Gender and Status!");
+        if (!setupData.gender || !setupData.relationshipStatus) {
+            showToast("Please select Gender and Relationship Status!");
             return;
         }
 
@@ -1136,10 +1198,18 @@ export default function MapHome() {
             // Update Profile
             const updates = {
                 gender: setupData.gender,
-                status: setupData.status,
+                // status: setupData.status, // Don't overwrite status here, let it be default or whatever it was
+                relationship_status: setupData.relationshipStatus,
                 username: setupData.username,
                 avatar_url: finalAvatarUrl
             };
+            
+            // If status is empty, set a default "Available"
+            if (!setupData.status) {
+                updates.status = 'Available';
+            } else {
+                updates.status = setupData.status;
+            }
 
             // Validate username
             if (!updates.username) {
@@ -1626,52 +1696,62 @@ export default function MapHome() {
         );
     }, [currentUser, userLocation?.lat, userLocation?.lng]);
 
-
-
-
-
-    // 4. Main App (Map & Overlays)
+ // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
 
-    // --- FILTERING LOGIC ---
     const filteredUsers = useMemo(() => {
+
         if (!nearbyUsers || !currentUser) return [];
 
-        // ✅ GLOBAL GATE: Only show users whose location is ON
-        const visibleUsers = nearbyUsers.filter(u => u.is_location_on === true);
+        // 🌎 GLOBAL RULE (MOST IMPORTANT)
+        // ONLY users with LOCATION ON appear on map
+        const visibleUsers = nearbyUsers.filter(u =>
+            u.isLocationOn === true &&
+            u.lat != null &&
+            u.lng != null   
+        );
 
-        // My current location (from live GPS context, fallback to DB coords)
         const myLat = userLocation?.lat ?? currentUser?.latitude;
         const myLng = userLocation?.lng ?? currentUser?.longitude;
 
         switch (activeFilter) {
-            case 'Online':
-                // Show users who are actively using the app (last seen < 5 minutes)
-                return visibleUsers.filter(u => {
-                    if (!u.lastActive) return false;
-                    const diffMs = Date.now() - new Date(u.lastActive).getTime();
-                    return diffMs < 5 * 60 * 1000; // active within 5 minutes
-                });
 
-            case 'Nearby':
-                // Show users within 300 metres of the current user
-                return visibleUsers.filter(u => {
-                    if (!myLat || !myLng) return false;
-                    const dist = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng) * 1000; // metres
-                    return dist <= 300;
-                });
+        case "Online":
+            return visibleUsers.filter(u => {
+                if (!u.lastActive) return false;
+                const diff =
+                    Date.now() - new Date(u.lastActive).getTime();
+                return diff < 5 * 60 * 1000;
+            });
 
-            case 'Friends':
-                // Show only accepted friends
-                return visibleUsers.filter(u => u.friendshipStatus === 'accepted');
+        case "Nearby":
+            return visibleUsers.filter(u => {
+                if (!myLat || !myLng) return false;
 
-            case 'All':
-            default:
-                // Show everyone with location ON
-                return visibleUsers;
-        }
-    }, [nearbyUsers, activeFilter, currentUser, userLocation]);
+                const dist =
+                    getDistanceFromLatLonInKm(
+                        myLat,
+                        myLng,
+                        u.lat,
+                        u.lng
+                    ) * 1000;
+
+                return dist <= 300;
+            });
+
+        case "Friends":
+            return visibleUsers.filter(
+                u => u.friendshipStatus === "accepted"
+            );
+
+        case "All":
+        default:
+            return visibleUsers;
+    }
+
+}, [nearbyUsers, activeFilter, currentUser, userLocation]);
+
 
     // Search Suggestions (derived from ALL users, ignoring current tab filter to find anyone)
     const searchResults = useMemo(() => {
@@ -1752,6 +1832,7 @@ export default function MapHome() {
         });
 
         return processedUsers.map(u => {
+            console.log(`📍 [MapHome] Rendering Marker for ${u.name}: [${u.lat}, ${u.lng}]`);
             // Check thought expiration (3 hours)
             let displayThought = u.thought;
             if (u.status_updated_at) {
@@ -1761,7 +1842,7 @@ export default function MapHome() {
 
             return (
                 <Marker
-                    key={`${u.id}-${u.avatar}`}
+                    key={u.id}
                     position={[u.lat, u.lng]}
                     icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
                     riseOnHover={true}
@@ -1824,14 +1905,30 @@ export default function MapHome() {
     useEffect(() => {
         if (locationEnabled && currentUser) {
             if (currentUser.is_ghost_mode || currentUser.is_location_on === false) {
-                setCurrentUser(prev => ({
-                    ...prev,
-                    is_ghost_mode: false,
-                    is_location_on: true
-                }));
+                setCurrentUser(prev => {
+                    if (!prev) return prev;
+
+                    if (
+                        prev.is_ghost_mode === false &&
+                        prev.is_location_on === true
+                    ) {
+                        return prev; // prevent unnecessary re-render
+                    }
+
+                    return {
+                        ...prev,
+                        is_ghost_mode: false,
+                        is_location_on: true
+                    };
+                });
             }
         }
-    }, [locationEnabled, currentUser]);
+    }, [
+        locationEnabled,
+        currentUser?.is_ghost_mode,
+        currentUser?.is_location_on
+    ]);
+
 
     // 1️⃣ Loading
     if (loadingLocation) {
@@ -2073,8 +2170,8 @@ export default function MapHome() {
                                 {['Single', 'Married', 'Committed', 'Open to Date'].map(s => (
                                     <button
                                         key={s}
-                                        className={`chip ${setupData.status === s ? 'selected' : ''}`}
-                                        onClick={() => setSetupData({ ...setupData, status: s })}
+                                        className={`chip ${setupData.relationshipStatus === s ? 'selected' : ''}`}
+                                        onClick={() => setSetupData({ ...setupData, relationshipStatus: s })}
                                     >{s}</button>
                                 ))}
                             </div>
@@ -2291,17 +2388,18 @@ export default function MapHome() {
                         <button
                             className={`control-btn ${currentUser?.is_ghost_mode ? 'active' : ''}`}
                             style={{ background: 'var(--bg-primary, #ffffff)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
-                            onClick={async () => {
+                            onClick={() => {
                                 if (currentUser?.is_ghost_mode) {
-                                    // Currently Hidden -> Become Visible
-                                    requestLocation();
+                                    // Hidden → Visible
+                                    startLocation();
                                     showToast("👁️ Ghost Mode OFF (Visible)");
                                 } else {
-                                    // Currently Visible -> Become Hidden
-                                    disableLocation();
+                                    // Visible → Hidden
+                                    stopLocation();
                                     showToast("👻 Ghost Mode ON (Hidden)");
                                 }
                             }}
+
                             title="Toggle Ghost Mode"
                         >
                             {currentUser?.is_ghost_mode ? (
@@ -2827,7 +2925,7 @@ export default function MapHome() {
                     position: absolute;
                     top: 100px; /* Below Top Nav which might be hidden on map, or just safe top area */
                     /* Actually MapHome usually has no top nav, so maybe top: 20px */
-                    top: 20px;
+                    top: max(20px, calc(10px + env(safe-area-inset-top))); /* Notch support */
                     left: 50%;
                     transform: translateX(-50%);
                     background: rgba(255, 69, 58, 0.9);
@@ -3024,6 +3122,33 @@ export default function MapHome() {
                     display: flex; justify-content: center;
                     z-index: 999;
                     pointer-events: none; 
+                }
+                
+                /* INJECTED AVATAR STYLES (Backup if App.css fails) */
+                .avatar-group {
+                    position: relative;
+                    width: 50px; height: 50px;
+                    overflow: visible;
+                }
+                .avatar-marker {
+                    width: 100%; height: 100%;
+                    background-size: cover; background-position: center;
+                    border-radius: 50%;
+                    border: 3px solid #FFFFFF;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                    background-color: #333;
+                }
+                .thought-bubble {
+                    position: absolute;
+                    bottom: 125%; left: 50%;
+                    transform: translateX(-50%);
+                    background: white; color: black;
+                    padding: 4px 8px; border-radius: 12px;
+                    font-size: 0.75rem; white-space: nowrap;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    border: 2px solid #4285F4;
+                    z-index: 9999;
+                    text-align: center;
                 }
                 
                 /* SMOOTH MARKER ANIMATIONS - REVERTED */

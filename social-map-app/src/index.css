@@ -79,6 +79,8 @@ button {
   cursor: pointer;
   border: none;
   font-family: inherit;
+  user-select: none;
+  -webkit-user-select: none; /* iOS */
 }
 
 #root {
@@ -144,6 +146,7 @@ html[data-theme="dark"] button {
     -moz-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent; /* Remove grey tap highlight */
   }
 
   body {

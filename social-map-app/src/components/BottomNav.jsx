@@ -81,7 +81,8 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
         .bottom-nav {
           position: fixed;
           bottom: 0; left: 0; right: 0;
-          height: 60px; /* Reduced specific height for sleekness */
+          bottom: 0; left: 0; right: 0;
+          height: calc(60px + env(safe-area-inset-bottom)); /* Dynamic height for safe area content */
           background: var(--glass-bg);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);

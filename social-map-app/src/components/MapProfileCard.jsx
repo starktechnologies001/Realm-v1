@@ -245,7 +245,12 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                                 🤝 Friend
                                             </span>
                                         )}
-                                        {!user.hide_status && <span className="badge-pill status">{user.status || 'Available'}</span>}
+                                        {user.relationshipStatus && (
+                                            <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>
+                                                {user.relationshipStatus}
+                                            </span>
+                                        )}
+                                        {!user.hide_status && user.status && <span className="badge-pill status">{user.status}</span>}
                                         {(() => {
                                             const lastActive = getLastActive(user.lastActive);
                                             if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
@@ -640,6 +645,31 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                     }
                     .danger .label { color: #ff453a; }
                     .danger .icon { color: #ff453a; }
+
+                    /* Mobile: shrink card to fit screen */
+                    @media (max-width: 480px) {
+                        .user-profile-card {
+                            padding: 20px 16px 28px;
+                            gap: 16px;
+                        }
+                        .avatar-large-container {
+                            width: 76px; height: 76px;
+                        }
+                        .user-info-area h2 {
+                            font-size: 1.2rem;
+                        }
+                        .user-info-area h2 span {
+                            font-size: 1rem;
+                        }
+                        .action-grid {
+                            gap: 8px;
+                            margin-top: 8px;
+                        }
+                        .action-btn .icon { font-size: 22px; }
+                        .action-btn .label { font-size: 11px; }
+                        .badge-pill { font-size: 0.75rem; padding: 4px 12px; }
+                        .thought-bubble-large { padding: 8px 14px; font-size: 0.9rem; }
+                    }
                     
                 `}</style>
             </motion.div>

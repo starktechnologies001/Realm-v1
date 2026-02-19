@@ -77,8 +77,8 @@ useEffect(() => {
           }
       }
 
-      // If OAuth user is missing required fields, redirect to setup
-      if (profile && (!profile.gender || !profile.status)) {
+      // If OAuth user is missing required fields OR profile doesn't exist yet, redirect to setup
+      if (!profile || !profile.gender || !profile.status) {
         navigate('/oauth-profile-setup');
         return;
       }
@@ -117,8 +117,8 @@ useEffect(() => {
           .eq('id', session.user.id)
           .single();
 
-        if (profile && (!profile.gender || !profile.status)) {
-             // Incomplete profile -> Go to setup
+        if (!profile || !profile.gender || !profile.status) {
+             // Incomplete profile or missing -> Go to setup
              navigate('/oauth-profile-setup');
         } else {
              // Complete -> Go to map

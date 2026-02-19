@@ -99,16 +99,29 @@ export default function Chat() {
     // 🔗 URL PERSISTENCE LOGIC (Re-open chat on refresh)
     // ------------------------------------------------------------------
     
-    // 1. Sync URL with activeChatUser
+    // 1. Sync URL with activeChatUser — push a history entry so back button can return to chat list
     useEffect(() => {
         if (activeChatUser) {
-            // Update URL without reload
+            // Push a new history entry so the browser back gesture can be intercepted
             const newUrl = `${window.location.pathname}?chatId=${activeChatUser.id}`;
-            window.history.replaceState(null, '', newUrl);
+            window.history.pushState({ chatId: activeChatUser.id }, '', newUrl);
         } else {
             // Clear param
             window.history.replaceState(null, '', window.location.pathname);
         }
+    }, [activeChatUser]);
+
+    // Intercept browser/device back button while in a chat room
+    useEffect(() => {
+        const handlePopState = (e) => {
+            // If we have an active chat, intercept back and go to chat list
+            if (activeChatUser) {
+                setActiveChatUser(null);
+                // Do NOT call navigate(-1) — staying on /chat page
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
     }, [activeChatUser]);
 
     // 2. Restore chat from URL on Load
@@ -680,6 +693,8 @@ export default function Chat() {
                 quickReplyText={location.state?.quickReplyText} // Pass quick reply text from navigation
                 onBack={() => {
                     setActiveChatUser(null);
+                    // Go back in history to keep browser history in sync
+                    window.history.back();
                     // Refresh chat list to show latent changes if any
                     loadChats(currentUser.id);
                 }}
@@ -3795,7 +3810,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     background: rgba(10, 10, 10, 0.7);
                     backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
                     border-bottom: 1px solid rgba(255,255,255,0.08);
-                    padding: 15px 20px; display: flex; align-items: center; gap: 15px;
+                    padding: 15px 20px; 
+                    padding-top: calc(15px + env(safe-area-inset-top)); /* Notch support */
+                    display: flex; align-items: center; gap: 15px;
                     z-index: 10;
                 }
                 

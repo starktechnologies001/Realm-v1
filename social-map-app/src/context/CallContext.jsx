@@ -104,7 +104,7 @@ export const CallProvider = ({ children }) => {
 
     // Global Realtime Listeners (Filtered by ID for Robustness)
     useEffect(() => {
-        if (!currentUser) return;
+        if (!currentUser?.id) return;
 
         console.log('%c📡 Call System v2.1 (Filtered) Active for:', 'color: green; font-weight: bold; font-size: 14px', currentUser.id);
 

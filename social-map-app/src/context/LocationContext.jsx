@@ -18,6 +18,7 @@ export function LocationProvider({ children }) {
   // Making the function async breaks the gesture chain on iOS.
   // ----------------------------------------
   const startLocation = () => {
+    if (loadingLocation) return;
 
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser.");
@@ -120,11 +121,33 @@ export function LocationProvider({ children }) {
               latitude: newLoc.lat,
               longitude: newLoc.lng,
               last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+              is_location_on: true,
+              is_ghost_mode: false
             }).eq("id", session.user.id);
           }
         });
       },
-      (err) => console.log("⚠️ Watch error:", err.code, err.message),
+      (err) => {
+        console.log("⚠️ Watch error:", err.code, err.message);
+
+        if (watchIdRef.current) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+        }
+
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            supabase.from("profiles").update({
+              latitude: null,
+              longitude: null,
+              last_location: null,
+              is_location_on: false,
+              is_ghost_mode: true
+            }).eq("id", session.user.id);
+          }
+        });
+      },
+
       { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     );
   };
@@ -182,6 +205,16 @@ export function LocationProvider({ children }) {
       setLoadingLocation(false);
     });
   }, []);
+
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
 
   return (
     <LocationContext.Provider
