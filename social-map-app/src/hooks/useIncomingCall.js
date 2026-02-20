@@ -41,7 +41,7 @@ export const useIncomingCall = (userId) => {
             .from('profiles')
             .select('id, username, full_name, avatar_url')
             .eq('id', payload.payload.caller_id)
-            .single();
+            .maybeSingle();
 
           setIncomingCall({
             ...payload.payload,

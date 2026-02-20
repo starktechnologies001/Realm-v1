@@ -53,7 +53,7 @@ export const CallProvider = ({ children }) => {
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single();
+                .maybeSingle();
             
             if (profile) setCurrentUser(profile);
         };
@@ -183,7 +183,7 @@ export const CallProvider = ({ children }) => {
                     // Ideally we fetch caller profile first.
                     
                     // Processing continue...
-                    const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', payload.new.caller_id).single();
+                    const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', payload.new.caller_id).maybeSingle();
                     if (callerProfile) {
                         // Double check tombstone after async await (Critical!)
                         if (ignorableCallIds.current.has(payload.new.id)) return;
@@ -294,7 +294,7 @@ export const CallProvider = ({ children }) => {
                 content: JSON.stringify(contentPayload),
                 message_type: 'call_log', // Special type for Chat.jsx
                 is_read: true // System messages read by default
-            }).select().single();
+            }).select().maybeSingle();
 
             if (error) {
                 console.error("Error logging call message:", error);

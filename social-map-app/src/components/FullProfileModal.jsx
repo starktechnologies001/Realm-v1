@@ -4,6 +4,27 @@ import { supabase } from '../supabaseClient';
 import { getAvatar2D } from '../utils/avatarUtils';
 import { canViewStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 
+// Helper to safely format dates, particularly for mobile Safari/WebViews
+const formatSafeDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+        // If it's precisely YYYY-MM-DD, parse manually to avoid mobile timezone shifts / Invalid Date bugs
+        if (typeof dateStr === 'string' && dateStr.length >= 10 && dateStr.includes('-')) {
+            const [y, m, d] = dateStr.substring(0, 10).split('-');
+            const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+            if (!isNaN(dateObj.getTime())) {
+                return dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            }
+        }
+        // Fallback for full timestamps
+        const dateObj = new Date(dateStr);
+        if (isNaN(dateObj.getTime())) return null;
+        return dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch (e) {
+        return null;
+    }
+};
+
 export default function FullProfileModal({ user, currentUser, onClose, onAction }) {
     const [stats, setStats] = useState({
         mutuals: 0,
@@ -135,7 +156,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 mutuals: mutualCount,
                 joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: '2-digit' }) : 'Unknown',
                 bio: profile?.bio || 'No bio available.',
-                birthDate: profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null,
+                birthDate: formatSafeDate(profile?.birth_date),
                 interests: profile?.interests || [],
                 username: profile?.username || user.username || user.name 
             });

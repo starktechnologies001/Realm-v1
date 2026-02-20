@@ -19,7 +19,7 @@ export const initiateCall = async (callerId, receiverId, callType) => {
         status: 'ringing'
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 

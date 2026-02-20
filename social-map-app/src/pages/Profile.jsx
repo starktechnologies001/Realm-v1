@@ -143,7 +143,8 @@ export default function Profile() {
 
     const fetchProfile = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
             if (!user) {
                 navigate('/login');
                 return;
@@ -153,7 +154,7 @@ export default function Profile() {
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
-                .single();
+                .maybeSingle();
 
             if (error) throw error;
 
@@ -295,8 +296,9 @@ export default function Profile() {
 
         try {
             // 2. Refresh Auth User to ensure we have the email (and session exists)
-            const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-            if (userError || !authUser) throw new Error("Session expired. Please log in again.");
+            const { data: { session } } = await supabase.auth.getSession();
+            const authUser = session?.user;
+            if (!authUser) throw new Error("Session expired. Please log in again.");
 
             // 3. Verify Current Password by attempting a sign-in
             // This is the standard pattern to "re-authenticate" before sensitive actions

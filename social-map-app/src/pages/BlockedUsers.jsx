@@ -17,7 +17,8 @@ export default function BlockedUsers() {
 
     const fetchBlockedUsers = async () => {
         setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
 
         // Fetch blocked users and join with profiles
@@ -51,7 +52,8 @@ export default function BlockedUsers() {
     const handleUnblock = async (targetId, name) => {
         if (!window.confirm(`Unblock ${name}?`)) return;
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         const result = await unblockUser(user.id, targetId);
 
         if (result.success) {

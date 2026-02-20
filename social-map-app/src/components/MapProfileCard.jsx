@@ -245,14 +245,17 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                                 🤝 Friend
                                             </span>
                                         )}
-                                        {user.relationshipStatus && (
+                                        {!user.hide_status && user.relationshipStatus && (
                                             <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>
                                                 {user.relationshipStatus}
                                             </span>
                                         )}
-                                        {!user.hide_status && user.status && <span className="badge-pill status">{user.status}</span>}
+                                        {user.status && <span className="badge-pill status">{user.status}</span>}
                                         {(() => {
                                             const lastActive = getLastActive(user.lastActive);
+                                            // Prevent showing "Online" twice if user.status is already "Online"
+                                            if (lastActive === 'Online' && user.status === 'Online') return null;
+
                                             if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
                                                 return <span className="badge-pill active-time">{lastActive}</span>;
                                             }

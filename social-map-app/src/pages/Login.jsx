@@ -62,7 +62,7 @@ useEffect(() => {
         .from('profiles')
         .select('id, gender, status, avatar_url')
         .eq('id', userData.user.id)
-        .single();
+        .maybeSingle();
       
       // Avatar Self-Healing for OAuth/Auto-Login
       if (profile && userData.user.user_metadata?.avatar_url) {
@@ -78,26 +78,22 @@ useEffect(() => {
       }
 
       // If OAuth user is missing required fields OR profile doesn't exist yet, redirect to setup
+      console.log("🟡 [Login checkExistingSession] Checking profile completeness:", profile);
+      // Ensure LocalStorage is synced (MapHome uses it for optimistic loading)
+      const currentStored = localStorage.getItem('currentUser');
+      if (!currentStored) {
+          localStorage.setItem('currentUser', JSON.stringify({
+              id: profile?.id || userData.user.id,
+          }));
+      }
+
       if (!profile || !profile.gender || !profile.status) {
-        navigate('/oauth-profile-setup');
+        console.log("🟡 [Login checkExistingSession] Missing profile data. Redirecting to /map to show setup modal");
+        navigate('/map', { state: { preloadedAvatar: profile?.avatar_url || userData.user.user_metadata?.avatar_url } });
         return;
       }
       
-      // Ensure LocalStorage is synced (MapHome uses it for optimistic loading)
-      if (profile) {
-          const currentStored = localStorage.getItem('currentUser');
-          if (!currentStored) {
-              localStorage.setItem('currentUser', JSON.stringify({
-                  id: profile.id,
-                  // We might not have all fields here due to limited select, but ID is critical
-                  // Actually, MapHome fetches fresh profile, so ID is enough to start.
-                  // But to be safe let's trust MapHome's fetch.
-                  // However, if we want strict optimistic load, we might want more data.
-                  // For now, let's just let MapHome handle the full fetch.
-                  // BUT we must ensure the HEALED avatar is in DB, which we just did.
-              }));
-          }
-      }
+      console.log("🟡 [Login checkExistingSession] Profile complete.");
       
       navigate('/map', { state: { preloadedAvatar: profile?.avatar_url || userData.user.user_metadata?.avatar_url } });
     }
@@ -111,16 +107,30 @@ useEffect(() => {
       if (event === 'SIGNED_IN' && session && mounted) {
         
         // Check if profile is complete
+        console.log("🟢 [Login AuthStateChange] SIGNED_IN event for user:", session.user.id);
         const { data: profile } = await supabase
           .from('profiles')
           .select('gender, status')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
+
+        console.log("🟢 [Login AuthStateChange] Fetched profile:", profile);
+
+        // Guarantee LocalStorage is populated to prevent MapHome from bouncing back
+        const currentStored = localStorage.getItem('currentUser');
+        if (!currentStored) {
+            localStorage.setItem('currentUser', JSON.stringify({
+                id: session.user.id
+            }));
+        }
 
         if (!profile || !profile.gender || !profile.status) {
-             // Incomplete profile or missing -> Go to setup
-             navigate('/oauth-profile-setup');
+             console.log("🟢 [Login AuthStateChange] Missing profile data. Redirecting to /map to show setup modal");
+             // Incomplete profile or missing -> Go to map where the modal will appear
+             const avatar = session.user?.user_metadata?.avatar_url;
+             navigate('/map', { state: { preloadedAvatar: avatar } });
         } else {
+             console.log("🟢 [Login AuthStateChange] Profile complete. Redirecting to /map");
              // Complete -> Go to map
              const avatar = session.user?.user_metadata?.avatar_url;
              navigate('/map', { state: { preloadedAvatar: avatar } });
@@ -191,7 +201,7 @@ useEffect(() => {
           .from('profiles')
           .select('username')
           .eq('username', username)
-          .single();
+          .maybeSingle();
         
         if (data) {
           showMessage('Username already exists', 'error');
@@ -235,7 +245,7 @@ useEffect(() => {
           .from('profiles')
           .select('username')
           .eq('username', username)
-          .single();
+          .maybeSingle();
         
         if (data) {
           setUsernameError('Username is already taken');
@@ -400,7 +410,7 @@ useEffect(() => {
           .from('profiles')
           .select('email')
           .eq('username', username)
-          .single();
+          .maybeSingle();
 
         if (profileError || !profileData || !profileData.email) {
           throw new Error('Username not found. Please check your username.');
@@ -419,7 +429,7 @@ useEffect(() => {
             .from('profiles')
             .select('*')
             .eq('id', data.session.user.id)
-            .single();
+            .maybeSingle();
 
           if (profileError) {
             console.error('Profile fetch error:', profileError);

@@ -49,13 +49,14 @@ export const ThemeProvider = ({ children }) => {
                 }
 
                 // Then sync with database
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { session } } = await supabase.auth.getSession();
+                const user = session?.user;
                 if (user) {
                     const { data: profile } = await supabase
                         .from('profiles')
                         .select('app_theme')
                         .eq('id', user.id)
-                        .single();
+                        .maybeSingle();
 
                     if (profile?.app_theme) {
                         let dbTheme = profile.app_theme;
@@ -86,7 +87,8 @@ export const ThemeProvider = ({ children }) => {
 
         // Save to database
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
             if (user) {
                 await supabase
                     .from('profiles')

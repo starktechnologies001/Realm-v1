@@ -26,7 +26,7 @@ export const usePresence = (userId, viewerId) => {
           .from('profiles')
           .select('is_online, last_active, show_last_seen')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
         if (targetError) throw targetError;
 
@@ -37,7 +37,7 @@ export const usePresence = (userId, viewerId) => {
             .from('profiles')
             .select('show_last_seen')
             .eq('id', viewerId)
-            .single();
+            .maybeSingle();
             
             if (!viewerError && viewerData) {
                 viewerShows = viewerData.show_last_seen !== false;

@@ -372,7 +372,7 @@ export default function Chat() {
             .from('profiles')
             .select('*')
             .eq('id', userId)
-            .single();
+            .maybeSingle();
             
         if (profile) {
             setChats(prev => {
@@ -563,7 +563,8 @@ export default function Chat() {
 
 
     const initChat = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) {
             navigate('/login');
             return;
@@ -574,7 +575,7 @@ export default function Chat() {
             .from('profiles')
             .select('*')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
             
         setCurrentUser(profile || user);
         
@@ -1965,7 +1966,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             }
 
             // 2. Fetch Profile Wallpaper
-            const { data: profile } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).single();
+            const { data: profile } = await supabase.from('profiles').select('chat_background').eq('id', currentUser.id).maybeSingle();
             
             // Logic: Only apply global wallpaper if the current theme is Default ('clean_slate')
             // This ensures specific themes override the global wallpaper
@@ -2257,7 +2258,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                  .from('messages')
                                  .select('id, sender_id, content, message_type, image_url')
                                  .eq('id', payload.new.reply_to_message_id)
-                                 .single();
+                                 .maybeSingle();
                              if (fetchedReply) replyToData = fetchedReply;
                          }
                     }
@@ -2509,7 +2510,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             .from('profiles')
             .select('last_active')
             .eq('id', targetUser.id)
-            .single();
+            .maybeSingle();
         
         const isReceiverOnline = receiverProfile?.last_active && 
             (new Date() - new Date(receiverProfile.last_active)) < 60000;
@@ -2682,7 +2683,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         is_read: true
                     })
                     .select()
-                    .single();
+                    .maybeSingle();
 
                 if (messageError) throw messageError;
 

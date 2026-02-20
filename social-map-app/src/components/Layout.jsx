@@ -31,7 +31,7 @@ export default function Layout() {
                     .from('profiles')
                     .select('*')
                     .eq('id', session.user.id)
-                    .single();
+                    .maybeSingle();
                  
                 if (profile) {
                     const recoveredUser = {
@@ -78,6 +78,7 @@ export default function Layout() {
                  } else if (event === 'SIGNED_OUT') {
                      // Optional: clear local storage
                      // localStorage.removeItem('currentUser'); // Let MapHome handle redirect logic
+                     localStorage.removeItem('setup_complete'); // Fix: Ensure setup flow works for next user
                      setCurrentUserId(null);
                      setCheckingAuth(false);
                  }
@@ -157,7 +158,7 @@ export default function Layout() {
                  // System Notification if Hidden
                  if (document.hidden && Notification.permission === 'granted') {
                      // 1. Check Global Mute
-                     const { data: userData } = await supabase.from('profiles').select('mute_settings').eq('id', session.user.id).single();
+                     const { data: userData } = await supabase.from('profiles').select('mute_settings').eq('id', session.user.id).maybeSingle();
                      if (userData?.mute_settings?.mute_all) {
                          const expiry = userData.mute_settings.muted_until;
                          if (!expiry || new Date(expiry) > new Date()) return;
@@ -168,7 +169,7 @@ export default function Layout() {
                      if (chatSettings?.muted_until && new Date(chatSettings.muted_until) > new Date()) return;
 
                      // 3. Fetch Sender Details
-                     const { data: sender } = await supabase.from('profiles').select('username, full_name, avatar_url').eq('id', newMsg.sender_id).single();
+                     const { data: sender } = await supabase.from('profiles').select('username, full_name, avatar_url').eq('id', newMsg.sender_id).maybeSingle();
                      
                      if (sender) {
                          // 4. Show Notification

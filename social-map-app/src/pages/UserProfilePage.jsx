@@ -6,7 +6,20 @@ import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERI
 
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    try {
+        if (typeof dateStr === 'string' && dateStr.length >= 10 && dateStr.includes('-')) {
+            const [y, m, d] = dateStr.substring(0, 10).split('-');
+            const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+            if (!isNaN(dateObj.getTime())) {
+                return dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            }
+        }
+        const dateObj = new Date(dateStr);
+        if (isNaN(dateObj.getTime())) return 'N/A';
+        return dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch (e) {
+        return 'N/A';
+    }
 };
 
 const formatJoinDate = (dateStr) => {

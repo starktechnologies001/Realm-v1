@@ -131,7 +131,7 @@ export const getPresenceStatus = async (targetUserId, viewerId) => {
       .from('profiles')
       .select('is_online, last_active_at, show_online_status, last_seen_privacy')
       .eq('id', targetUserId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -156,7 +156,7 @@ export const getPresenceStatus = async (targetUserId, viewerId) => {
         .select('id')
         .or(`and(user_id.eq.${viewerId},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${viewerId})`)
         .eq('status', 'accepted')
-        .single();
+        .maybeSingle();
 
       canViewLastSeen = !!friendship;
     }

@@ -46,7 +46,7 @@ export default function PokeNotifications({ currentUser }) {
                         .from('profiles')
                         .select('id, full_name, username, avatar_url, gender')
                         .eq('id', payload.new.requester_id)
-                        .single();
+                        .maybeSingle();
 
                     if (requester) {
                         const newPoke = {
@@ -82,7 +82,7 @@ export default function PokeNotifications({ currentUser }) {
                         .from('profiles')
                         .select('id, full_name, username, avatar_url, gender')
                         .eq('id', payload.new.requester_id)
-                        .single();
+                        .maybeSingle();
 
                     if (requester) {
                          const newPoke = { ...payload.new, requester };

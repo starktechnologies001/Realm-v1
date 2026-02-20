@@ -258,7 +258,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         type: callData.type,
                         status: 'pending',
                         channel_name: channelName
-                    }).select().single();
+                    }).select().maybeSingle();
 
                     if (insertedCall) {
                         callDbId.current = insertedCall.id;

@@ -271,7 +271,8 @@ export default function MapHome() {
     // Fetch Notifications
     useEffect(() => {
         const fetchNotifications = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
             if (!user) return;
 
             // Requests
@@ -395,37 +396,40 @@ export default function MapHome() {
     // Check Profile Completeness
     useEffect(() => {
         const checkUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
             if (!user) return; // handled by other effect
 
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
-                .single();
+                .maybeSingle();
 
             // Bypass if locally flagged as complete (immediate fix for loop)
             const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
 
-            if (profile) {
-                // Safety Net: Trigger modal ONLY if critical info is missing (Gender/Status)
-                // This covers OAuth users who haven't set up.
-                // Manual signup users (who have gender/status) are skipped, even if they have default avatar.
-                if (!profile.gender || !profile.status) {
-                    console.log("⚠️ Incomplete profile detected (missing gender/status), opening setup modal.");
-                    setSetupData({
-                        username: profile.username,
-                        gender: profile.gender || '',
-                        status: profile.status || '',
-                        relationshipStatus: profile.relationship_status || '',
-                    });
-                    setShowProfileSetup(true);
-                }
+            // Safety Net: Trigger modal ONLY if critical info is missing (Gender/Status)
+            // or if the profile itself hasn't been synced from auth yet
+            if (!profile || !profile.gender || !profile.status) {
+                console.log("⚠️ Incomplete or missing profile detected, opening setup modal.");
+                setSetupData({
+                    username: profile?.username || '',
+                    gender: profile?.gender || '',
+                    status: profile?.status || '',
+                    relationshipStatus: profile?.relationship_status || '',
+                });
+                setShowProfileSetup(true);
+            }
 
+            if (profile) {
                 setCurrentUser(profile);
             }
 
-            if (setupCompleteLocal) {
+            // Only consider setupCompleteLocal if the profile ACTUALLY has the required fields
+            const isActuallyComplete = profile && profile.gender && profile.status;
+
+            if (setupCompleteLocal && isActuallyComplete) {
                 // Still potentially fix critical data silently, but don't block
             } else if (profile) {
                 // 1. Silently fix missing username (common with OAuth)
@@ -887,7 +891,7 @@ export default function MapHome() {
 
                     if (isVisible) {
                         // Prepare consistent avatar logic
-                        const mapAvatar = getAvatar2D(updatedUser.avatar_url);
+                        const mapAvatar = updatedUser.avatar_url;
 
                         // Use EXACT coordinates for smooth updates (No Jitter on updates)
                         // Use EXACT coordinates for smooth updates (No Jitter on updates)
@@ -970,7 +974,7 @@ export default function MapHome() {
                 ) {
 
                     // Preload Image Immediately
-                    const mapAvatar = getAvatar2D(newUser.avatar_url);
+                    const mapAvatar = newUser.avatar_url;
 
                     // Preload Image Immediately
                     const img = new Image();
@@ -1079,7 +1083,7 @@ export default function MapHome() {
                 .from('profiles')
                 .select('*')
                 .eq('id', parsedUser.id)
-                .single();
+                .maybeSingle();
 
             if (freshProfile) {
                 // Version Check for Avatar: Optimistic local update might be newer than DB
@@ -1109,6 +1113,19 @@ export default function MapHome() {
 
                 setCurrentUser(mergedUser);
                 localStorage.setItem('currentUser', JSON.stringify(mergedUser));
+
+                // Secondary Failsafe: Ensure OAuth users see the modal even if the first effect missed it
+                const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
+                if (!setupCompleteLocal && (!freshProfile.gender || !freshProfile.status)) {
+                    console.log("⚠️ [refreshProfile Failsafe] Incomplete profile detected, opening setup modal.");
+                    setSetupData({
+                        username: freshProfile.username || '',
+                        gender: freshProfile.gender || '',
+                        status: freshProfile.status || '',
+                        relationshipStatus: freshProfile.relationship_status || '',
+                    });
+                    setShowProfileSetup(true);
+                }
             }
             setLoading(false); // Fix: dismiss loading screen as soon as profile is handled
         };
@@ -1207,7 +1224,8 @@ export default function MapHome() {
 
             let userId = currentUser?.id;
             if (!userId) {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { session } } = await supabase.auth.getSession();
+                const user = session?.user;
                 if (!user) throw new Error("No authenticated user found.");
                 userId = user.id;
             }
@@ -1336,6 +1354,19 @@ export default function MapHome() {
                 .eq('id', currentUser.id);
 
             if (error) throw error;
+            
+            setNearbyUsers(prev =>
+            prev.map(u =>
+                u.id === currentUser.id
+                    ? {
+                        ...u,
+                        thought: myThought,
+                        status_updated_at: now,
+                        lastActive: now
+                      }
+                    : u
+            )
+        );
 
             showToast('Thought posted to map! 🌍');
         } catch (err) {
@@ -1370,7 +1401,7 @@ export default function MapHome() {
                 .select('*')
                 .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .eq('status', 'accepted')
-                .single();
+                .maybeSingle();
 
             if (data) {
                 const chatUser = {
@@ -1670,7 +1701,17 @@ export default function MapHome() {
         }
     };
 
+    const iconCache = useRef(new Map());
+
     const createAvatarIcon = (url, isSelf = false, thought = null, name = '', status = null) => {
+        // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
+        const isGhost = isSelf && currentUser?.is_ghost_mode;
+        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}`;
+        
+        if (iconCache.current.has(cacheKey)) {
+            return iconCache.current.get(cacheKey);
+        }
+
         let className = 'avatar-marker';
         // Ensure url is safely wrapped and background is configured
         // Use double quotes for style attribute, single for url
@@ -1678,7 +1719,7 @@ export default function MapHome() {
 
         if (isSelf) {
             className += ' self';
-            if (currentUser?.is_ghost_mode) {
+            if (isGhost) {
                 style += ' opacity: 0.5; filter: grayscale(100%);';
             }
         }   
@@ -1693,7 +1734,7 @@ export default function MapHome() {
                </div>`
             : '';
 
-        return L.divIcon({
+        const icon = L.divIcon({
             className: 'custom-avatar-icon',
             html: `
                 <div class="avatar-group">
@@ -1705,6 +1746,9 @@ export default function MapHome() {
             iconAnchor: [25, 25],
             popupAnchor: [0, -27]
         });
+
+        iconCache.current.set(cacheKey, icon);
+        return icon;
     };
 
     // Memoize current user marker to avoid hook order issues
@@ -1818,6 +1862,16 @@ export default function MapHome() {
         // Threshold: ~330m covers marker size even at Zoom 15. Ensures 1m-apart users get spiraled.
         const CLUSTER_THRESHOLD = 0.003; 
 
+        // ✅ Add current user as a hidden anchor to force separation 
+        // if anyone has the exact same coordinates (e.g. Realtime updates)
+        if (userLocation?.lat && userLocation?.lng) {
+            clusters.push([{ 
+                lat: userLocation.lat, 
+                lng: userLocation.lng, 
+                isVirtualCenter: true 
+            }]);
+        }
+
         // 2. Cluster Users
         sortedUsers.forEach(u => {
             let placed = false;
@@ -1836,26 +1890,37 @@ export default function MapHome() {
 
         // 3. Apply Spiral Layout
         const processedUsers = [];
-        // ~0.0003 deg ≈ 33m per step — guarantees avatars are visually separated
-        // even at max zoom (zoom 19 = ~0.3m/px, avatar ~50px = ~15m)
-        const SPIRAL_SPACING = 0.0003;
+        // Decreased from 0.0003 (~33m) to 0.00008 (~9m) to keep scattered avatars 
+        // close enough to still clearly indicate they are at the "same place"
+        const SPIRAL_SPACING = 0.00008;
         // Minimum radius so even the first user in a cluster doesn't sit at the exact center
         // when there are multiple users (prevents z-index stacking hiding avatars)
         const MIN_RADIUS = SPIRAL_SPACING;
 
         clusters.forEach(cluster => {
-            if (cluster.length === 1) {
-                processedUsers.push(cluster[0]);
-            } else {
-                // Calculate center of mass for the group
-                const avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
-                const avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
+            const hasVirtual = cluster[0].isVirtualCenter;
+            const actualUsers = hasVirtual ? cluster.slice(1) : cluster;
 
-                cluster.forEach((u, i) => {
+            if (actualUsers.length === 0) return; // Only virtual center, no one to spiral
+
+            if (actualUsers.length === 1 && !hasVirtual) {
+                processedUsers.push(actualUsers[0]);
+            } else {
+                // Calculate center of mass for the group (or just use anchor if virtual)
+                let avgLat = cluster[0].lat;
+                let avgLng = cluster[0].lng;
+                
+                if (!hasVirtual) {
+                    avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
+                    avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
+                }
+
+                actualUsers.forEach((u, i) => {
                     // Archimedean Spiral / Golden Angle Packing
-                    // i+1 ensures radius is never 0 — every user gets a unique position
-                    const angle = i * 2.4; // ~137.5 degrees (golden angle)
-                    const radius = MIN_RADIUS + SPIRAL_SPACING * Math.sqrt(i + 1);
+                    // If virtual center exists, shift index up by 1 so we don't place someone dead center
+                    const indexOffset = hasVirtual ? i + 1 : i;
+                    const angle = indexOffset * 2.4; // ~137.5 degrees (golden angle)
+                    const radius = MIN_RADIUS + SPIRAL_SPACING * Math.sqrt(indexOffset + 1);
 
                     processedUsers.push({
                         ...u,
@@ -2153,6 +2218,115 @@ export default function MapHome() {
             overflow: 'hidden',
             overscrollBehavior: 'none' 
         }}>
+            <style>{`
+                .onboarding-overlay {
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(0, 0, 0, 0.7);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 999999;
+                    padding: 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                }
+                .onboarding-card {
+                    background: #18181b;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 24px;
+                    padding: 32px 24px;
+                    width: 100%;
+                    max-width: 380px;
+                    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+                    color: white;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 20px;
+                }
+                .onboarding-card h2 {
+                    margin: 0;
+                    font-size: 1.6rem;
+                    color: #fff;
+                    text-align: left;
+                }
+                .onboarding-card h2 span.wave {
+                    color: #00a8ff;
+                }
+                .onboarding-card p {
+                    margin: 0;
+                    font-size: 0.95rem;
+                    color: #a1a1aa;
+                    text-align: left;
+                    margin-top: -12px;
+                }
+                .ob-section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+                .ob-section label {
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    color: #fff;
+                }
+                .ob-input {
+                    background: #27272a;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 12px;
+                    padding: 14px 16px;
+                    color: white;
+                    font-size: 1rem;
+                    outline: none;
+                    transition: all 0.2s;
+                }
+                .ob-input:focus {
+                    border-color: #0084ff;
+                    background: #2f2f33;
+                }
+                .chip-group {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+                .chip {
+                    background: transparent;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 20px;
+                    padding: 8px 18px;
+                    color: #a1a1aa;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .chip:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                }
+                .chip.selected {
+                    background: transparent;
+                    border-color: rgba(255, 255, 255, 0.3);
+                    color: white;
+                }
+                .complete-btn {
+                    background: #0084ff;
+                    color: white;
+                    border: none;
+                    border-radius: 14px;
+                    padding: 16px;
+                    font-size: 1.05rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    margin-top: 10px;
+                    transition: background 0.2s, transform 0.1s;
+                }
+                .complete-btn:hover {
+                    background: #0073e6;
+                }
+                .complete-btn:active {
+                    transform: scale(0.98);
+                }
+            `}</style>
             {/* PROFILE UPDATE NUDGE */}
             {currentUser && (
                 (!currentUser.avatar_url ||
@@ -3186,17 +3360,16 @@ export default function MapHome() {
                     text-align: center;
                 }
                 
-                /* SMOOTH MARKER ANIMATIONS - REVERTED */
-                /* User requested "show as previous" - effectively disabling smooth sliding 
-                   to prevent spiral chaos or unwanted motion blur. */
+                /* SMOOTH MARKER ANIMATIONS */
+                /* Re-enabled for real-time smooth location gliding */
                 .leaflet-marker-icon {
-                    /* transition: transform 0.8s ...; REMOVED */
+                    transition: transform 0.5s ease-out;
                     opacity: 1; 
                 }
                 
                 /* Class specific for avatars */
                 .leaflet-marker-icon.custom-avatar-icon {
-                    /* will-change: transform, opacity; REMOVED */
+                    will-change: transform, opacity;
                 }
 
                 .stats-card {
