@@ -531,7 +531,7 @@ export default function MapHome() {
         const fetchUnread = async () => {
             const { count, error } = await supabase
                 .from('messages')
-                .select('*', { count: 'exact', head: true })
+                .select('id', { count: 'exact', head: true })
                 .eq('receiver_id', currentUser.id)
                 .eq('is_read', false);
             if (!error) setUnreadCount(count || 0);
@@ -851,7 +851,12 @@ export default function MapHome() {
                     updatedUser.latitude != null &&
                     updatedUser.longitude != null;
 
-                const isVisible = !updatedUser.is_ghost_mode && hasLocation && updatedUser.is_location_on === true;
+                const isVisible =
+                    updatedUser.is_location_on === true &&
+                    updatedUser.is_ghost_mode === false &&
+                    updatedUser.latitude != null &&
+                    updatedUser.longitude != null;
+
 
                 setNearbyUsers(prev => {
                     const existingIndex = prev.findIndex(u => u.id === updatedUser.id);
@@ -934,7 +939,13 @@ export default function MapHome() {
                 if (blockedIdsRef.current.has(newUser.id)) return;
 
                 // Show new user if not in ghost mode and location is on
-                if (!newUser.is_ghost_mode && newUser.is_location_on !== false) {
+                if (
+                    newUser.is_location_on === true &&
+                    newUser.is_ghost_mode === false &&
+                    newUser.latitude != null &&
+                    newUser.longitude != null
+                ) {
+
                     // Preload Image Immediately
                     const mapAvatar = getAvatar2D(newUser.avatar_url);
 
@@ -1709,7 +1720,8 @@ export default function MapHome() {
         const visibleUsers = nearbyUsers.filter(u =>
             u.isLocationOn === true &&
             u.lat != null &&
-            u.lng != null   
+            u.lng != null &&
+            u.isLocationShared !== false
         );
 
         const myLat = userLocation?.lat ?? currentUser?.latitude;
