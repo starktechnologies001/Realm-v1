@@ -670,7 +670,6 @@ export default function MapHome() {
                         .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on')
                         .neq('id', currentUser.id)
                         .or('is_ghost_mode.eq.false,is_ghost_mode.is.null') // Allow NULL as false (visible)
-                        .eq('is_location_on', true)
                         .not('latitude', 'is', null)
                         .not('longitude', 'is', null),
 
@@ -824,7 +823,21 @@ export default function MapHome() {
 
                 console.log("📍 [MapHome] Fetched Users:", validUsers.length, validUsers);
                 validUsers.forEach(u => console.log(`   - ${u.name}: ${u.lat}, ${u.lng} (Avatar: ${u.avatar ? 'Yes' : 'No'})`));
-                setNearbyUsers(validUsers);
+                setNearbyUsers(prev => {
+                    const map = new Map();
+
+                    // keep existing realtime users
+                    prev.forEach(u => map.set(u.id, u));
+
+                    // update / insert fetched users
+                    validUsers.forEach(u => {
+                        map.set(u.id, {
+                            ...map.get(u.id),
+                            ...u
+                        });
+                    });
+                    return Array.from(map.values());
+                });
             } catch (err) {
                 console.error(err);
             }
@@ -837,6 +850,15 @@ export default function MapHome() {
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
                 console.log("📍 [MapHome] Realtime UPDATE received:", payload);
                 const updatedUser = payload.new;
+
+                console.log("Realtime UPDATE:", {
+                    username: updatedUser.username,
+                    is_location_on: updatedUser.is_location_on,
+                    is_ghost_mode: updatedUser.is_ghost_mode,
+                    latitude: updatedUser.latitude,
+                    longitude: updatedUser.longitude
+                });
+
                 if (updatedUser.id === currentUser.id) return; // Skip self
 
                 // FILTER BLOCKED USERS
@@ -852,10 +874,11 @@ export default function MapHome() {
                     updatedUser.longitude != null;
 
                 const isVisible =
-                    updatedUser.is_location_on === true &&
-                    updatedUser.is_ghost_mode === false &&
+                    updatedUser.is_location_on !== false &&
+                    updatedUser.is_ghost_mode !== true &&
                     updatedUser.latitude != null &&
                     updatedUser.longitude != null;
+
 
 
                 setNearbyUsers(prev => {
@@ -864,7 +887,7 @@ export default function MapHome() {
 
                     if (isVisible) {
                         // Prepare consistent avatar logic
-                        let mapAvatar = getAvatar2D(updatedUser.avatar_url);
+                        const mapAvatar = getAvatar2D(updatedUser.avatar_url);
 
                         // Use EXACT coordinates for smooth updates (No Jitter on updates)
                         // Use EXACT coordinates for smooth updates (No Jitter on updates)
