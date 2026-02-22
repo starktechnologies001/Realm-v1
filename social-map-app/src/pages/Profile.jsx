@@ -271,11 +271,12 @@ export default function Profile() {
     };
 
     const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
-    const [activeModal, setActiveModal] = useState(null); // 'password' or 'delete'
+    const [activeModal, setActiveModal] = useState(null); // 'edit-username', 'password', 'edit-bio', 'edit-interests'
     const [showPublicConfirm, setShowPublicConfirm] = useState(false);
 
     // Password Form State
     const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
+    const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
 
     const handleChangePassword = async (e) => {
         e.preventDefault();
@@ -525,10 +526,9 @@ export default function Profile() {
                 <div className="profile-info">
                     <div className="profile-username">@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</div>
                     <div className="tags-row">
-                        {user.status && !user.hide_status && <span className="tag status">{user.status}</span>}
-                        
-                        {/* Edit Avatar Button - Restored for 3D Avatar Editing */}
-
+                        {user.relationship_status && !user.hide_status && 
+                            <span className="tag status">{user.relationship_status}</span>
+                        }
                     </div>
 
                     {/* Bio Section */}
@@ -543,6 +543,13 @@ export default function Profile() {
                 {/* Section: Personal */}
                 <div className="section-label">Personal</div>
                 <div className="menu-group">
+                    <MenuItem
+                        icon={<div style={{ fontSize: '1.2rem', lineHeight: 1 }}>{user.mood || '😶'}</div>}
+                        label="Mood"
+                        value={user.mood ? 'Change Mood' : 'Add Mood'}
+                        iconClass="icon-personal"
+                        onClick={() => setActiveModal('edit-mood')}
+                    />
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>}
                         label="Username"
@@ -629,9 +636,6 @@ export default function Profile() {
                         </span>
                         <div className="menu-content">
                             <span className="menu-label">Public Profile</span>
-                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                {user.is_public !== false ? 'Visible to everyone' : 'Friends only'}
-                            </span>
                         </div>
                         <label className="toggle-switch">
                             <input 
@@ -910,32 +914,56 @@ export default function Profile() {
                                     <h3>Change Password</h3>
                                 </div>
                                 <form onSubmit={handleChangePassword} className="modal-form">
-                                    <div className="input-group">
+                                    <div className="input-group" style={{ position: 'relative' }}>
                                         <label>Current Password</label>
                                         <input 
-                                            type="password" 
+                                            type={showPasswords.current ? "text" : "password"} 
                                             placeholder="Enter current password"
                                             value={passForm.current} 
                                             onChange={e => setPassForm({ ...passForm, current: e.target.value })} 
+                                            style={{ paddingRight: '40px' }}
                                         />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowPasswords({...showPasswords, current: !showPasswords.current})} 
+                                            style={{ position: 'absolute', right: '12px', top: '38px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                                        >
+                                            {showPasswords.current ? '👁️' : '👁️‍🗨️'}
+                                        </button>
                                     </div>
-                                    <div className="input-group">
+                                    <div className="input-group" style={{ position: 'relative' }}>
                                         <label>New Password</label>
                                         <input 
-                                            type="password" 
+                                            type={showPasswords.new ? "text" : "password"} 
                                             placeholder="Enter new password"
                                             value={passForm.new} 
                                             onChange={e => setPassForm({ ...passForm, new: e.target.value })} 
+                                            style={{ paddingRight: '40px' }}
                                         />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowPasswords({...showPasswords, new: !showPasswords.new})} 
+                                            style={{ position: 'absolute', right: '12px', top: '38px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                                        >
+                                            {showPasswords.new ? '👁️' : '👁️‍🗨️'}
+                                        </button>
                                     </div>
-                                    <div className="input-group">
+                                    <div className="input-group" style={{ position: 'relative' }}>
                                         <label>Confirm Password</label>
                                         <input 
-                                            type="password" 
+                                            type={showPasswords.confirm ? "text" : "password"} 
                                             placeholder="Confirm new password"
                                             value={passForm.confirm} 
                                             onChange={e => setPassForm({ ...passForm, confirm: e.target.value })} 
+                                            style={{ paddingRight: '40px' }}
                                         />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowPasswords({...showPasswords, confirm: !showPasswords.confirm})} 
+                                            style={{ position: 'absolute', right: '12px', top: '38px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                                        >
+                                            {showPasswords.confirm ? '👁️' : '👁️‍🗨️'}
+                                        </button>
                                     </div>
                                     <div className="modal-footer">
                                         <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
@@ -968,6 +996,45 @@ export default function Profile() {
                         )}
 
 
+
+                        {activeModal === 'edit-mood' && (
+                            <>
+                                <div className="modal-header"><h3>Select Your Mood</h3></div>
+                                <div className="modal-form">
+                                    <div className="mood-selector" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '20px' }}>
+                                        {['😊', '😎', '😴', '🥳', '🤔', '😭', '🤯', '😡', '🤢', '👽', '👻', '💩', '☕️', '🍕', '🎮', '🎧'].map(emoji => (
+                                            <div 
+                                                key={emoji} 
+                                                onClick={async () => {
+                                                    await updateProfile({ mood: emoji, mood_updated_at: new Date().toISOString() });
+                                                    setActiveModal(null);
+                                                }}
+                                                style={{
+                                                    fontSize: '2rem',
+                                                    cursor: 'pointer',
+                                                    padding: '10px',
+                                                    borderRadius: '50%',
+                                                    background: user.mood === emoji ? 'rgba(0, 132, 255, 0.2)' : 'transparent',
+                                                    border: user.mood === emoji ? '1px solid #0084ff' : '1px solid transparent',
+                                                    transition: 'all 0.2s ease-in-out',
+                                                }}
+                                            >
+                                                {emoji}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        {user.mood && (
+                                            <button type="button" onClick={async () => {
+                                                await updateProfile({ mood: null, mood_updated_at: null });
+                                                setActiveModal(null);
+                                            }} className="btn-danger">Remove Mood</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         {activeModal === 'edit-bio' && (
                             <>

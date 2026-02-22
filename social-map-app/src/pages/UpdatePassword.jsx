@@ -8,6 +8,8 @@ export default function UpdatePassword() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -72,24 +74,38 @@ export default function UpdatePassword() {
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>New Password</label>
                         <input 
-                            type="password" 
+                            type={showPassword ? "text" : "password"} 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="Min. 6 characters"
-                            style={styles.input}
+                            style={{...styles.input, paddingRight: '40px'}}
                             required
                         />
+                        <button 
+                            type="button" 
+                            onClick={() => setShowPassword(!showPassword)} 
+                            style={{ position: 'absolute', right: '12px', top: '38px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                        >
+                            {showPassword ? '👁️' : '👁️‍🗨️'}
+                        </button>
                     </div>
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>Confirm Password</label>
                         <input 
-                            type="password" 
+                            type={showConfirmPassword ? "text" : "password"} 
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="Re-enter password"
-                            style={styles.input}
+                            style={{...styles.input, paddingRight: '40px'}}
                             required
                         />
+                        <button 
+                            type="button" 
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
+                            style={{ position: 'absolute', right: '12px', top: '38px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                        >
+                            {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+                        </button>
                     </div>
 
                     <button type="submit" style={styles.button} disabled={loading}>
@@ -142,7 +158,7 @@ const styles = {
     title: { color: 'white', margin: '0 0 10px 0', fontSize: '1.8rem', fontWeight: 700 },
     subtitle: { color: '#888', margin: 0, fontSize: '0.95rem' },
     form: { display: 'flex', flexDirection: 'column', gap: '20px' },
-    inputGroup: { display: 'flex', flexDirection: 'column', gap: '8px' },
+    inputGroup: { display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' },
     label: { color: '#aaa', fontSize: '0.9rem', fontWeight: 500, marginLeft: '4px' },
     input: {
         width: '100%', padding: '14px 16px',

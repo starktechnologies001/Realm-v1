@@ -209,8 +209,6 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                         }}>
                                             See Profile Photo
                                         </button>
-                                        {/* Fallback Status Text if requested, but prompt implies 'See Status' button. Keeping text if no story? Prompt says 'See Status' and 'See Profile' buttons. */} 
-                                        {/* If status is text-only (thought), maybe show that? Prompt says 'See Status' -> implies Action. Let's stick to buttons as primary. */}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -380,18 +378,6 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                 exit={{ scale: 0.5, opacity: 0 }}
                                 transition={{ type: "spring", damping: 20, stiffness: 200 }}
                             />
-                            
-                            {/* Status Overlay in Full View - HIDDEN */}
-                            {/* {(user.thought || user.status) && (
-                                <motion.div 
-                                    className="full-photo-status"
-                                    initial={{ y: 20, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    delay={0.2}
-                                >
-                                    {user.thought || user.status}
-                                </motion.div>
-                            )} */}
                         </motion.div>
                     )}
                 </AnimatePresence>

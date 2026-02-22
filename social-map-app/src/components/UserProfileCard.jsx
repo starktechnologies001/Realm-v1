@@ -41,7 +41,8 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
         birthDate: user.birthday || null,
         joinedAt: user.created_at || null,
         mutuals: 0,
-        username: user.username || user.name // fallback
+        username: user.username || user.name, // fallback
+        isPublic: false
     });
 
     // Fetch Details & Mutuals
@@ -52,7 +53,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
              // 1. Fetch Profile Columns
              const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, interests, birth_date, created_at, username, full_name')
+                .select('bio, interests, birth_date, created_at, username, full_name, is_public')
                 .eq('id', user.id)
                 .maybeSingle();
             
@@ -81,12 +82,13 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                  const mutualCount = theirFriendIds.filter(id => myFriendIds.has(id)).length;
 
                  setDetails({
-                     bio: profile.bio || "No bio available.",
+                     bio: profile.bio || "No bio set.",
                      interests: profile.interests || [],
                      birthDate: profile.birth_date,
                      joinedAt: profile.created_at,
                      mutuals: mutualCount,
-                     username: profile.username || user.name
+                     username: profile.username || user.name,
+                     isPublic: profile.is_public !== false
                  });
              }
         };
@@ -127,6 +129,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const mutuals = details.mutuals; 
     const joinedDate = formatJoinDate(details.joinedAt); 
     const birthday = details.birthDate ? formatDate(details.birthDate) : null;
+    const isPublic = details.isPublic;
+    const isFriend = user.friendshipStatus === 'accepted';
+    const canSeeFullProfile = isFriend || isPublic;
 
     return (
         <AnimatePresence>
@@ -191,44 +196,69 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         <span className="user-handle">@{details.username}</span>
                         
                         <div className="header-badges">
-                            <div className="status-pill">
-                                {user.relationship_status || 'Single'}
-                            </div>
+                            {details.relationship_status && (
+                                <div className="status-pill">
+                                    {details.relationship_status}
+                                </div>
+                            )}
 
-                            {user.friendshipStatus === 'accepted' && (
+                            {isFriend && (
                                 <span className="badge-pill friend-premium">
                                     🤝 Friend
                                 </span>
                             )}
+                            
+                            {!isFriend && isPublic && (
+                                <span className="badge-pill public-profile">
+                                    🌍 Public
+                                </span>
+                            )}
+                            
+                            {!isFriend && !isPublic && (
+                                <span className="badge-pill private-profile">
+                                    🔒 Private
+                                </span>
+                            )}
                         </div>
-                    </div>
 
-                    {/* Stats Row */}
-                    <div className="stats-container">
-                        <div className="stat-item">
-                            <span className="stat-value">{mutuals}</span>
-                            <span className="stat-label">MUTUALS</span>
-                        </div>
-                        <div className="stat-item">
-                            <span className="stat-value">{joinedDate}</span>
-                            <span className="stat-label">JOINED</span>
-                        </div>
-                        {birthday && (
-                            <div className="stat-item">
-                                <span className="stat-value">🎂 {birthday.split(' ').slice(0, 2).join(' ')}</span>
-                                <span className="stat-label">BIRTHDAY</span>
+                        {/* Uploaded Status / Thought */}
+                        {(isPublic || isFriend) && user.thought && (
+                            <div className="thought-bubble-container">
+                                <span className="thought-bubble">{user.thought}</span>
                             </div>
                         )}
                     </div>
 
+                    {/* Stats Row */}
+                    {canSeeFullProfile && (
+                        <div className="stats-container">
+                            <div className="stat-item">
+                                <span className="stat-value">{mutuals}</span>
+                                <span className="stat-label">MUTUALS</span>
+                            </div>
+                            <div className="stat-item">
+                                <span className="stat-value">{joinedDate}</span>
+                                <span className="stat-label">JOINED</span>
+                            </div>
+                            {birthday && (
+                                <div className="stat-item">
+                                    <span className="stat-value">🎂 {birthday.split(' ').slice(0, 2).join(' ')}</span>
+                                    <span className="stat-label">BIRTHDAY</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* About Section */}
-                    <div className="info-section">
-                        <h4 className="section-title">ABOUT</h4>
-                        <p className="bio-text">{bio}</p>
-                    </div>
+                    {canSeeFullProfile && (
+                        <div className="info-section">
+                            <h4 className="section-title">ABOUT</h4>
+                            <p className="bio-text">{bio}</p>
+                        </div>
+                    )}
 
                     {/* Interests Section */}
-                    {interests.length > 0 && (
+                    {canSeeFullProfile && interests.length > 0 && (
                         <div className="info-section">
                             <h4 className="section-title">INTERESTS</h4>
                             <div className="tags-row">
@@ -262,23 +292,28 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     <div className="action-buttons-container">
                         {user.friendshipStatus === 'accepted' ? (
                             <div className="action-row-icons">
-                                <button className="btn-icon-action primary" onClick={() => onAction('message', user)}>
-                                    <span style={{ fontSize: '1.5rem' }}>💬</span>
+                                <button className="btn-icon-action primary" onClick={() => onAction('message', user)} title="Message">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                                 </button>
-                                <button className="btn-icon-action secondary" onClick={() => onAction('call-audio', user)}>
-                                    <span style={{ fontSize: '1.5rem' }}>📞</span>
+                                <button className="btn-icon-action secondary" onClick={() => onAction('call-audio', user)} title="Voice Call">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                                 </button>
-                                <button className="btn-icon-action secondary" onClick={() => onAction('call-video', user)}>
-                                    <span style={{ fontSize: '1.5rem' }}>📹</span>
+                                <button className="btn-icon-action secondary" onClick={() => onAction('call-video', user)} title="Video Call">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                                 </button>
                             </div>
                         ) : (
                             <button 
-                                className="btn-message-large"
-                                style={{ background: 'linear-gradient(135deg, #00d4ff 0%, #0084ff 100%)' }}
-                                onClick={() => onAction('poke', user)}
+                                className={`btn-message-large ${user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? 'requested' : ''}`}
+                                onClick={() => {
+                                    if (user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id) {
+                                        onAction('cancel-poke', user);
+                                    } else {
+                                        onAction('poke', user);
+                                    }
+                                }}
                             >
-                                👋 Poke
+                                {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? '⏳ Requested' : '👋 Poke'}
                             </button>
                         )}
                     </div>
@@ -295,323 +330,263 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                 <style>{`
                     .user-profile-overlay {
                         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                        background: rgba(0,0,0,0.6);
-                        backdrop-filter: blur(8px);
-                        -webkit-backdrop-filter: blur(8px);
+                        background: rgba(0,0,0,0.4);
+                        backdrop-filter: blur(12px);
+                        -webkit-backdrop-filter: blur(12px);
                         z-index: 2000;
-                        display: flex; justify-content: center; align-items: center;
+                        display: flex; justify-content: center; align-items: flex-end;
+                        padding-bottom: 20px;
                     }
 
                     .glass-panel {
-                        background: radial-gradient(circle at top right, #2a2a2e 0%, #1c1c1e 100%);
-                        border: 1px solid rgba(255, 255, 255, 0.08);
-                        box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+                        background: var(--glass-bg);
+                        backdrop-filter: blur(25px);
+                        -webkit-backdrop-filter: blur(25px);
+                        border: 1px solid var(--glass-border);
+                        box-shadow: 0 40px 80px rgba(0,0,0,0.4);
                     }
 
                     .user-profile-card {
-                        width: 90%; max-width: 400px;
-                        border-radius: 32px;
-                        padding: 32px 24px;
+                        width: 92%; max-width: 420px;
+                        border-radius: 40px;
+                        padding: 32px 24px 40px 24px;
                         display: flex; flex-direction: column; align-items: center;
                         position: relative;
-                        color: white;
-                        max-height: 85vh;
+                        color: var(--text-primary);
+                        max-height: 90vh;
                         overflow-y: auto;
+                        scrollbar-width: none;
                     }
                     
-                    /* Custom Scrollbar */
-                    .user-profile-card::-webkit-scrollbar { width: 4px; }
-                    .user-profile-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+                    .user-profile-card::-webkit-scrollbar { display: none; }
 
                     .close-btn-floating {
                         position: absolute; top: 20px; right: 20px;
-                        width: 36px; height: 36px;
-                        border-radius: 50%; background: rgba(255,255,255,0.08);
-                        border: none; color: rgba(255,255,255,0.6); 
+                        width: 32px; height: 32px;
+                        border-radius: 50%; background: var(--glass-border);
+                        border: none; color: var(--text-primary); 
                         display: flex; align-items: center; justify-content: center;
-                        cursor: pointer; font-size: 1.2rem;
+                        cursor: pointer; font-size: 1rem;
                         transition: all 0.2s;
+                        z-index: 10;
                     }
-                    .close-btn-floating:hover { background: rgba(255,255,255,0.15); color: white; transform: rotate(90deg); }
+                    .close-btn-floating:hover { background: var(--text-primary); color: var(--bg-color); }
 
                     .card-header-centered {
-                        display: flex; flex-direction: column; align-items: center; gap: 12px;
-                        margin-bottom: 30px;
+                        display: flex; flex-direction: column; align-items: center; gap: 8px;
+                        margin-bottom: 24px;
                         width: 100%;
                     }
 
                     .avatar-ring-container {
-                        position: relative; width: 110px; height: 110px;
+                        position: relative; width: 120px; height: 120px;
                         padding: 4px;
                         border-radius: 50%;
-                        background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
-                        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+                        box-shadow: 0 15px 35px rgba(0, 132, 255, 0.2);
+                        margin-bottom: 8px;
                     }
 
                     .avatar-main {
                         width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
-                        border: 3px solid #1c1c1e;
+                        border: 4px solid var(--bg-color);
                     }
 
                     .status-dot-large {
                         position: absolute; bottom: 8px; right: 8px;
-                        width: 20px; height: 20px; border-radius: 50%;
-                        border: 3px solid #1c1c1e;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                        width: 18px; height: 18px; border-radius: 50%;
+                        border: 3px solid var(--bg-color);
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     }
-                    .status-dot-large.online { background: #00ff88; box-shadow: 0 0 12px rgba(0, 255, 136, 0.6); }
-                    .status-dot-large.offline { background: #666; }
+                    .status-dot-large.online { background: #34c759; }
+                    .status-dot-large.offline { background: #8e8e93; }
 
                     .user-name { 
-                        font-size: 1.75rem; font-weight: 800; margin: 8px 0 2px 0; 
+                        font-family: 'Outfit', 'Inter', sans-serif;
+                        font-size: 1.85rem; font-weight: 700; margin: 0; 
                         letter-spacing: -0.5px;
-                        background: linear-gradient(180deg, #fff 0%, #ddd 100%);
-                        -webkit-background-clip: text;
-                        -webkit-text-fill-color: transparent;
+                        color: var(--text-primary);
                     }
                     .user-handle {
-                        font-size: 0.95rem; color: rgba(255,255,255,0.5); 
-                        font-weight: 500; margin-bottom: 8px;
+                        font-size: 1rem; color: var(--text-secondary); 
+                        font-weight: 500; margin-bottom: 4px;
+                    }
+                    
+                    .btn-message-large.requested {
+                        background: rgba(255, 149, 0, 0.1);
+                        color: #ff9500;
+                        border: 1px solid rgba(255, 149, 0, 0.3);
                     }
                     
                     .header-badges {
-                        display: flex; flex-direction: column; align-items: center; gap: 8px;
+                        display: flex; flex-direction: row; justify-content: center; gap: 10px;
+                        margin-top: 4px;
                     }
 
                     .status-pill {
-                        background: rgba(255,255,255,0.06);
-                        padding: 6px 16px; border-radius: 20px;
-                        font-size: 0.85rem; color: rgba(255,255,255,0.6);
-                        font-weight: 500;
-                        backdrop-filter: blur(4px);
+                        background: var(--glass-border);
+                        padding: 6px 14px; border-radius: 100px;
+                        font-size: 0.8rem; color: var(--text-secondary);
+                        font-weight: 600;
                     }
 
                     .badge-pill.friend-premium {
-                        background: linear-gradient(90deg, #00d4ff 0%, #0084ff 100%);
+                        background: var(--brand-gradient);
                         color: white;
-                        border: none;
-                        box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
                         font-weight: 700;
-                        font-size: 0.85rem;
-                        padding: 6px 20px;
+                        font-size: 0.8rem;
+                        padding: 6px 14px;
                         border-radius: 100px;
-                        display: flex; align-items: center; gap: 6px;
-                        margin-top: 6px;
-                        letter-spacing: 0.5px;
+                        display: flex; align-items: center; gap: 4px;
+                        box-shadow: 0 4px 12px rgba(0, 132, 255, 0.2);
+                    }
+                    
+                    .badge-pill.public-profile {
+                        background: rgba(52, 199, 89, 0.1);
+                        color: #34c759;
+                        border: 1px solid rgba(52, 199, 89, 0.2);
+                        font-weight: 700;
+                        font-size: 0.75rem;
+                        padding: 6px 14px;
+                        border-radius: 100px;
+                    }
+                    
+                    .badge-pill.private-profile {
+                        background: rgba(255, 255, 255, 0.05);
+                        color: var(--text-secondary);
+                        border: 1px solid var(--glass-border);
+                        font-weight: 600;
+                        font-size: 0.75rem;
+                        padding: 6px 14px;
+                        border-radius: 100px;
+                    }
+
+                    .thought-bubble-container {
+                        margin-top: 16px;
+                        width: 100%;
+                        display: flex;
+                        justify-content: center;
+                    }
+                    .thought-bubble {
+                        background: white;
+                        color: #1c1c1e;
+                        padding: 10px 20px;
+                        border-radius: 18px;
+                        font-weight: 600;
+                        font-size: 0.95rem;
+                        position: relative;
+                        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                        max-width: 85%;
+                        text-align: center;
+                    }
+                    .thought-bubble::after {
+                        content: '';
+                        position: absolute;
+                        top: -8px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        border-left: 8px solid transparent;
+                        border-right: 8px solid transparent;
+                        border-bottom: 8px solid white;
                     }
 
                     .stats-container {
-                        display: flex; justify-content: space-evenly; width: 100%;
-                        padding: 20px 0; border-top: 1px solid rgba(255,255,255,0.06);
-                        border-bottom: 1px solid rgba(255,255,255,0.06);
-                        margin-bottom: 24px;
+                        display: grid; grid-template-columns: repeat(3, 1fr); width: 100%;
+                        padding: 24px 0; border-top: 1px solid var(--glass-border);
+                        border-bottom: 1px solid var(--glass-border);
+                        margin-bottom: 28px;
+                        background: rgba(255,255,255,0.02);
+                        border-radius: 20px;
                     }
-                    .stat-item { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
-                    .stat-value { font-size: 1.15rem; font-weight: 700; color: white; }
-                    .stat-label { font-size: 0.65rem; color: rgba(255,255,255,0.4); font-weight: 700; letter-spacing: 1px; }
-                    .stat-item:not(:last-child) { border-right: 1px solid rgba(255,255,255,0.06); }
+                    .stat-item { 
+                        display: flex; flex-direction: column; align-items: center; gap: 4px; 
+                        border-right: 1px solid var(--glass-border);
+                    }
+                    .stat-item:last-child { border-right: none; }
+                    .stat-value { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+                    .stat-label { font-size: 0.65rem; color: var(--text-secondary); font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; }
 
                     .info-section {
-                         width: 100%; text-align: left; margin-bottom: 24px;
+                         width: 100%; text-align: left; margin-bottom: 28px;
                     }
                     .section-title { 
-                        font-size: 0.75rem; color: rgba(255,255,255,0.4); 
-                        letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 700; 
+                        font-size: 0.75rem; color: var(--text-secondary); 
+                        letter-spacing: 1.2px; margin-bottom: 12px; font-weight: 700; 
                         text-transform: uppercase;
-                        padding-left: 4px;
                     }
                     .bio-text { 
-                        color: rgba(255,255,255,0.9); font-size: 0.95rem; 
-                        line-height: 1.6; font-weight: 400; opacity: 1; margin: 0; 
-                        background: rgba(255,255,255,0.03); padding: 16px; border-radius: 16px;
+                        color: var(--text-primary); font-size: 1rem; 
+                        line-height: 1.6; font-weight: 400; margin: 0; 
+                        background: var(--glass-border); padding: 18px; border-radius: 20px;
                     }
 
                     .tags-row { display: flex; gap: 8px; flex-wrap: wrap; }
                     .interest-tag {
-                        background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.9);
-                        padding: 8px 16px; border-radius: 12px; font-size: 0.85rem; font-weight: 500;
-                        transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);
+                        background: var(--bg-secondary); color: var(--text-primary);
+                        padding: 8px 16px; border-radius: 100px; font-size: 0.85rem; font-weight: 600;
+                        border: 1px solid var(--glass-border);
+                        transition: all 0.2s;
                     }
-                    .interest-tag:hover {
-                         background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);
-                    }
+                    .interest-tag:hover { background: var(--brand-primary); color: white; border-color: transparent; }
 
-                    .action-buttons-container { width: 100%; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+                    .action-buttons-container { width: 100%; margin-bottom: 24px; }
                     
                     .btn-message-large {
-                        width: 100%; padding: 16px; border-radius: 18px; border: none;
-                        background: linear-gradient(135deg, #00d4ff 0%, #0084ff 100%);
-                        color: white; font-weight: 700; font-size: 1rem;
-                        cursor: pointer; box-shadow: 0 8px 20px rgba(0, 132, 255, 0.3);
-                        transition: all 0.2s; position: relative; overflow: hidden;
+                        width: 100%; padding: 18px; border-radius: 20px; border: none;
+                        background: var(--brand-gradient);
+                        color: white; font-weight: 700; font-size: 1.05rem;
+                        cursor: pointer; box-shadow: 0 10px 25px rgba(0, 132, 255, 0.3);
+                        transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
                     }
-                    .btn-message-large:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 132, 255, 0.4); }
+                    .btn-message-large:hover { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(0, 132, 255, 0.4); }
                     .btn-message-large:active { transform: scale(0.98); }
                     
-                    .call-buttons-row { display: flex; gap: 12px; }
-                    .btn-call {
-                        flex: 1; padding: 16px; border-radius: 18px; border: none;
-                        background: rgba(255,255,255,0.05); color: white; font-weight: 600;
-                        cursor: pointer; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);
+                    .action-row-icons {
+                        display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%;
                     }
-                    .btn-call:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
-
-                    .footer-links { 
-                        display: flex; gap: 20px; font-size: 0.85rem; color: #666; 
-                        margin-top: 10px; width: 100%; justify-content: center;
+                    .btn-icon-action {
+                        height: 60px; border-radius: 20px; border: none;
+                        cursor: pointer; display: flex; align-items: center; justify-content: center;
+                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                        color: white;
                     }
-                    .text-link { background: none; border: none; color: #888; cursor: pointer; padding: 8px; transition: color 0.2s; font-weight: 500; }
-                    .text-link.danger { color: #ff453a; opacity: 0.6; }
-                    .text-link.danger:hover { opacity: 1; }
-                    .text-link:hover { color: white; }
-                    .divider { color: #444; }
+                    .btn-icon-action.primary {
+                        background: var(--brand-gradient);
+                        box-shadow: 0 8px 20px rgba(0, 132, 255, 0.25);
+                    }
+                    .btn-icon-action.secondary {
+                        background: var(--glass-border);
+                        color: var(--text-primary);
+                    }
+                    .btn-icon-action:hover { transform: translateY(-3px); filter: brightness(1.1); }
+                    .btn-icon-action:active { transform: scale(0.95); }
 
                     .media-grid {
                         display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
-                        margin-top: 10px;
                     }
                     .media-item {
-                        position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden;
-                        cursor: pointer; background: rgba(255,255,255,0.05);
-                        border: 1px solid rgba(255,255,255,0.05);
-                        transition: all 0.2s;
+                        position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden;
+                        cursor: pointer; background: var(--glass-border);
+                        transition: all 0.3s ease;
                     }
-                    .media-item img {
-                        width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s;
+                    .media-item img { width: 100%; height: 100%; object-fit: cover; }
+                    .media-item:hover { transform: scale(1.05); z-index: 5; box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+                    
+                    .footer-links { 
+                        display: flex; gap: 16px; font-size: 0.85rem; color: var(--text-secondary); 
+                        margin-top: 10px; width: 100%; justify-content: center;
                     }
-                    .media-item:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.2); }
-                    .media-item:hover img { transform: scale(1.1); }
-                    .media-overlay {
-                        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                        background: rgba(0,0,0,0.6);
-                        backdrop-filter: blur(2px);
-                        display: flex; align-items: center; justify-content: center;
-                        color: white; font-size: 0.8rem; font-weight: 700;
-                    }
+                    .text-link { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px 8px; transition: color 0.2s; font-weight: 600; }
+                    .text-link.danger:hover { color: #ff3b30; }
 
-                    .action-buttons-container { width: 100%; margin-bottom: 20px; }
-                    .action-row-icons {
-                        display: grid;
-                        grid-template-columns: repeat(3, 1fr);
-                        gap: 12px;
-                        width: 100%;
-                    }
-                    .btn-icon-action {
-                        padding: 16px;
-                        border-radius: 20px;
-                        border: none;
-                        cursor: pointer;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-                        aspect-ratio: 1.25;
-                    }
-                    .btn-icon-action:active { transform: scale(0.92); }
-                    .btn-icon-action.primary {
-                        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
-                        box-shadow: 0 8px 20px rgba(0, 114, 255, 0.3);
-                    }
-                    .btn-icon-action.secondary {
-                        background: rgba(255,255,255,0.08);
-                        border: 1px solid rgba(255,255,255,0.1);
-                        color: white;
-                    }
-
-                    /* Mobile Optimizations */
                     @media (max-width: 768px) {
-                        .user-profile-card {
-                            padding: 24px 20px;
-                        }
-
-                        .card-header-centered {
-                            gap: 8px;
-                            margin-bottom: 20px;
-                        }
-
-                        .avatar-ring-container {
-                            width: 90px;
-                            height: 90px;
-                        }
-
-                        .status-dot-large {
-                            width: 16px;
-                            height: 16px;
-                            bottom: 6px;
-                            right: 6px;
-                            border-width: 2.5px;
-                        }
-
-                        .user-name {
-                            font-size: 1.4rem;
-                            margin: 4px 0 2px 0;
-                        }
-
-                        .user-handle {
-                            font-size: 0.85rem;
-                            margin-bottom: 6px;
-                        }
-
-                        .header-badges {
-                            gap: 6px;
-                        }
-
-                        .status-pill {
-                            padding: 5px 14px;
-                            font-size: 0.8rem;
-                        }
-
-                        .badge-pill.friend-premium {
-                            font-size: 0.8rem;
-                            padding: 5px 16px;
-                            margin-top: 4px;
-                        }
-
-                        .stats-container {
-                            padding: 16px 0;
-                            margin-bottom: 20px;
-                        }
-
-                        .stat-value {
-                            font-size: 1rem;
-                        }
-
-                        .stat-label {
-                            font-size: 0.6rem;
-                        }
-
-                        .info-section {
-                            margin-bottom: 20px;
-                        }
-
-                        .section-title {
-                            font-size: 0.7rem;
-                            margin-bottom: 10px;
-                        }
-
-                        .bio-text {
-                            font-size: 0.9rem;
-                            padding: 14px;
-                        }
-
-                        .interest-tag {
-                            padding: 7px 14px;
-                            font-size: 0.8rem;
-                        }
-
-                        .btn-message-large {
-                            padding: 14px;
-                            font-size: 0.95rem;
-                        }
-
-                        .btn-icon-action {
-                            padding: 14px;
-                        }
-
-                        .btn-icon-action span {
-                            font-size: 1.3rem !important;
-                        }
+                        .user-profile-overlay { align-items: flex-end; padding: 0; }
+                        .user-profile-card { width: 100%; border-radius: 35px 35px 0 0; max-height: 92vh; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+                        .avatar-ring-container { width: 100px; height: 100px; }
+                        .user-name { font-size: 1.6rem; }
+                        .btn-icon-action { height: 56px; }
                     }
+
                 `}</style>
             </motion.div>
         </AnimatePresence>

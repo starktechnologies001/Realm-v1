@@ -1107,11 +1107,11 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 /* Tab Styles */
                 .chat-tabs {
                     display: flex;
-                    background-color: rgba(118,118,128,0.12);
-                    border-radius: 10px;
-                    padding: 2px;
-                    margin-bottom: 10px;
-                    height: 34px;
+                    gap: 8px;
+                    background-color: #f0f0f2;
+                    border-radius: 100px;
+                    padding: 4px;
+                    margin-bottom: 12px;
                     width: 100%;
                     box-sizing: border-box;
                 }
@@ -1121,21 +1121,22 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 13px;
+                    padding: 6px 16px;
+                    font-size: 0.85rem;
                     font-weight: 600;
-                    color: var(--text-secondary);
+                    color: #555;
                     background: transparent;
                     border: none;
-                    border-radius: 8px;
+                    border-radius: 20px;
                     cursor: pointer;
-                    transition: all 0.18s ease;
+                    transition: all 0.2s ease;
                     letter-spacing: -0.1px;
                 }
                 
                 .tab-btn.active {
-                    background-color: var(--bg-primary, #fff);
-                    color: var(--text-primary);
-                    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+                    background-color: #1a1a1a;
+                    color: #fff;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
                 
                 .tab-btn.active::after {
@@ -1145,23 +1146,23 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 /* Dark mode adjustments */
                 @media (prefers-color-scheme: dark) {
                      .chat-tabs {
-                         background-color: #1c1c1e; /* Darker container */
+                         background-color: #2c2c2e;
                      }
                      .tab-btn.active {
-                         background-color: #3a3a3c; /* Lighter active state */
-                         color: white;
+                         background-color: #ffffff;
+                         color: #000;
                      }
                 }
                 html[data-theme="dark"] .chat-tabs {
-                    background-color: rgba(255,255,255,0.07);
+                    background-color: #2c2c2e;
                 }
                 html[data-theme="dark"] .tab-btn {
-                    color: rgba(255,255,255,0.5);
+                    color: rgba(255,255,255,0.6);
                 }
                 html[data-theme="dark"] .tab-btn.active {
-                    background-color: rgba(255,255,255,0.12);
-                    color: rgba(255,255,255,0.95);
-                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+                    background-color: #ffffff;
+                    color: #000000;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 }
 
                 .chat-list-scroll {
@@ -2573,40 +2574,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         }
     };
 
-    const handleImageUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
 
-        // Validate file size (10MB limit)
-        if (file.size > 10 * 1024 * 1024) {
-            showToast("Image too large. Max 10MB");
-            return;
-        }
-
-        setUploading(true);
-        try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
-
-            // Upload to storage
-            const { error: uploadError } = await supabase.storage
-                .from('chat-images')
-                .upload(fileName, file);
-
-            if (uploadError) throw uploadError;
-
-            // Get public URL
-            const { data } = supabase.storage.from('chat-images').getPublicUrl(fileName);
-
-            // Send message with image
-            await sendMessage('image', '📷 Photo', data.publicUrl);
-        } catch (error) {
-            console.error("Upload error:", error);
-            showToast("Upload failed. Try again.");
-        } finally {
-            setUploading(false);
-        }
-    };
 
     // Attachment System Handlers
     const handleSelectCamera = () => {
@@ -2652,7 +2620,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         setSelectedFiles(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleSendAttachments = async () => {
+    const handleSendAttachments = async (caption) => {
         if (selectedFiles.length === 0) return;
 
         setUploadProgress(0);
@@ -2660,46 +2628,53 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         try {
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
+                const isImage = file.type.startsWith('image/');
+                const bucket = isImage ? 'chat-images' : 'chat-attachments';
                 
                 // Upload file
                 const result = await uploadToStorage(file, currentUser.id, (progress) => {
                     const totalProgress = ((i / selectedFiles.length) + (progress / 100 / selectedFiles.length)) * 100;
                     setUploadProgress(totalProgress);
-                });
+                }, bucket);
 
                 if (!result.success) {
                     throw new Error(result.error);
                 }
 
-                // Insert message with attachment
-                const { data: messageData, error: messageError } = await supabase
-                    .from('messages')
-                    .insert({
-                        sender_id: currentUser.id,
-                        receiver_id: targetUser.id,
-                        content: `📎 ${result.fileName}`,
-                        message_type: 'attachment',
-                        has_attachment: true,
-                        is_read: true
-                    })
-                    .select()
-                    .maybeSingle();
+                if (isImage) {
+                    // Send as image message with caption, which uses standard MessageBubble with ticks
+                    await sendMessage('image', caption || '', result.fileUrl);
+                } else {
+                    // Send as attachment (existing code)
+                    const { data: messageData, error: messageError } = await supabase
+                        .from('messages')
+                        .insert({
+                            sender_id: currentUser.id,
+                            receiver_id: targetUser.id,
+                            content: caption || `📎 ${result.fileName}`,
+                            message_type: 'attachment',
+                            has_attachment: true,
+                            is_read: false
+                        })
+                        .select()
+                        .maybeSingle();
 
-                if (messageError) throw messageError;
+                    if (messageError) throw messageError;
 
-                // Insert attachment record
-                const { error: attachmentError } = await supabase
-                    .from('message_attachments')
-                    .insert({
-                        message_id: messageData.id,
-                        file_url: result.fileUrl,
-                        file_name: result.fileName,
-                        file_type: result.fileType,
-                        file_size: result.fileSize,
-                        mime_type: result.mimeType
-                    });
+                    // Insert attachment record
+                    const { error: attachmentError } = await supabase
+                        .from('message_attachments')
+                        .insert({
+                            message_id: messageData.id,
+                            file_url: result.fileUrl,
+                            file_name: result.fileName,
+                            file_type: result.fileType,
+                            file_size: result.fileSize,
+                            mime_type: result.mimeType
+                        });
 
-                if (attachmentError) throw attachmentError;
+                    if (attachmentError) throw attachmentError;
+                }
             }
 
             showToast(`Sent ${selectedFiles.length} file(s) ✅`);
@@ -3638,7 +3613,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         ref={fileInputRef}
                         style={{ display: 'none' }}
                         accept="image/*"
-                        onChange={handleImageUpload}
+                        onChange={handleFileSelect}
                     />
                     {/* Hidden file inputs for attachment system */}
                     <input

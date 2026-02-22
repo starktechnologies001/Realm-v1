@@ -5,10 +5,26 @@ function RecenterControl({ lat, lng }) {
 
     const handleRecenter = (e) => {
         e.stopPropagation();
-        if (lat && lng) {
-            map.flyTo([lat, lng], 18, { animate: true, duration: 1.5 });
-        }
-    };
+        e.preventDefault();
+
+        if (!lat || !lng) return;
+
+    // 🔥 Disable interactions before fly
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+
+    map.flyTo([lat, lng], 18, {
+        animate: true,
+        duration: 1.5
+    });
+
+    // 🔥 Re-enable after animation completes
+    setTimeout(() => {
+        map.dragging.enable();
+        map.scrollWheelZoom.enable();
+    }, 1600);
+};
+
 
     return (
         <div 
@@ -22,7 +38,7 @@ function RecenterControl({ lat, lng }) {
         >
             <div className="leaflet-control">
                 <button
-                    onClick={handleRecenter}
+                    onClick={(e) => handleRecenter(e)}
                     title="Recenter Map"
                     style={{
                         width: '44px',
@@ -39,8 +55,18 @@ function RecenterControl({ lat, lng }) {
                         color: '#333',
                         transition: 'transform 0.2s'
                     }}
-                    onMouseDown={e => e.stopPropagation()}
-                    onDoubleClick={e => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }}
+                    onMouseUp={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }}
                 >
                     🔄
                 </button>

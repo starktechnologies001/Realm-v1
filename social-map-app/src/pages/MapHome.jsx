@@ -19,6 +19,34 @@ import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } fr
 import ImageCropper from '../components/ImageCropper';
 import BottomNav from '../components/BottomNav';
 
+// 📍 MEMOIZED MARKER COMPONENT
+const UserMarker = React.memo(({ user, markerRefs, onMarkerClick, createAvatarIcon }) => {
+    // Check thought expiration (3 hours)
+    let displayThought = user.thought;
+    if (user.status_updated_at) {
+        const diffHours = (new Date() - new Date(user.status_updated_at)) / (1000 * 60 * 60);
+        if (diffHours > 3) displayThought = null;
+    }
+
+    return (
+        <Marker
+            position={[user.lat, user.lng]}
+            ref={(ref) => {
+                if (ref) {
+                    markerRefs.current.set(user.id, ref);
+                } else {
+                    markerRefs.current.delete(user.id);
+                }
+            }}
+            icon={createAvatarIcon(getAvatar2D(user.avatar_url || user.avatar), false, displayThought, user.name || user.username || 'User', user.status, user.mood, user.mood_updated_at)}
+            riseOnHover={true}
+            eventHandlers={{
+                click: () => onMarkerClick(user)
+            }}
+        />
+    );
+});
+
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -50,7 +78,7 @@ function deg2rad(deg) {
 const generateMockUsers = (centerLat, centerLng) => {
     const users = [];
     const MOODS = ['Happy 🌞', 'Chilling ☕', 'Working 💻', 'Gym 💪', 'Party 🎉'];
-    const STATUSES = ['Available', 'Busy', 'At Work', 'Online'];
+    const STATUSES = ['Online', 'Busy', 'At Work'];
     const RELATIONSHIPS = ['Single 🕺', 'Married 💍', 'Committed 💖', 'It\'s Complicated 🌀'];
     const THOUGHTS = ['Let\'s talk 💬', 'Coffee? ☕', 'Anyone here? 👋', 'Gym? 💪', 'Food run! 🍔'];
 
@@ -84,21 +112,51 @@ const generateMockUsers = (centerLat, centerLng) => {
 // Control to manually recenter map
 function RecenterControl({ lat, lng }) {
     const map = useMap();
+    const controlRef = useRef(null);
 
-    const handleRecenter = (e) => {
-        e.stopPropagation();
-        if (lat && lng) {
-            // Zoom level 17 provides a closer view while still showing immediate surroundings
-            map.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+    useEffect(() => {
+        if (controlRef.current) {
+            // 🔥 Natively disable Leaflet from capturing clicks/drags originating inside this div
+            L.DomEvent.disableClickPropagation(controlRef.current);
+            L.DomEvent.disableScrollPropagation(controlRef.current);
+        }
+    }, []);
+
+    const handleRecenter = () => {
+        if (!lat || !lng) return;
+
+        const currentCenter = map.getCenter();
+        const targetLatLng = L.latLng(lat, lng);
+        const distance = currentCenter.distanceTo(targetLatLng);
+        const currentZoom = map.getZoom();
+
+        if (distance < 5 && currentZoom >= 17) {
+            map.setView(targetLatLng, currentZoom, { animate: false });
+            return;
+        }
+
+        if (distance < 50) {
+            map.flyTo(targetLatLng, 17, { 
+                animate: true, 
+                duration: 0.8, // Faster but smooth for short distance
+                easeLinearity: 0.25
+            });
+        } else {
+            map.flyTo(targetLatLng, 17, { 
+                animate: true, 
+                duration: 1.8, // Slightly longer for "premium" feel over distance
+                easeLinearity: 0.25
+            });
         }
     };
 
     return (
         <div 
+            ref={controlRef}
             className="leaflet-bottom leaflet-right" 
             style={{ 
-                bottom: 'calc(80px + env(safe-area-inset-bottom))', /* Shifted up to clear BottomNav + Safe Area */
-                right: '8px',   /* Shifted right again */
+                bottom: 'calc(80px + env(safe-area-inset-bottom))',
+                right: '8px',
                 zIndex: 400,
                 pointerEvents: 'auto',
                 position: 'absolute'
@@ -109,9 +167,9 @@ function RecenterControl({ lat, lng }) {
                     onClick={handleRecenter}
                     title="Recenter Map"
                     style={{
-                        width: '36px',
-                        height: '36px',
-                        backgroundColor: '#4285F4', /* Primary Blue */
+                        width: '44px',
+                        height: '44px',
+                        backgroundColor: '#4285F4',
                         border: 'none',
                         borderRadius: '50%',
                         boxShadow: '0 4px 12px rgba(66, 133, 244, 0.4)',
@@ -119,24 +177,26 @@ function RecenterControl({ lat, lng }) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: 'white', /* White Icon */
+                        color: 'white',
                         transition: 'all 0.2s ease',
                         padding: 0
                     }}
-                    onMouseDown={e => { e.stopPropagation(); e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onMouseUp={e => { e.stopPropagation(); e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseEnter={e => { 
+                    onMouseDown={(e) => {
+                        e.currentTarget.style.transform = 'scale(0.96)';
+                    }}
+                    onMouseUp={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                    onMouseEnter={(e) => { 
                         e.currentTarget.style.boxShadow = '0 6px 16px rgba(66, 133, 244, 0.5)';
                         e.currentTarget.style.transform = 'scale(1.05)';
                     }}
-                    onMouseLeave={e => { 
+                    onMouseLeave={(e) => { 
                         e.currentTarget.style.boxShadow = '0 4px 12px rgba(66, 133, 244, 0.4)';
                         e.currentTarget.style.transform = 'scale(1)';
                     }}
-                    onDoubleClick={e => e.stopPropagation()}
                 >
-                    {/* Standard Crosshair/Target Icon */}
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 8C9.79 8 8 9.79 8 12C8 14.21 9.79 16 12 16C14.21 16 16 14.21 16 12C16 9.79 14.21 8 12 8ZM12 19C8.13 19 5 15.87 5 12C5 8.13 8.13 5 12 5C15.87 5 19 8.13 19 12C19 15.87 15.87 19 12 19ZM12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C16.97 21 21 16.97 21 12C21 7.03 16.97 3 12 3Z" fill="currentColor" fillOpacity="0.9"/>
                         <path d="M12 3V1M21 12H23M12 21V23M3 12H1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                     </svg>
@@ -146,7 +206,8 @@ function RecenterControl({ lat, lng }) {
     );
 }
 
-// Component to handle automatic recentering
+
+// Component to handle automatic recentering on load
 function RecenterAutomatically({ lat, lng, mapMode }) {
     const map = useMap();
     const hasCentered = useRef(false);
@@ -155,7 +216,7 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
     // Initial Center — only once, on first valid location
     useEffect(() => {
         if (lat && lng && !hasCentered.current) {
-            const zoomLevel = 17;
+            const zoomLevel = 17; // This is approx 250m area
             const timer = setTimeout(() => {
                  map.setView([lat, lng], zoomLevel, { animate: false });
                  hasCentered.current = true;
@@ -164,16 +225,19 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
         }
     }, [lat, lng, map]);
 
-    // Re-center ONLY when map mode actually switches (not on mount)
+    // Re-center ONLY when map mode actually switches
     useEffect(() => {
         if (prevMapMode.current !== mapMode) {
             prevMapMode.current = mapMode;
             if (lat && lng) {
-                map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 1 });
+                map.flyTo([lat, lng], map.getZoom(), { 
+                    animate: true, 
+                    duration: 1.2,
+                    easeLinearity: 0.25
+                });
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mapMode]);
+    }, [mapMode, lat, lng, map]);
 
     return null;
 }
@@ -226,9 +290,10 @@ function UserSelectionController({ selectedUser }) {
             
             // Use setTimeout to ensure map is ready
             setTimeout(() => {
-                map.setView(newCenter, zoomLevel, {
+                map.flyTo(newCenter, zoomLevel, {
                     animate: true,
-                    duration: 1.2
+                    duration: 2.0, // Slow & majestic for mobile offset
+                    easeLinearity: 0.2
                 });
             }, 100);
         } else {
@@ -236,9 +301,10 @@ function UserSelectionController({ selectedUser }) {
             console.log('🗺️ [UserSelectionController] Flying to (desktop):', [targetLat, targetLng], 'zoom:', zoomLevel);
             
             setTimeout(() => {
-                map.setView([targetLat, targetLng], zoomLevel, {
+                map.flyTo([targetLat, targetLng], zoomLevel, {
                     animate: true,
-                    duration: 1.2
+                    duration: 1.8,
+                    easeLinearity: 0.2
                 });
             }, 100);
         }
@@ -335,6 +401,8 @@ export default function MapHome() {
     const navigate = useNavigate();
     const routeLocation = useLocation();
 
+    const [profileReady, setProfileReady] = useState(false);
+
     // Initialize from LocalStorage + Nav State for Zero Latency
     const [currentUser, setCurrentUser] = useState(() => {
         try {
@@ -392,13 +460,24 @@ export default function MapHome() {
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const videoRef = React.useRef(null);
     const canvasRef = React.useRef(null);
+    const markerRefs = React.useRef(new Map());
+
+    // 🔥 Smooth animation helper used by Location Sync
+    const animateMarkerMovement = React.useCallback((id, newLat, newLng) => {
+        if (!markerRefs.current) return;
+        const marker = markerRefs.current.get(id);
+        if (marker && typeof marker.setLatLng === 'function') {
+            marker.setLatLng([newLat, newLng]);
+        }
+    }, []);
 
     // Check Profile Completeness
     useEffect(() => {
         const checkUser = async () => {
+
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            if (!user) return; // handled by other effect
+            if (!user) return;
 
             const { data: profile } = await supabase
                 .from('profiles')
@@ -406,124 +485,42 @@ export default function MapHome() {
                 .eq('id', user.id)
                 .maybeSingle();
 
-            // Bypass if locally flagged as complete (immediate fix for loop)
-            const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
+            if (!profile) {
+                await supabase.from('profiles').insert({
+                    id: user.id,
+                    username: '',
+                    gender: null,
+                    relationship_status: null,
+                    avatar_url: null,
+                    onboarding_completed: false,
+                    is_location_on: false,
+                    is_ghost_mode: true
+                });
 
-            // Safety Net: Trigger modal ONLY if critical info is missing (Gender/Status)
-            // or if the profile itself hasn't been synced from auth yet
-            if (!profile || !profile.gender || !profile.status) {
-                console.log("⚠️ Incomplete or missing profile detected, opening setup modal.");
+                setShowProfileSetup(true);
+                setProfileReady(true);
+                return;
+            }
+
+            setCurrentUser(profile);
+
+            if (!profile.onboarding_completed) {
                 setSetupData({
-                    username: profile?.username || '',
-                    gender: profile?.gender || '',
-                    status: profile?.status || '',
-                    relationshipStatus: profile?.relationship_status || '',
+                    username: profile.username || '',
+                    gender: profile.gender || '',
+                    relationshipStatus: profile.relationship_status || '',
                 });
                 setShowProfileSetup(true);
+            } else {
+                setShowProfileSetup(false);
             }
 
-            if (profile) {
-                setCurrentUser(profile);
-            }
-
-            // Only consider setupCompleteLocal if the profile ACTUALLY has the required fields
-            const isActuallyComplete = profile && profile.gender && profile.status;
-
-            if (setupCompleteLocal && isActuallyComplete) {
-                // Still potentially fix critical data silently, but don't block
-            } else if (profile) {
-                // 1. Silently fix missing username (common with OAuth)
-                if (!profile.username) {
-                    const baseName = (profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase().replace(/[^a-z0-9_]/g, '');
-                    const newUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`;
-
-                    await supabase.from('profiles').update({ username: newUsername }).eq('id', profile.id);
-
-                    // Update connection to avoid race condition in next check
-                    profile.username = newUsername;
-
-                    if (currentUser?.id === profile.id) {
-                        const updated = { ...currentUser, username: newUsername };
-                        setCurrentUser(updated);
-                        localStorage.setItem('currentUser', JSON.stringify(updated));
-                    }
-                }
-
-                // 2. Check VISIBLE mandatory fields (Gender, Status)
-                if (!profile.gender || !profile.status) {
-                    const baseName = (profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase().replace(/[^a-z0-9_]/g, '');
-                    const defaultUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`;
-
-                    setSetupData({
-                        gender: profile.gender || '',
-                        status: profile.status || '',
-                        relationshipStatus: profile.relationship_status || '',
-                        username: profile.username || defaultUsername
-                    });
-                    setShowProfileSetup(true);
-                    setLoading(false);
-                }
-
-                // 2.5 Priority Self-Healing: Restore uploaded avatar if Profile reverted to default
-                const metaAvatar = user.user_metadata?.avatar_url;
-                const profileAvatar = profile.avatar_url;
-
-                if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
-                    console.log("🚑 [MapHome] Healing avatar mismatch...", { metaAvatar, profileAvatar });
-
-                    // Update DB
-                    await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
-
-                    // Update Local immediately so UI reflects it
-                    profile.avatar_url = metaAvatar;
-                    if (profile.id === currentUser?.id) {
-                        const updated = { ...currentUser, avatar_url: metaAvatar };
-                        setCurrentUser(updated);
-                        localStorage.setItem('currentUser', JSON.stringify(updated));
-                    }
-                }
-
-                // Check if user needs a new avatar
-                // Assign avatar if:
-                // 1. No avatar exists
-                // 2. Has Google profile picture (OAuth users)
-                // 3. Has old/invalid avatar system
-                else if (!profile.avatar_url ||
-                    profile.avatar_url.includes('googleusercontent.com') ||
-                    profile.avatar_url.includes('lh3.googleusercontent.com')) {
-
-                    // Generate specific default avatar based on gender (User Request)
-                    const gender = profile.gender || 'Other';
-                    let newAvatar;
-
-                    if (gender === 'Male') {
-                        newAvatar = '/defaults/male_avatar.jpg';
-                    } else if (gender === 'Female') {
-                        newAvatar = '/defaults/female_avatar.jpg';
-                    } else {
-                        const baseName = (profile.username || profile.full_name || 'user').replace(/\s+/g, '_').toLowerCase();
-                        newAvatar = `https://api.dicebear.com/9.x/adventurer/svg?seed=${baseName}_${Math.floor(Math.random() * 1000)}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
-                    }
-
-                    // Auto-save immediately
-                    await supabase.from('profiles')
-                        .update({ avatar_url: newAvatar })
-                        .eq('id', profile.id);
-
-                    // Update local state if current user
-                    if (profile.id === currentUser?.id) {
-                        const updated = { ...currentUser, avatar_url: newAvatar };
-                        setCurrentUser(updated);
-                        localStorage.setItem('currentUser', JSON.stringify(updated));
-                    }
-
-                    // Update profile ref for UI
-                    profile.avatar_url = newAvatar;
-                }
-            }
+            setProfileReady(true);
         };
+
         checkUser();
     }, []);
+
 
     // Global Unread Count Logic
     const [unreadCount, setUnreadCount] = useState(0);
@@ -671,7 +668,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at')
                         .neq('id', currentUser.id)
                         .or('is_ghost_mode.eq.false,is_ghost_mode.is.null') // Allow NULL as false (visible)
                         .not('latitude', 'is', null)
@@ -756,12 +753,9 @@ export default function MapHome() {
                     .filter(u => {
                         const isBlocked = allBlockedIds.has(u.id);
                         const isMe = u.id === currentUser.id;
-                        const isLocationOff = u.is_location_on === false; // Strict check? Or checking for NULL?
-                        // Query already filters .eq('is_location_on', true). So u.is_location_on SHOULD be true.
-                        // But if query failed to filter?
+                        const isLocationOff = u.is_location_on !== true; // strictly require location to be on
                         
                         if (isBlocked || isMe || isLocationOff) {
-                            // console.log(`🚫 Filtering User ${u.username}: Blocked=${isBlocked}, Me=${isMe}, LocOff=${isLocationOff}`);
                             return false;
                         }
                         return true;
@@ -812,6 +806,8 @@ export default function MapHome() {
                             show_last_seen: u.show_last_seen,
                             relationshipStatus: u.relationship_status,
                             thought: statusMessage,
+                            mood: u.mood,
+                            moodUpdatedAt: u.mood_updated_at,
                             lastActive: u.last_active,
                             isLocationOn: u.is_location_on,
                             isLocationShared: true,
@@ -886,74 +882,70 @@ export default function MapHome() {
 
 
                 setNearbyUsers(prev => {
+
                     const existingIndex = prev.findIndex(u => u.id === updatedUser.id);
                     const exists = existingIndex !== -1;
 
-                    if (isVisible) {
-                        // Prepare consistent avatar logic
-                        const mapAvatar = updatedUser.avatar_url;
-
-                        // Use EXACT coordinates for smooth updates (No Jitter on updates)
-                        // Use EXACT coordinates for smooth updates (No Jitter on updates)
-                        const renderLat = parseFloat(updatedUser.latitude);
-                        const renderLng = parseFloat(updatedUser.longitude);
-
-                        const newUserObj = {
-                            id: updatedUser.id,
-                            name: updatedUser.username || 'User',
-                            lat: renderLat,
-                            lng: renderLng,
-                            avatar: mapAvatar,
-                            originalAvatar: updatedUser.avatar_url,
-                            status: updatedUser.status,
-                            thought: updatedUser.status_message,
-                            lastActive: updatedUser.last_active,
-                            isLocationShared: true,
-
-                            isLocationOn: updatedUser.is_location_on,
-                            relationshipStatus: updatedUser.relationship_status,
-
-                            status_updated_at: updatedUser.status_updated_at,
-                            is_public: updatedUser.is_public,
-
-                            friendshipStatus: exists
-                                ? prev[existingIndex].friendshipStatus
-                                : null,
-
-                            hasStory: exists
-                                ? (
-                                    prev[existingIndex].hasStory &&
-                                    (updatedUser.is_public !== false ||
-                                    prev[existingIndex].friendshipStatus === 'accepted')
-                                )
-                                : false,
-
-                            hasUnseenStory: exists
-                                ? (
-                                    prev[existingIndex].hasUnseenStory &&
-                                    (updatedUser.is_public !== false ||
-                                    prev[existingIndex].friendshipStatus === 'accepted')
-                                )
-                                : false
-                        };
-
-
+                    if (!isVisible) {
+                        // 🔥 Close card if selected user goes invisible
+                        setSelectedUser(prev => prev?.id === updatedUser.id ? null : prev);
+                        // 🔥 If user should NOT be visible → remove safely
                         if (exists) {
-                            // Update existing user
-                            const newUsers = [...prev];
-                            newUsers[existingIndex] = { ...newUsers[existingIndex], ...newUserObj };
-                            return newUsers;
-                        } else {
-                            // Add new user
-                            return [...prev, newUserObj];
+                            return prev.filter(u => u.id !== updatedUser.id);
                         }
-                    } else {
-                        // User should not be visible (ghost mode or no location)
-                        if (exists) {
-                            return prev.filter(u => u.id !== updatedUser.id); // Remove
-                        }
-                        return prev; // Do nothing
+                        return prev;
                     }
+
+                    // ---------- Visible User ----------
+
+                    const renderLat = parseFloat(updatedUser.latitude);
+                    const renderLng = parseFloat(updatedUser.longitude);
+
+                    const newUserObj = {
+                        id: updatedUser.id,
+                        name: updatedUser.username || 'User',
+                        lat: renderLat,
+                        lng: renderLng,
+                        avatar: updatedUser.avatar_url || DEFAULT_GENERIC_AVATAR,
+                        originalAvatar: updatedUser.avatar_url,
+                        status: updatedUser.status,
+                        thought: updatedUser.status_message,
+                        lastActive: updatedUser.last_active,
+                        isLocationShared: true,
+                        isLocationOn: updatedUser.is_location_on,
+                        relationshipStatus: updatedUser.relationship_status,
+                        mood: updatedUser.mood,
+                        moodUpdatedAt: updatedUser.mood_updated_at,
+                        status_updated_at: updatedUser.status_updated_at,
+                        is_public: updatedUser.is_public,
+                        hide_status: updatedUser.hide_status,
+                        show_last_seen: updatedUser.show_last_seen,
+                        friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null,
+                        hasStory: exists ? prev[existingIndex].hasStory : false,
+                        hasUnseenStory: exists ? prev[existingIndex].hasUnseenStory : false
+                    };
+
+                    if (exists) {
+
+                        // 🔥 Smooth animation ONLY when already on map
+                        animateMarkerMovement(updatedUser.id, renderLat, renderLng);
+
+                        // 🔥 Update card dynamically if focused
+                        setSelectedUser(prev => prev?.id === updatedUser.id ? { ...prev, ...newUserObj } : prev);
+
+                        return prev.map(u =>
+                            u.id === updatedUser.id
+                                ? { ...u, ...newUserObj }
+                                : u
+                        );
+
+                    } else {
+
+                        // 🔥 CRITICAL: Re-add immediately if user turned ON location
+                        return [...prev, newUserObj];
+
+                    }
+
                 });
             })
             // Listen for new user logins (INSERT events)
@@ -999,9 +991,13 @@ export default function MapHome() {
                             isLocationOn: true,
                             isLocationShared: true,
                             relationshipStatus: newUser.relationship_status,
+                            mood: newUser.mood,
+                            moodUpdatedAt: newUser.mood_updated_at,
 
                             status_updated_at: newUser.status_updated_at,
                             is_public: newUser.is_public,
+                            hide_status: newUser.hide_status,
+                            show_last_seen: newUser.show_last_seen,
 
                             friendshipStatus: null,
                             hasStory: false,
@@ -1009,23 +1005,39 @@ export default function MapHome() {
                         }];
                     });
                 }
-            })
+            })   // ← CLOSES INSERT .on()
 
             // Real-time Story Updates (Ring Indicator)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stories' }, (payload) => {
-                const story = payload.new;
-                setNearbyUsers(prev => prev.map(u => {
-                    if (u.id === story.user_id) {
-                        // Check privacy before showing ring
-                        const isFriend = u.friendshipStatus === 'accepted';
-                        const isPublic = u.is_public !== false;
-                        if (isFriend || isPublic) {
-                            return { ...u, hasStory: true, hasUnseenStory: true };
-                        }
-                    }
-                    return u;
-                }));
-            })
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'stories' },
+                (payload) => {
+
+                    const story = payload.new;
+
+                    setNearbyUsers(prev =>
+                        prev.map(u => {
+
+                            if (u.id === story.user_id) {
+
+                                const isFriend = u.friendshipStatus === 'accepted';
+                                const isPublic = u.is_public !== false;
+
+                                if (isFriend || isPublic) {
+                                    return {
+                                        ...u,
+                                        hasStory: true,
+                                        hasUnseenStory: true
+                                    };
+                                }
+                            }
+
+                            return u;
+                        })
+                    );
+
+                }
+            )
             .subscribe();
 
 
@@ -1113,20 +1125,9 @@ export default function MapHome() {
 
                 setCurrentUser(mergedUser);
                 localStorage.setItem('currentUser', JSON.stringify(mergedUser));
-
-                // Secondary Failsafe: Ensure OAuth users see the modal even if the first effect missed it
-                const setupCompleteLocal = localStorage.getItem('setup_complete') === 'true';
-                if (!setupCompleteLocal && (!freshProfile.gender || !freshProfile.status)) {
-                    console.log("⚠️ [refreshProfile Failsafe] Incomplete profile detected, opening setup modal.");
-                    setSetupData({
-                        username: freshProfile.username || '',
-                        gender: freshProfile.gender || '',
-                        status: freshProfile.status || '',
-                        relationshipStatus: freshProfile.relationship_status || '',
-                    });
-                    setShowProfileSetup(true);
-                }
             }
+
+             
             setLoading(false); // Fix: dismiss loading screen as soon as profile is handled
         };
         refreshProfile();
@@ -1167,17 +1168,14 @@ export default function MapHome() {
 
     const handlePermissionSelect = (choice) => {
         if (choice === 'while-using' || choice === 'once') {
-            startLocation(); // Direct call to preserve user gesture on mobile
+            startLocation(); 
         }
-        // Note: Deny case intentionally does nothing - user just dismisses modal
     };
 
 
     const handleEnableLocation = async () => {
-        // Optimistically unblock map
         setCurrentUser(prev => ({ ...prev, is_location_on: true }));
         
-        // Request permission (will update DB on success)
         startLocation();
 
     };
@@ -1253,12 +1251,13 @@ export default function MapHome() {
                 // status: setupData.status, // Don't overwrite status here, let it be default or whatever it was
                 relationship_status: setupData.relationshipStatus,
                 username: setupData.username,
-                avatar_url: finalAvatarUrl
+                avatar_url: finalAvatarUrl,
+                onboarding_completed: true  
             };
             
             // If status is empty, set a default "Available"
             if (!setupData.status) {
-                updates.status = 'Available';
+                updates.status = 'Online';
             } else {
                 updates.status = setupData.status;
             }
@@ -1282,27 +1281,22 @@ export default function MapHome() {
             showToast("Profile Complete! Welcome! 🎉");
             setShowProfileSetup(false);
 
-            // Optimistic Update
-            setCurrentUser(prev => ({
-                ...prev,
-                id: userId,
-                ...updates
-            }));
-
             // Sync to LocalStorage
             const updatedUser = {
                 ...currentUser,
                 id: userId,
                 ...updates
             };
+            setCurrentUser(updatedUser);
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-            localStorage.setItem('setup_complete', 'true');
 
         } catch (error) {
             console.error("Setup Error:", error);
             showToast(`Setup Failed: ${error.message}`);
         }
     };
+
+
 
     const handleDeleteThought = async () => {
         if (!currentUser) return;
@@ -1361,8 +1355,8 @@ export default function MapHome() {
                     ? {
                         ...u,
                         thought: myThought,
-                        status_updated_at: now,
-                        lastActive: now
+                        status_updated_at: new Date().toISOString(),
+                        lastActive: new Date().toISOString()
                       }
                     : u
             )
@@ -1621,12 +1615,7 @@ export default function MapHome() {
                 setShowMuteModal(true);
             }
         }
-        else if (action === 'report') {
-            // Show report modal with reason options
-            setReportTarget(targetUser);
-            setShowReportModal(true);
-            setSelectedUser(null);
-        }
+
         else if (action === 'report') {
             // Show report modal with reason options
             setReportTarget(targetUser);
@@ -1703,10 +1692,10 @@ export default function MapHome() {
 
     const iconCache = useRef(new Map());
 
-    const createAvatarIcon = (url, isSelf = false, thought = null, name = '', status = null) => {
+    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
-        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}`;
+        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -1724,55 +1713,81 @@ export default function MapHome() {
             }
         }   
         // Only show thought if it exists (simplified check)
-        // Add name display and include status if available
         const thoughtHTML = thought
             ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
-                 <div class="thought-author" style="color: #4285F4 !important; font-weight: 800;">${name}</div>
-                 <div class="thought-content" style="color: #000000 !important; font-weight: 600;">
+                 <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem;">${name}</div>
+                 <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
                     ${thought}
                  </div>
                </div>`
             : '';
 
+        let moodHTML = '';
+        if (mood && moodUpdatedAt) {
+            const isExpired = new Date(moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
+            if (!isExpired) {
+                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -5px; right: -5px; font-size: 1.2rem; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 2px; line-height: 1; z-index: 10;">${mood}</div>`;
+            }
+        }
+
         const icon = L.divIcon({
             className: 'custom-avatar-icon',
             html: `
-                <div class="avatar-group">
+                <div class="avatar-group" style="position: relative;">
                     ${thoughtHTML}
                     <div class="${className}" style="${style}"></div>
+                    ${moodHTML}
                 </div>
             `,
-            iconSize: [50, 50], // Increased to 50
-            iconAnchor: [25, 25],
-            popupAnchor: [0, -27]
+            iconSize: [42, 42],
+            iconAnchor: [21, 21],
+            popupAnchor: [0, -25]
         });
 
         iconCache.current.set(cacheKey, icon);
         return icon;
-    };
+    }, [currentUser]);
 
-    // Memoize current user marker to avoid hook order issues
-    const currentUserMarker = useMemo(() => {
-        if (!currentUser || !userLocation) return null;
-
+    // Memoize the icon separately so location updates don't destroy the DOM node and break CSS transitions
+    const currentUserIcon = useMemo(() => {
+        if (!currentUser) return null;
         let avatarUrl;
         if (currentUser.avatar_url) {
             avatarUrl = getAvatar2D(currentUser.avatar_url);
         } else {
-            // Strict Gender Fallback (No DiceBear)
             if (currentUser.gender === 'Male') avatarUrl = DEFAULT_MALE_AVATAR;
             else if (currentUser.gender === 'Female') avatarUrl = DEFAULT_FEMALE_AVATAR;
             else avatarUrl = DEFAULT_GENERIC_AVATAR;
         }
 
+        let displayThought = currentUser.thought || currentUser.status_message;
+        const thoughtTime = currentUser.thoughtTime || currentUser.status_updated_at;
+        
+        if (displayThought && thoughtTime) {
+            const isExpired = new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000;
+            if (isExpired) {
+                displayThought = null;
+            }
+        }
+
+        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at);
+    }, [currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at]);
+
+    // Memoize current user marker to avoid hook order issues
+    const currentUserMarker = useMemo(() => {
+        if (!currentUser || !userLocation || !currentUserIcon) return null;
+
         return (
             <Marker
                 position={[userLocation.lat, userLocation.lng]}
-                icon={createAvatarIcon(avatarUrl, true, currentUser.thought, 'You')}
+                ref={(ref) => {
+                    if (ref) markerRefs.current.set(currentUser.id, ref);
+                }}  
+                icon={currentUserIcon}
                 eventHandlers={{ click: () => setSelectedUser(null) }}
             />
         );
-    }, [currentUser, userLocation?.lat, userLocation?.lng]);
+    }, [currentUser?.id, userLocation?.lat, userLocation?.lng, currentUserIcon]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -1848,6 +1863,53 @@ export default function MapHome() {
         // So clearing search query restores the view.
         setSelectedUser(user); // Triggers Zoom via UserSelectionController
     };
+
+    // 🔥 SMOOTH SELF MOVEMENT EFFECT
+    useEffect(() => {
+        if (!currentUser?.id || !userLocation) return;
+
+        animateMarkerMovement(
+            currentUser.id,
+            userLocation.lat,
+            userLocation.lng
+        );
+    }, [userLocation?.lat, userLocation?.lng]);
+
+    // Use a memoized click handler to prevent UserMarker from re-rendering
+    const handleMarkerClick = React.useCallback(async (u) => {
+        if (!currentUser) {
+            setSelectedUser(u);
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from('friendships')
+            .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
+            .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
+            .maybeSingle();
+
+        if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
+        
+        let isMuted = false;
+        if (data) {
+            let mutedUntil = null;
+            if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
+            else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
+
+            if (mutedUntil && new Date(mutedUntil) > new Date()) {
+                isMuted = true;
+            }
+        }
+
+        setSelectedUser({
+            ...u,
+            friendshipStatus: data?.status || u.friendshipStatus || null,
+            friendshipId: data?.id || u.friendshipId || null,
+            requesterId: data?.requester_id || null,
+            receiverId: data?.receiver_id || null,
+            isMuted: isMuted
+        });
+    }, [currentUser]);
 
     // ------------------------------------------------------------------
     // 📍 MEMOIZED MARKERS (Clustered & Spiral)
@@ -1931,71 +1993,17 @@ export default function MapHome() {
             }
         });
 
-        return processedUsers.map(u => {
-            console.log(`📍 [MapHome] Rendering Marker for ${u.name}: [${u.lat}, ${u.lng}]`);
-            // Check thought expiration (3 hours)
-            let displayThought = u.thought;
-            if (u.status_updated_at) {
-                const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
-                if (diffHours > 3) displayThought = null;
-            }
+        return processedUsers.map(u => (
+            <UserMarker 
+                key={u.id}
+                user={u}
+                markerRefs={markerRefs}
+                onMarkerClick={handleMarkerClick}
+                createAvatarIcon={createAvatarIcon}
+            />
+        ));
+    }, [filteredUsers, userLocation, handleMarkerClick, createAvatarIcon]);
 
-            return (
-                <Marker
-                    key={u.id}
-                    position={[u.lat, u.lng]}
-                    icon={createAvatarIcon(getAvatar2D(u.avatar), false, displayThought, u.name, u.status)}
-                    riseOnHover={true}
-                    eventHandlers={{
-                        click: async () => {
-
-                            // Fetch friendship status synchronously to update UI instantly
-                            // Optimistically show card while loading if needed, but fetch runs fast.
-                            // We check if there's friendship where (me=req, them=rec) OR (me=rec, them=req)
-                            console.log(`🔍 [MapHome] Fetching friendship between Me(${currentUser?.id}) and ${u.name}(${u.id})`);
-                            
-                            // Prevent check if currentUser is null (edge case)
-                            if (!currentUser) {
-                                setSelectedUser(u);
-                                return;
-                            }
-
-                            const { data, error } = await supabase
-                                .from('friendships')
-                                .select('id, status, requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver')
-                                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${u.id}),and(requester_id.eq.${u.id},receiver_id.eq.${currentUser.id})`)
-                                .maybeSingle();
-
-                            if (error) console.error("❌ [MapHome] Error fetching friendship:", error);
-                            
-                            let isMuted = false;
-                            if (data) {
-                                let mutedUntil = null;
-                                if (data.requester_id === currentUser.id) mutedUntil = data.muted_until_by_requester;
-                                else if (data.receiver_id === currentUser.id) mutedUntil = data.muted_until_by_receiver;
-
-                                if (mutedUntil && new Date(mutedUntil) > new Date()) {
-                                    isMuted = true;
-                                }
-                            }
-
-                            setSelectedUser({
-                                ...u,
-                                // Robust Fallback: Use fetched data OR existing local data
-                                friendshipStatus: data?.status || u.friendshipStatus || null,
-                                friendshipId: data?.id || u.friendshipId || null,
-                                requesterId: data?.requester_id || null,
-                                receiverId: data?.receiver_id || null,
-                                isMuted: isMuted
-                            });
-                        }
-                    }}
-                />
-            );
-        });
-    }, [filteredUsers, currentUser]);
-
-    const ghostMode = currentUser?.is_ghost_mode === true;
 
 
     // -------------------------------------------------
@@ -2029,6 +2037,160 @@ export default function MapHome() {
         currentUser?.is_location_on
     ]);
 
+
+    // 0️⃣ Absolute Priority Overlay: Profile Setup (Must block everything, including GPS loading and permissions)
+    if (profileReady && showProfileSetup) {
+        return (
+            <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh' }}>
+                <style>{`
+                    .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 999999; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                    .onboarding-card { background: #18181b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 380px; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6); color: white; display: flex; flex-direction: column; gap: 20px; }
+                    .onboarding-card h2 { margin: 0; font-size: 1.6rem; color: #fff; text-align: left; }
+                    .onboarding-card h2 span.wave { color: #00a8ff; }
+                    .onboarding-card p { margin: 0; font-size: 0.95rem; color: #a1a1aa; text-align: left; margin-top: -12px; }
+                    .ob-section { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+                    .ob-section label { font-size: 0.9rem; font-weight: 600; color: #fff; }
+                    .ob-input { background: #27272a; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px 16px; color: white; font-size: 1rem; outline: none; transition: all 0.2s; width: 100%; box-sizing: border-box; }
+                    .ob-input:focus { border-color: #0084ff; background: #2f2f33; }
+                    .chip-group { display: flex; flex-wrap: wrap; gap: 10px; }
+                    .chip { background: transparent; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 8px 18px; color: #a1a1aa; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+                    .chip:hover { background: rgba(255, 255, 255, 0.05); }
+                    .chip.selected { background: transparent; border-color: rgba(255, 255, 255, 0.3); color: white; }
+                    .complete-btn { background: #0084ff; color: white; border: none; border-radius: 14px; padding: 16px; font-size: 1.05rem; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s, transform 0.1s; }
+                    .complete-btn:hover { background: #0073e6; }
+                    .complete-btn:active { transform: scale(0.98); }
+                `}</style>
+                <div className="onboarding-overlay">
+                    <div className="onboarding-card">
+                        <h2>Welcome to SocialMap! 👋</h2>
+                        <p>Complete your profile to join.</p>
+
+                        <div className="ob-section">
+                            <label>Username</label>
+                            <input
+                                type="text"
+                                className="ob-input"
+                                value={setupData.username}
+                                onChange={(e) => setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+                                placeholder="Choose a username"
+                            />
+                        </div>
+
+                        <div className="ob-section">
+                            <label>Gender</label>
+                            <div className="chip-group">
+                                {['Male', 'Female', 'Non-binary', 'Other'].map(g => (
+                                    <button
+                                        key={g}
+                                        className={`chip ${setupData.gender === g ? 'selected' : ''}`}
+                                        onClick={() => setSetupData({ ...setupData, gender: g })}
+                                    >{g}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="ob-section">
+                            <label>Relationship Status</label>
+                            <div className="chip-group">
+                                {['Single', 'Married', 'Committed', 'Open to Date'].map(s => (
+                                    <button
+                                        key={s}
+                                        className={`chip ${setupData.relationshipStatus === s ? 'selected' : ''}`}
+                                        onClick={() => setSetupData({ ...setupData, relationshipStatus: s })}
+                                    >{s}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="ob-section">
+                            <label>Your Avatar 👤</label>
+                            <div className="avatar-preview-box" style={{ position: 'relative', width: '100px', margin: '0 auto' }}>
+                                <div style={{
+                                    width: '100px', height: '100px',
+                                    borderRadius: '50%', overflow: 'hidden',
+                                    border: '3px solid rgba(255,255,255,0.2)',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <img
+                                        src={(() => {
+                                            // Priority 1: Uploaded Preview
+                                            if (avatarPreview) return avatarPreview;
+
+                                            // Priority 2: Gender Default
+                                            const g = setupData.gender;
+                                            if (g === 'Male') return DEFAULT_MALE_AVATAR;
+                                            if (g === 'Female') return DEFAULT_FEMALE_AVATAR;
+
+                                            // Fallback
+                                            return DEFAULT_GENERIC_AVATAR;
+                                        })()}
+                                        alt="Avatar Preview"
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                </div>
+
+                                {/* Upload Button Overlay */}
+                                <label
+                                    htmlFor="modal-avatar-upload"
+                                    style={{
+                                        position: 'absolute', bottom: '0', right: '0',
+                                        width: '32px', height: '32px',
+                                        background: 'var(--brand-blue, #0084ff)',
+                                        borderRadius: '50%',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                                        border: '2px solid #1c1c1e',
+                                        zIndex: 10
+                                    }}
+                                >
+                                    <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
+                                </label>
+                                <input
+                                    id="modal-avatar-upload"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = () => setCropImage(reader.result);
+                                            reader.readAsDataURL(file);
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                    style={{ display: 'none' }}
+                                />
+                            </div>
+                            <p className="avatar-hint" style={{ marginTop: '12px', textAlign: 'center', color: '#a1a1aa' }}>
+                                {avatarFile ? 'Photo selected! Ready to join.' : "We've assigned you a look based on gender. Tap + to upload your own!"}
+                            </p>
+                        </div>
+
+                        <button className="complete-btn" onClick={handleCompleteSetup}>
+                            Complete Setup & Enter Map 🚀
+                        </button>
+                    </div>
+                </div>
+
+                {/* Cropper Modal for Onboarding */}
+                {cropImage && (
+                    <ImageCropper
+                        imageSrc={cropImage}
+                        zIndex={10000000}
+                        onCancel={() => setCropImage(null)}
+                        onCropComplete={(croppedBlob) => {
+                            const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                            setAvatarFile(file);
+                            setAvatarPreview(URL.createObjectURL(file));
+                            setCropImage(null);
+                        }}
+                    />
+                )}
+            </div>
+        );
+    }
 
     // 1️⃣ Loading
     if (loadingLocation) {
@@ -2167,7 +2329,9 @@ export default function MapHome() {
         );
     }
 
-    // 3️⃣ Waiting for GPS fix
+
+
+    // 4️⃣ Waiting for GPS fix
     if (!userLocation) {
         return (
             <div style={{
@@ -2342,125 +2506,22 @@ export default function MapHome() {
                     </div>
                 )}
 
-            {/* BLOCKING ONBOARDING MODAL */}
-            {showProfileSetup && (
-                <div className="onboarding-overlay">
-                    <div className="onboarding-card">
-                        <h2>Welcome to SocialMap! 👋</h2>
-                        <p>Complete your profile to join.</p>
 
-                        <div className="ob-section">
-                            <label>Username</label>
-                            <input
-                                type="text"
-                                className="ob-input"
-                                value={setupData.username}
-                                onChange={(e) => setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
-                                placeholder="Choose a username"
-                            />
-                        </div>
 
-                        <div className="ob-section">
-                            <label>Gender</label>
-                            <div className="chip-group">
-                                {['Male', 'Female', 'Non-binary', 'Other'].map(g => (
-                                    <button
-                                        key={g}
-                                        className={`chip ${setupData.gender === g ? 'selected' : ''}`}
-                                        onClick={() => setSetupData({ ...setupData, gender: g })}
-                                    >{g}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="ob-section">
-                            <label>Relationship Status</label>
-                            <div className="chip-group">
-                                {['Single', 'Married', 'Committed', 'Open to Date'].map(s => (
-                                    <button
-                                        key={s}
-                                        className={`chip ${setupData.relationshipStatus === s ? 'selected' : ''}`}
-                                        onClick={() => setSetupData({ ...setupData, relationshipStatus: s })}
-                                    >{s}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="ob-section">
-                            <label>Your Avatar 👤</label>
-                            <div className="avatar-preview-box" style={{ position: 'relative', width: '100px', margin: '0 auto' }}>
-                                <div style={{
-                                    width: '100px', height: '100px',
-                                    borderRadius: '50%', overflow: 'hidden',
-                                    border: '3px solid rgba(255,255,255,0.2)',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                    <img
-                                        src={(() => {
-                                            // Priority 1: Uploaded Preview
-                                            if (avatarPreview) return avatarPreview;
-
-                                            // Priority 2: Gender Default
-                                            const g = setupData.gender;
-                                            if (g === 'Male') return DEFAULT_MALE_AVATAR;
-                                            if (g === 'Female') return DEFAULT_FEMALE_AVATAR;
-
-                                            // Fallback
-                                            return DEFAULT_GENERIC_AVATAR;
-                                        })()}
-                                        alt="Avatar Preview"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    />
-                                </div>
-
-                                {/* Upload Button Overlay */}
-                                <label
-                                    htmlFor="modal-avatar-upload"
-                                    style={{
-                                        position: 'absolute', bottom: '0', right: '0',
-                                        width: '32px', height: '32px',
-                                        background: 'var(--brand-blue, #0084ff)',
-                                        borderRadius: '50%',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
-                                        border: '2px solid #1c1c1e',
-                                        zIndex: 10
-                                    }}
-                                >
-                                    <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
-                                </label>
-                                <input
-                                    id="modal-avatar-upload"
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                        const file = e.target.files[0];
-                                        if (file) {
-                                            // Read file for cropping
-                                            const reader = new FileReader();
-                                            reader.onload = () => setCropImage(reader.result);
-                                            reader.readAsDataURL(file);
-
-                                            // Clear input so same file can be selected again
-                                            e.target.value = '';
-                                        }
-                                    }}
-                                    style={{ display: 'none' }}
-                                />
-                            </div>
-                            <p className="avatar-hint" style={{ marginTop: '12px' }}>
-                                {avatarFile ? 'Photo selected! Ready to join.' : "We've assigned you a look based on gender. Tap + to upload your own!"}
-                            </p>
-                        </div>
-
-                        <button className="complete-btn" onClick={handleCompleteSetup}>
-                            Complete Setup & Enter Map 🚀
-                        </button>
+            {/* PROFILE UPDATE NUDGE */}
+            {currentUser && (
+                (!currentUser.avatar_url ||
+                    currentUser.avatar_url.includes('/defaults/') ||
+                    currentUser.avatar_url.includes('dicebear') ||
+                    currentUser.avatar_url.includes('googleusercontent'))
+            ) && (
+                    <div
+                        className="update-nudge"
+                        onClick={() => navigate('/profile')}
+                    >
+                        ⚠️ Update profile avatar
                     </div>
-                </div>
-            )}
+                )}
 
             {/* Cropper Modal */}
             {cropImage && (
@@ -2477,11 +2538,41 @@ export default function MapHome() {
                 />
             )}
 
+            {/* Loading Overlay while fetching GPS */}
+            {loadingLocation && !userLocation && (
+                <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    zIndex: 99999, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    color: 'white'
+                }}>
+                    <div className="location-spinner" style={{
+                        width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.2)',
+                        borderTopColor: '#0084ff', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 0 16px'
+                    }}></div>
+                    <h2 style={{ fontSize: '1.2rem', fontWeight: 600, margin: '0 0 8px' }}>Acquiring Signal...</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem', margin: 0 }}>Finding your precise location.</p>
+                    <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+                </div>
+            )}
+
+            {/* 🚀 Global Map Smoothness Styles */}
+            <style>{`
+                .leaflet-marker-icon {
+                    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1) !important;
+                    will-change: transform;
+                }
+                .leaflet-pane > svg path.leaflet-interactive {
+                    transition: stroke-dashoffset 0.6s ease;
+                }
+            `}</style>
+
             {/* Map Container */}
+            {userLocation ? (
             <MapContainer
                 key="map-main-stable"
-                center={[userLocation.lat, userLocation.lng]}
-                zoom={17}
+                center={[userLocation.lat || 0, userLocation.lng || 0]}
+                zoom={userLocation.lat ? 17 : 2}
                 maxZoom={22}
                 style={{ height: '100dvh', width: '100%', outline: 'none' }} 
                 zoomControl={false}
@@ -2520,12 +2611,7 @@ export default function MapHome() {
                         keepBuffer={4}
                     />
                 )}
-              {/* 3️⃣ Controls & Logic */}
-            <RecenterAutomatically 
-                lat={userLocation.lat} 
-                lng={userLocation.lng} 
-                mapMode={mapMode} // 🔥 Passing mode to trigger recenter
-            />
+                <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
                 <RecenterControl lat={userLocation.lat} lng={userLocation.lng} />
                 <UserSelectionController selectedUser={selectedUser} />
 
@@ -2547,6 +2633,7 @@ export default function MapHome() {
                 {/* Memoized User Markers */}
                 {userMarkers}
             </MapContainer>
+            ) : null}
 
 
             {/* Top Search Bar & Action Buttons */}
@@ -3095,24 +3182,26 @@ export default function MapHome() {
                             />
                             <div className="thought-actions">
                                 <button type="button" onClick={() => setShowThoughtInput(false)}>Cancel</button>
-                                {currentUser?.thought && (
-                                    <button
-                                        type="button"
-                                        onClick={handleDeleteThought}
-                                        style={{
-                                            background: 'rgba(255, 59, 48, 0.1)',
-                                            color: '#ff3b30',
-                                            border: '1px solid rgba(255, 59, 48, 0.2)',
-                                            padding: '8px 12px',
-                                            fontSize: '1.2rem',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}
-                                        title="Delete Thought"
-                                    >
-                                        🗑️
-                                    </button>
-                                )}
-                                <button type="submit" className="primary">Post</button>
+                                <div className="right-actions">
+                                    {currentUser?.thought && (
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteThought}
+                                            style={{
+                                                background: 'rgba(255, 59, 48, 0.1)',
+                                                color: '#ff3b30',
+                                                border: '1px solid rgba(255, 59, 48, 0.2)',
+                                                padding: '8px 12px',
+                                                fontSize: '1.2rem',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}
+                                            title="Delete Thought"
+                                        >
+                                            🗑️
+                                        </button>
+                                    )}
+                                    <button type="submit" className="primary">Post</button>
+                                </div>
                             </div>
                         </form>
                         <p className="hint">Disappears in 3 hours</p>
@@ -3321,9 +3410,6 @@ export default function MapHome() {
                     position: relative;
                     background: var(--bg-color);
                 }
-                .leaflet-marker-icon {
-                    transition: transform 1s linear;
-                }
                 .map-ui-overlay {
                     position: absolute;
                     bottom: 80px;
@@ -3336,7 +3422,7 @@ export default function MapHome() {
                 /* INJECTED AVATAR STYLES (Backup if App.css fails) */
                 .avatar-group {
                     position: relative;
-                    width: 50px; height: 50px;
+                    width: 42px; height: 42px;
                     overflow: visible;
                 }
                 .avatar-marker {
@@ -3349,11 +3435,11 @@ export default function MapHome() {
                 }
                 .thought-bubble {
                     position: absolute;
-                    bottom: 125%; left: 50%;
+                    bottom: 115%; left: 50%;
                     transform: translateX(-50%);
                     background: white; color: black;
-                    padding: 4px 8px; border-radius: 12px;
-                    font-size: 0.75rem; white-space: nowrap;
+                    padding: 3px 6px; border-radius: 10px;
+                    font-size: 0.7rem; white-space: nowrap;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
                     border: 2px solid #4285F4;
                     z-index: 9999;
@@ -3421,7 +3507,8 @@ export default function MapHome() {
                     width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 1rem; outline: none;
                 }
                 .thought-card input:focus { border-color: #4285F4; }
-                .thought-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px; }
+                .thought-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 5px; }
+                .thought-actions .right-actions { display: flex; gap: 10px; }
                 .thought-actions button { padding: 8px 16px; border-radius: 8px; border:none; cursor: pointer; font-weight: 600; }
                 .thought-actions button.primary { background: #4285F4; color: white; }
                 .hint { font-size: 0.75rem; color: #888; margin: 0; text-align: center; }

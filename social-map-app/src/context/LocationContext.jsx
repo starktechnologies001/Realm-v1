@@ -16,6 +16,8 @@ export function LocationProvider({ children }) {
   const [loadingLocation, setLoadingLocation] = useState(false);
 
   const watchIdRef = useRef(null);
+  const lastSyncTime = useRef(0);
+  const lastSyncLoc = useRef(null);
 
   // ----------------------------------------
   // 🔹 START LOCATION
@@ -96,7 +98,7 @@ export function LocationProvider({ children }) {
             "• Safari: Settings → Privacy → Location Services → [Browser] → Allow"
           );
         } else if (error.code === 2) {
-          alert("📍 Location unavailable. Please check your device GPS settings.");
+          alert("📍 Location restricted. Please check your device GPS settings.");
         } else if (error.code === 3) {
           alert("📍 Location request timed out. Please try again.");
         }
@@ -126,19 +128,30 @@ export function LocationProvider({ children }) {
         setUserLocation(newLoc);
 
         // Throttled DB update
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (session?.user) {
-            supabase.from("profiles").update({
-              latitude: newLoc.lat,
-              longitude: newLoc.lng,
-              last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
-              is_location_on: true,
-              is_ghost_mode: false
-            }).eq("id", session.user.id).then(({ error }) => {
-              if (error) console.error("Location sync error:", error);
+        const now = Date.now();
+        const dist = lastSyncLoc.current 
+            ? Math.sqrt(Math.pow(newLoc.lat - lastSyncLoc.current.lat, 2) + Math.pow(newLoc.lng - lastSyncLoc.current.lng, 2))
+            : 1;
+
+        // Sync if: 1. No last sync OR 2. Moved > ~10m (approx 0.0001 deg) OR 3. > 10 seconds passed
+        if (!lastSyncTime.current || dist > 0.0001 || (now - lastSyncTime.current) > 10000) {
+            lastSyncTime.current = now;
+            lastSyncLoc.current = newLoc;
+
+            supabase.auth.getSession().then(({ data: { session } }) => {
+                if (session?.user) {
+                    supabase.from("profiles").update({
+                        latitude: newLoc.lat,
+                        longitude: newLoc.lng,
+                        last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                        is_location_on: true,
+                        is_ghost_mode: false
+                    }).eq("id", session.user.id).then(({ error }) => {
+                        if (error) console.error("Location sync error:", error);
+                    });
+                }
             });
-          }
-        });
+        }
       },
       (err) => {
         console.log("⚠️ Watch error:", err);

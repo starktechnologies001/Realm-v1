@@ -33,7 +33,7 @@ export default function Friends() {
             .from('friendships')
             .select(`
                 id, 
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)
             `)
             .eq('receiver_id', user.id)
             .eq('status', 'pending');
@@ -52,8 +52,8 @@ export default function Friends() {
                 id,
                 requester_id,
                 receiver_id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen)
+                requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen),
+                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)
             `)
             .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
             .eq('status', 'accepted');
@@ -74,6 +74,26 @@ export default function Friends() {
 
     useEffect(() => {
         fetchFriendsData();
+
+        // Real-time listener for profile changes (status, avatar, relationship_status, etc.)
+        const profileSub = supabase
+            .channel('public:profiles:friends_list')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+                const updatedUser = payload.new;
+                
+                setFriends(prev => prev.map(f => 
+                    f.id === updatedUser.id ? { ...f, ...updatedUser } : f
+                ));
+                
+                setRequests(prev => prev.map(r => 
+                    r.id === updatedUser.id ? { ...r, ...updatedUser } : r
+                ));
+            })
+            .subscribe();
+
+        return () => {
+             supabase.removeChannel(profileSub);
+        };
     }, []);
 
     const handleAccept = async (id) => {
@@ -340,11 +360,10 @@ export default function Friends() {
                                                 loading="eager"
                                                 decoding="sync"
                                             />
-                                            <div className={`status-indicator ${friend.status === 'Online' ? 'online' : ''}`}></div>
                                         </div>
                                         <div className="info">
                                             <h3>{friend.username}</h3>
-                                            {!friend.hide_status && <span className="status-text">{friend.status || 'Offline'}</span>}
+                                            {!friend.hide_status && <span className="status-text">{friend.relationship_status || 'Single'}</span>}
                                         </div>
                                         
                                         <div className="menu-wrapper">
@@ -659,9 +678,9 @@ export default function Friends() {
                     transform: translateX(0);
                 }
 
-                .avatar-container { position: relative; width: 48px; height: 48px; }
+                .avatar-container { position: relative; width: 40px; height: 40px; }
                 .avatar { 
-                    width: 100%; height: 100%; border-radius: 14px; object-fit: cover; 
+                    width: 100%; height: 100%; border-radius: 12px; object-fit: cover; 
                     background: rgba(0,0,0,0.08);
                 }
                 .status-indicator {
@@ -673,9 +692,9 @@ export default function Friends() {
                 .status-indicator.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.5); }
 
                 .info { flex: 1; min-width: 0; }
-                .info h3 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0; }
-                .status-text { font-size: 0.8rem; color: var(--text-secondary); opacity: 0.75; display: block; }
-                .subtitle { font-size: 0.8rem; color: var(--accent-cyan); }
+                .info h3 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0; }
+                .status-text { font-size: 0.75rem; color: var(--text-secondary); opacity: 0.75; display: block; }
+                .subtitle { font-size: 0.75rem; color: var(--accent-cyan); }
 
                 .actions { display: flex; gap: 8px; }
                 .btn-icon {
@@ -710,11 +729,11 @@ export default function Friends() {
                         transform: none;
                     }
                     .avatar-container {
-                        width: 52px;
-                        height: 52px;
+                        width: 44px;
+                        height: 44px;
                     }
                     .avatar {
-                        border-radius: 16px;
+                        border-radius: 14px;
                     }
                     .status-indicator {
                         width: 16px;
@@ -724,12 +743,12 @@ export default function Friends() {
                         right: -2px;
                     }
                     .info h3 {
-                        font-size: 0.95rem;
+                        font-size: 0.9rem;
                         margin-bottom: 0;
                         font-weight: 600;
                     }
                     .status-text {
-                        font-size: 0.8rem;
+                        font-size: 0.75rem;
                     }
                     .btn-menu {
                         width: 44px;

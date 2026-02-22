@@ -148,6 +148,7 @@ useEffect(() => {
   const [error, setError] = useState('');
   const [messageType, setMessageType] = useState('error'); // 'error' | 'success'
   const [signupStep, setSignupStep] = useState(1); // 1: Email, 2: Username, 3: Password, 4: Profile
+  const [showPassword, setShowPassword] = useState(false);
 
   const showMessage = (msg, type = 'error') => {
     setError(msg);
@@ -177,7 +178,7 @@ useEffect(() => {
           .maybeSingle();
         
         if (data) {
-          showMessage('This email already exists', 'error');
+          showMessage('Email is already registered. Please login.', 'error');
           return;
         }
       } catch (err) {
@@ -391,7 +392,7 @@ useEffect(() => {
               username: username,
               full_name: username,
               avatar_url: finalAvatarUrl, 
-              status: status,
+              relationship_status: status,
               gender: gender,
               interests: selectedInterests
             }
@@ -441,7 +442,8 @@ useEffect(() => {
               full_name: userMeta.full_name,
               gender: userMeta.gender,
               avatar_url: userMeta.avatar_url,
-              status: userMeta.status || 'Online'
+              status: userMeta.status || 'Online',
+              relationship_status: userMeta.relationship_status
             }));
           } else {
             localStorage.setItem('currentUser', JSON.stringify({
@@ -452,6 +454,7 @@ useEffect(() => {
               gender: profile.gender,
               avatar_url: profile.avatar_url, 
               status: profile.status || 'Online',
+              relationship_status: profile.relationship_status,
               interests: profile.interests
             }));
 
@@ -490,7 +493,7 @@ useEffect(() => {
           err.message.includes('unique constraint') ||
           err.message.includes('already exists')
       )) {
-        showMessage('This email already exists', 'error');
+        showMessage('Email is already registered. Please login.', 'error');
       } else {
         showMessage(err.message || 'Authentication failed', 'error');
       }
@@ -566,15 +569,23 @@ useEffect(() => {
                   required
                 />
               </div>
-              <div className="input-group">
+              <div className="input-group" style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   className="input-field"
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  style={{ paddingRight: '40px' }}
                   required
                 />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)} 
+                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
               </div>
               <div style={{ textAlign: 'right', marginTop: '8px' }}>
                 <span 
@@ -645,15 +656,23 @@ useEffect(() => {
               {signupStep === 3 && (
                 <div className="signup-step">
                   <h3 className="step-title">Create a secure password</h3>
-                  <div className="input-group">
+                  <div className="input-group" style={{ position: 'relative' }}>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       className="input-field"
                       placeholder="Password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      style={{ paddingRight: '40px' }}
                       autoFocus
                     />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)} 
+                      style={{ position: 'absolute', right: '12px', top: '22px', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                    >
+                      {showPassword ? '👁️' : '👁️‍🗨️'}
+                    </button>
                     <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', marginLeft: '4px' }}>
                       8+ chars with Upper, Lower, Number & Symbol
                     </p>

@@ -155,7 +155,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
             setStats({
                 mutuals: mutualCount,
                 joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: '2-digit' }) : 'Unknown',
-                bio: profile?.bio || 'No bio available.',
+                bio: profile?.bio || 'No bio set.',
                 birthDate: formatSafeDate(profile?.birth_date),
                 interests: profile?.interests || [],
                 username: profile?.username || user.username || user.name 

@@ -1,51 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatFileSize } from '../utils/fileUpload';
 import './AttachmentPreview.css';
 
 const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }) => {
+    const [caption, setCaption] = useState('');
+
     if (!files || files.length === 0) return null;
 
+    // We assume the first file is the one driving the preview for now.
+    const file = files[0];
+    const isImage = file.type.startsWith('image/');
+    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+
     return (
-        <div className="attachment-preview-overlay">
-            <div className="attachment-preview-container">
-                <div className="preview-header">
-                    <h3>Preview Attachments</h3>
-                    <button className="preview-close" onClick={onCancel}>✕</button>
-                </div>
+        <div className="attachment-preview-overlay fullscreen">
+            <div className="preview-top-bar">
+                <button className="preview-close-btn" onClick={onCancel}>✕</button>
+            </div>
 
-                <div className="preview-files">
-                    {files.map((file, index) => (
-                        <div key={index} className="preview-file-item">
-                            {file.type.startsWith('image/') ? (
-                                <img 
-                                    src={URL.createObjectURL(file)} 
-                                    alt={file.name}
-                                    className="preview-image"
-                                />
-                            ) : (
-                                <div className="preview-file-icon">
-                                    {file.type.startsWith('video/') ? '🎥' : '📄'}
-                                </div>
-                            )}
-                            
-                            <div className="preview-file-info">
-                                <span className="file-name">{file.name}</span>
-                                <span className="file-size">{formatFileSize(file.size)}</span>
-                            </div>
+            <div className="preview-content-area">
+                {isImage ? (
+                    <img 
+                        src={previewUrl} 
+                        alt="Preview"
+                        className="fullscreen-image-preview"
+                    />
+                ) : (
+                    <div className="preview-file-icon-large">
+                        {file.type.startsWith('video/') ? '🎥' : '📄'}
+                        <div className="file-name-large">{file.name}</div>
+                        <div className="file-size-large">{formatFileSize(file.size)}</div>
+                    </div>
+                )}
+            </div>
 
-                            <button 
-                                className="remove-file-btn" 
-                                onClick={() => onRemove(index)}
-                                disabled={uploadProgress !== null}
-                            >
-                                🗑️
-                            </button>
-                        </div>
-                    ))}
+            <div className="preview-bottom-bar">
+                <div className="preview-caption-input">
+                    <input 
+                        type="text" 
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        placeholder="Add a caption..."
+                    />
                 </div>
 
                 {uploadProgress !== null && (
-                    <div className="upload-progress">
+                    <div className="upload-progress-overlay">
                         <div className="progress-bar">
                             <div 
                                 className="progress-fill" 
@@ -56,20 +56,13 @@ const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }
                     </div>
                 )}
 
-                <div className="preview-actions">
+                <div className="preview-actions-row">
                     <button 
-                        className="preview-cancel-btn" 
-                        onClick={onCancel}
+                        className="preview-send-btn-round" 
+                        onClick={() => onSend(caption)}
                         disabled={uploadProgress !== null}
                     >
-                        Cancel
-                    </button>
-                    <button 
-                        className="preview-send-btn" 
-                        onClick={onSend}
-                        disabled={uploadProgress !== null}
-                    >
-                        {uploadProgress !== null ? 'Uploading...' : `Send (${files.length})`}
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
                 </div>
             </div>

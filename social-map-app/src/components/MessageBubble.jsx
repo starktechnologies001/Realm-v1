@@ -226,13 +226,25 @@ const MessageBubble = memo(({
                 )}
 
                 {isImage ? (
-                    <img 
-                        src={imageUrl} 
-                        alt="Sent" 
-                        className="sent-image" 
-                        onClick={() => onViewImage(imageUrl)}
-                        style={{ cursor: 'pointer' }}
-                    />
+                    <div className="msg-image-container" style={{ display: 'flex', flexDirection: 'column' }}>
+                        <img 
+                            src={imageUrl} 
+                            alt="Sent" 
+                            className="sent-image" 
+                            onClick={() => onViewImage(imageUrl)}
+                            style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' ? '6px' : '0' }}
+                        />
+                        {msg.content && msg.content !== '📷 Photo' && (
+                            <span className="msg-text" style={{ padding: '0 4px', wordBreak: 'break-word' }}>{msg.content}</span>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', padding: '4px 4px 0 0', marginTop: '2px' }}>
+                            <span className="msg-time-inline" style={{ margin: 0, fontSize: '0.7em', opacity: 0.7 }}>{formatTime(msg.created_at)}</span>
+                            <MessageStatusTick 
+                                status={msg.delivery_status || (msg.is_read ? 'seen' : 'delivered')} 
+                                isSender={isMe} 
+                            />
+                        </div>
+                    </div>
                 ) : msg.message_type === 'call_log' ? (
                     <div className="call-log-bubble">
                         {(() => {

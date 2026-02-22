@@ -381,6 +381,14 @@ export default function StoryViewer({
                     transition: width 0.05s linear;
                 }
 
+                .story-image {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                    background: #111;
+                    flex-grow: 1;
+                }
+
                 .story-header {
                     position: absolute;
                     top: 0; left: 0; right: 0;
@@ -393,6 +401,52 @@ export default function StoryViewer({
                     padding-left: max(20px, env(safe-area-inset-left));
                     padding-right: max(20px, env(safe-area-inset-right));
                     padding-bottom: 40px;
+                }
+                
+                .user-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .user-info img {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                    border: 2px solid rgba(255, 255, 255, 0.8);
+                }
+                .meta {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .username {
+                    color: white;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                .timestamp {
+                    color: rgba(255, 255, 255, 0.8);
+                    font-size: 13px;
+                }
+                .actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .action-btn {
+                    background: none;
+                    border: none;
+                    color: white;
+                    cursor: pointer;
+                    padding: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .action-btn svg {
+                    width: 24px;
+                    height: 24px;
+                    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
                 }
 
                 .story-footer {
@@ -425,6 +479,21 @@ export default function StoryViewer({
                     box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
                     animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
                     border-top: 1px solid rgba(255,255,255,0.1);
+                }
+
+                .story-caption {
+                    position: absolute;
+                    bottom: 100px; /* Above the footer */
+                    left: 20px; right: 20px;
+                    z-index: 25;
+                    color: white;
+                    font-size: 16px;
+                    text-align: center;
+                    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+                    padding: 10px;
+                    background: rgba(0,0,0,0.4);
+                    border-radius: 12px;
+                    backdrop-filter: blur(8px);
                 }
                 
                 .caption-edit-input {

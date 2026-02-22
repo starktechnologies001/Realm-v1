@@ -65,7 +65,7 @@ export default function UserProfilePage() {
             // 3. Fetch the target profile
             const { data: profile, error: profileErr } = await supabase
                 .from('profiles')
-                .select('*')
+                .select('*, is_public')
                 .eq('id', userId)
                 .maybeSingle();
 
@@ -109,12 +109,14 @@ export default function UserProfilePage() {
             const mutualCount = theirFriendIds.filter(id => myFriendIds.has(id)).length;
 
             setDetails({
-                bio: profile.bio || 'No bio available.',
+                bio: profile.bio || 'No bio set.',
                 interests: profile.interests || [],
                 birthDate: profile.birth_date,
                 joinedAt: profile.created_at,
                 mutuals: mutualCount,
                 username: profile.username || profile.full_name,
+                relationship_status: profile.relationship_status,
+                is_public: profile.is_public !== false
             });
 
             // 6. Shared media (friends only)
@@ -147,8 +149,15 @@ export default function UserProfilePage() {
         } else if (action === 'call-video') {
             startCall(user, 'video');
         } else if (action === 'poke') {
-            await supabase.from('friendships').insert({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
-            setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+            if (user.friendshipStatus === 'pending' && user.requesterId === currentUser.id) {
+                // Cancel Poke
+                await supabase.from('friendships').delete().match({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
+                setUser(u => ({ ...u, friendshipStatus: 'none', requesterId: null }));
+            } else {
+                // Send Poke
+                await supabase.from('friendships').insert({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
+                setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+            }
         } else if (action === 'block') {
             await supabase.from('blocked_users').insert({ blocker_id: currentUser.id, blocked_id: user.id });
             navigate(-1);
@@ -182,6 +191,8 @@ export default function UserProfilePage() {
     const birthday = details.birthDate ? formatDate(details.birthDate) : null;
     const joinedDate = formatJoinDate(details.joinedAt);
     const isFriend = user.friendshipStatus === 'accepted';
+    const isPublic = details.is_public;
+    const canSeeFullProfile = isFriend || isPublic;
 
     return (
         <div style={styles.page}>
@@ -201,36 +212,43 @@ export default function UserProfilePage() {
                 <h1 style={styles.name}>{user.name}</h1>
                 <span style={styles.handle}>@{details.username}</span>
                 <div style={styles.badgeRow}>
+                    {details.relationship_status && <span style={styles.statusPill}>{details.relationship_status}</span>}
                     {isFriend && <span style={styles.friendBadge}>🤝 Friend</span>}
+                    {!isFriend && isPublic && <span style={styles.publicBadge}>🌍 Public</span>}
+                    {!isFriend && !isPublic && <span style={styles.privateBadge}>🔒 Private Profile</span>}
                 </div>
             </div>
 
             {/* Stats */}
-            <div style={styles.statsRow}>
-                <div style={styles.statItem}>
-                    <span style={styles.statVal}>{details.mutuals}</span>
-                    <span style={styles.statLabel}>MUTUALS</span>
-                </div>
-                <div style={{ ...styles.statItem, borderLeft: '1px solid rgba(255,255,255,0.07)', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
-                    <span style={styles.statVal}>{joinedDate}</span>
-                    <span style={styles.statLabel}>JOINED</span>
-                </div>
-                {birthday && (
+            {canSeeFullProfile && (
+                <div style={styles.statsRow}>
                     <div style={styles.statItem}>
-                        <span style={styles.statVal}>🎂 {birthday}</span>
-                        <span style={styles.statLabel}>BIRTHDAY</span>
+                        <span style={styles.statVal}>{details.mutuals}</span>
+                        <span style={styles.statLabel}>MUTUALS</span>
                     </div>
-                )}
-            </div>
+                    <div style={{ ...styles.statItem, borderLeft: '1px solid rgba(255,255,255,0.07)', borderRight: birthday ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                        <span style={styles.statVal}>{joinedDate}</span>
+                        <span style={styles.statLabel}>JOINED</span>
+                    </div>
+                    {birthday && (
+                        <div style={styles.statItem}>
+                            <span style={styles.statVal}>🎂 {birthday}</span>
+                            <span style={styles.statLabel}>BIRTHDAY</span>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Bio */}
-            <div style={styles.section}>
-                <h4 style={styles.sectionTitle}>ABOUT</h4>
-                <p style={styles.bioText}>{details.bio}</p>
-            </div>
+            {canSeeFullProfile && (
+                <div style={styles.section}>
+                    <h4 style={styles.sectionTitle}>ABOUT</h4>
+                    <p style={styles.bioText}>{details.bio}</p>
+                </div>
+            )}
 
             {/* Interests */}
-            {details.interests.length > 0 && (
+            {canSeeFullProfile && details.interests.length > 0 && (
                 <div style={styles.section}>
                     <h4 style={styles.sectionTitle}>INTERESTS</h4>
                     <div style={styles.tagsRow}>
@@ -379,6 +397,18 @@ const styles = {
         fontSize: '0.82rem', fontWeight: 700,
         boxShadow: '0 4px 12px rgba(0,132,255,0.3)',
     },
+    publicBadge: {
+        background: 'rgba(48,209,88,0.1)',
+        color: '#30d158', padding: '5px 16px', borderRadius: '100px',
+        fontSize: '0.82rem', fontWeight: 700,
+        border: '1px solid rgba(48,209,88,0.2)',
+    },
+    privateBadge: {
+        background: 'rgba(255,255,255,0.05)',
+        color: 'rgba(255,255,255,0.4)', padding: '5px 16px', borderRadius: '100px',
+        fontSize: '0.82rem', fontWeight: 600,
+        border: '1px solid rgba(255,255,255,0.1)',
+    },
     statsRow: {
         display: 'flex', width: '100%', maxWidth: '400px',
         padding: '20px 0',
@@ -386,9 +416,9 @@ const styles = {
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         margin: '24px 0',
     },
-    statItem: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' },
-    statVal: { fontSize: '1.1rem', fontWeight: 700, color: 'white' },
-    statLabel: { fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, letterSpacing: '1px' },
+    statItem: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', overflow: 'hidden', minWidth: 0 },
+    statVal: { display: 'block', fontSize: '0.9rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100%' },
+    statLabel: { display: 'block', fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.5px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100%' },
     section: { width: '100%', maxWidth: '400px', marginBottom: '24px', textAlign: 'left' },
     sectionTitle: {
         fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)',

@@ -22,6 +22,9 @@ export default function OAuthProfileSetup() {
   const [googlePhotoUrl, setGooglePhotoUrl] = useState('');
   
   // Profile fields
+  const [username, setUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [gender, setGender] = useState('');
   const [status, setStatus] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
@@ -49,6 +52,11 @@ export default function OAuthProfileSetup() {
       if (googlePhoto) {
         setGooglePhotoUrl(googlePhoto);
         setAvatarPreview(googlePhoto);
+      }
+      
+      const suggestedName = user.user_metadata?.full_name || user.user_metadata?.name || '';
+      if (suggestedName) {
+        setUsername(suggestedName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100));
       }
     };
     
@@ -100,12 +108,49 @@ export default function OAuthProfileSetup() {
     }
   };
 
+  // Check Username Availability
+  useEffect(() => {
+    const checkUsername = async () => {
+      if (!username || username.length < 3) {
+        setUsernameError('');
+        return;
+      }
+      setCheckingUsername(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle();
+        
+        // If an ID exists and it's NOT ME, throw error
+        if (data && data.id !== userId) {
+          setUsernameError('Username is already taken');
+        } else {
+          setUsernameError('');
+        }
+      } catch (err) {
+        console.error('Username check error:', err);
+      } finally {
+        setCheckingUsername(false);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      checkUsername();
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [username, userId]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
+      if (!username.trim() || username.length < 3) throw new Error('Please enter a valid username (min 3 chars)');
+      if (usernameError) throw new Error('Please choose a different username');
       if (!gender) throw new Error('Please select a gender');
       if (!status) throw new Error('Please select a relationship status');
 
@@ -131,8 +176,10 @@ export default function OAuthProfileSetup() {
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
+          username,
+          full_name: username,
           gender,
-          status,
+          relationship_status: status,
           interests: selectedInterests,
           avatar_url: finalAvatarUrl
         })
@@ -143,8 +190,10 @@ export default function OAuthProfileSetup() {
       // Update user metadata
       await supabase.auth.updateUser({
         data: {
+          username,
+          full_name: username,
           gender,
-          status,
+          relationship_status: status,
           avatar_url: finalAvatarUrl,
           interests: selectedInterests
         }
@@ -154,8 +203,10 @@ export default function OAuthProfileSetup() {
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       localStorage.setItem('currentUser', JSON.stringify({
         ...currentUser,
+        username,
+        full_name: username,
         gender,
-        status,
+        relationship_status: status,
         avatar_url: finalAvatarUrl,
         interests: selectedInterests
       }));
@@ -233,6 +284,24 @@ export default function OAuthProfileSetup() {
                     {avatarFile ? 'New photo selected' : (googlePhotoUrl ? 'Using Google Photo' : 'Upload a photo')}
                 </p>
               </div>
+          </div>
+
+          {/* Username */}
+          <div className="field-section">
+            <label>Username *</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                className="select-field"
+                placeholder="Choose a unique username"
+                style={usernameError ? { borderColor: '#ff453a' } : {}}
+                required
+              />
+              {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
+              {usernameError && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{usernameError}</span>}
+            </div>
           </div>
 
           {/* Gender */}
