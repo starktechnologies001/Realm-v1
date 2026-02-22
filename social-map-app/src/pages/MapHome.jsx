@@ -1080,24 +1080,43 @@ export default function MapHome() {
 
     // Auth & Location Tracking
     useEffect(() => {
-        const userStr = localStorage.getItem('currentUser');
-        if (!userStr) {
-            navigate('/login');
-            return;
-        }
-        const parsedUser = JSON.parse(userStr);
-        // Optimistically set from cache first
-        setCurrentUser(parsedUser);
+        let isMounted = true;
+        
+        const initUser = async () => {
+            let userStr = localStorage.getItem('currentUser');
+            let parsedUser = null;
+            
+            // 1. Verify Auth (Handles OAuth Redirection gap)
+            if (!userStr) {
+                console.log("🟡 [MapHome] No local user found, checking Supabase session...");
+                const { data: { session } } = await supabase.auth.getSession();
+                
+                if (session?.user) {
+                    parsedUser = { id: session.user.id };
+                    localStorage.setItem('currentUser', JSON.stringify(parsedUser));
+                    console.log("🟢 [MapHome] Session recovered from Supabase!");
+                } else {
+                    console.log("🔴 [MapHome] No session found, redirecting to login.");
+                    navigate('/login');
+                    return;
+                }
+            } else {
+                parsedUser = JSON.parse(userStr);
+            }
+            
+            if (!isMounted) return;
+            
+            // Optimistically set from cache first
+            setCurrentUser(parsedUser);
 
-        // FETCH FRESH PROFILE (Critical for syncing Gender/Avatar updates)
-        const refreshProfile = async () => {
+            // 2. Refresh Profile (Critical for syncing Gender/Avatar updates)
             const { data: freshProfile } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', parsedUser.id)
                 .maybeSingle();
 
-            if (freshProfile) {
+            if (freshProfile && isMounted) {
                 // Version Check for Avatar: Optimistic local update might be newer than DB
                 let finalAvatarUrl = freshProfile.avatar_url;
                 if (parsedUser.avatar_url && freshProfile.avatar_url) {
@@ -1113,24 +1132,14 @@ export default function MapHome() {
                 }
 
                 const mergedUser = { ...parsedUser, ...freshProfile, avatar_url: finalAvatarUrl };
-                // Ensure we map snake_case DB fields to camelCase if needed, 
-                // but looks like we use mixed. Let's standardize on DB structure + local adds
-
-                // Optimistically set location from DB to prevent "Acquiring Location" lag
-                // Note: Real-time location is handled by LocationContext
-                if (freshProfile.latitude && freshProfile.longitude && !userLocation) {
-                    // We could potentially seed the context here if needed, but Context handles its own startup
-                    // promoting separation of concerns.
-                }
-
                 setCurrentUser(mergedUser);
                 localStorage.setItem('currentUser', JSON.stringify(mergedUser));
             }
 
-             
-            setLoading(false); // Fix: dismiss loading screen as soon as profile is handled
+            if (isMounted) setLoading(false); 
         };
-        refreshProfile();
+
+        initUser();
 
         // Listen for local updates from Profile page (optimistic updates)
         const handleLocalUpdate = () => {
@@ -1143,12 +1152,12 @@ export default function MapHome() {
 
         // Subscribe to my own profile changes (avatar, status updates)
         const profileSub = supabase
-            .channel(`public:profiles:${parsedUser.id}`)
+            .channel(`public:profiles:${currentUser?.id}`)
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'profiles',
-                filter: `id=eq.${parsedUser.id}`
+                filter: `id=eq.${currentUser?.id}`
             }, (payload) => {
                 setCurrentUser(prev => {
                     const updated = { ...prev, ...payload.new };
@@ -1162,7 +1171,7 @@ export default function MapHome() {
             if (profileSub) supabase.removeChannel(profileSub);
             window.removeEventListener('local-user-update', handleLocalUpdate);
         };
-    }, [navigate]);
+    }, [navigate, currentUser?.id]);
 
 
 
