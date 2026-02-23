@@ -34,13 +34,27 @@ export default function Layout() {
                     .maybeSingle();
                  
                 if (profile) {
+                    // 🚑 Avatar Self-Healing for OAuth/Auto-Login
+                    let finalAvatarUrl = profile.avatar_url;
+                    const metaAvatar = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
+                    
+                    if (metaAvatar && metaAvatar.startsWith('http')) {
+                        const profileAvatar = profile.avatar_url;
+                        // Heal if avatar is missing, default, or dicebear
+                        if (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear')) {
+                            console.log("🚑 [Layout] Healing avatar from Google...", { metaAvatar, profileAvatar });
+                            await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+                            finalAvatarUrl = metaAvatar;
+                        }
+                    }
+
                     const recoveredUser = {
                         id: profile.id,
                         name: profile.username || profile.full_name,
                         username: profile.username,
                         full_name: profile.full_name,
                         gender: profile.gender,
-                        avatar_url: profile.avatar_url,
+                        avatar_url: finalAvatarUrl,
                         status: profile.status || 'Online',
                         interests: profile.interests
                     };

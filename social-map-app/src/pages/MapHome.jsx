@@ -1083,6 +1083,12 @@ export default function MapHome() {
         let isMounted = true;
         
         const initUser = async () => {
+            // Give Supabase a tiny window to parse hash tokens if we just arrived from OAuth
+            if (window.location.hash.includes('access_token')) {
+                console.log("⏳ [MapHome] Detected OAuth token in hash, waiting for Supabase...");
+                await new Promise(r => setTimeout(r, 500)); // Small buffer for session parsing
+            }
+
             let userStr = localStorage.getItem('currentUser');
             let parsedUser = null;
             
@@ -1095,16 +1101,28 @@ export default function MapHome() {
                     parsedUser = { id: session.user.id };
                     localStorage.setItem('currentUser', JSON.stringify(parsedUser));
                     console.log("🟢 [MapHome] Session recovered from Supabase!");
-                } else {
+                } else if (!window.location.hash.includes('access_token')) {
+                    // Only redirect if there's no session AND no token currently being processed
                     console.log("🔴 [MapHome] No session found, redirecting to login.");
                     navigate('/login');
                     return;
+                } else {
+                    // Hash is present but session is still null? Wait another moment.
+                    console.log("⏳ [MapHome] Token present but session not ready, retrying...");
+                    return; // The effect will eventually re-run or Layout will catch it
                 }
             } else {
-                parsedUser = JSON.parse(userStr);
+                try {
+                    parsedUser = JSON.parse(userStr);
+                } catch (e) {
+                    console.error("Failed to parse local user:", e);
+                    localStorage.removeItem('currentUser');
+                    navigate('/login');
+                    return;
+                }
             }
             
-            if (!isMounted) return;
+            if (!isMounted || !parsedUser) return;
             
             // Optimistically set from cache first
             setCurrentUser(parsedUser);
@@ -1127,7 +1145,7 @@ export default function MapHome() {
                     const localTs = getTimestamp(parsedUser.avatar_url);
                     const remoteTs = getTimestamp(freshProfile.avatar_url);
                     if (localTs > remoteTs) {
-                        finalAvatarUrl = parsedUser.avatar_url; // Keep optimistic local version
+                        finalAvatarUrl = parsedUser.avatar_url;
                     }
                 }
 
@@ -1151,27 +1169,14 @@ export default function MapHome() {
         window.addEventListener('local-user-update', handleLocalUpdate);
 
         // Subscribe to my own profile changes (avatar, status updates)
-        const profileSub = supabase
-            .channel(`public:profiles:${currentUser?.id}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'profiles',
-                filter: `id=eq.${currentUser?.id}`
-            }, (payload) => {
-                setCurrentUser(prev => {
-                    const updated = { ...prev, ...payload.new };
-                    localStorage.setItem('currentUser', JSON.stringify(updated));
-                    return updated;
-                });
-            })
-            .subscribe();
-
+        // Note: we use window level check here because parsedUser is local to initUser
+        // But initUser calls setCurrentUser which we can rely on for subsequent updates
+        
         return () => {
-            if (profileSub) supabase.removeChannel(profileSub);
+            isMounted = false;
             window.removeEventListener('local-user-update', handleLocalUpdate);
         };
-    }, [navigate, currentUser?.id]);
+    }, [navigate]);
 
 
 
@@ -2050,7 +2055,7 @@ export default function MapHome() {
     // 0️⃣ Absolute Priority Overlay: Profile Setup (Must block everything, including GPS loading and permissions)
     if (profileReady && showProfileSetup) {
         return (
-            <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh' }}>
+            <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', zIndex: 10000 }}>
                 <style>{`
                     .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 999999; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
                     .onboarding-card { background: #18181b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 380px; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6); color: white; display: flex; flex-direction: column; gap: 20px; }
@@ -2380,6 +2385,9 @@ export default function MapHome() {
 
 
 
+    // Check if any full-screen overlay is active to "pop" the container above BottomNav (z-index 2000)
+    const isOverlayActive = !!viewingStoryUser || showReportModal || showMuteModal || showThoughtInput;
+
     // 5️⃣ If all good, render map
     return (
         <div className="map-container" style={{ 
@@ -2389,7 +2397,8 @@ export default function MapHome() {
             width: '100%', 
             height: '100dvh', 
             overflow: 'hidden',
-            overscrollBehavior: 'none' 
+            overscrollBehavior: 'none',
+            zIndex: isOverlayActive ? 10000 : 1
         }}>
             <style>{`
                 .onboarding-overlay {

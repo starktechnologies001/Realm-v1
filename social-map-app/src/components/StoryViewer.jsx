@@ -18,12 +18,14 @@ export default function StoryViewer({
     const [showViewersList, setShowViewersList] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editCaption, setEditCaption] = useState('');
+    const [isSending, setIsSending] = useState(false);
 
     // Derived state
     const stories = userStories?.stories || [];
     const currentStory = stories[currentIndex];
     const user = userStories?.user || {};
-    const isOwner = currentUser?.id && user?.id && currentUser.id === user.id;
+    // Robust owner check - handle potential string vs number ID comparison
+    const isOwner = currentUser?.id && user?.id && String(currentUser.id) === String(user.id);
     
     // Handle property mismatches (MapHome uses 'name'/'avatar', DB uses 'username'/'avatar_url')
     const displayUsername = user.username || user.name || 'User';
@@ -139,27 +141,32 @@ export default function StoryViewer({
 
     const handleReply = async (e) => {
         e.preventDefault();
-        if (!replyText.trim()) return;
+        if (!replyText.trim() || isSending) return;
 
-        // Send message with story context
-        // This assumes basic message table structure.
-        const { error } = await supabase.from('messages').insert({
-            sender_id: currentUser.id,
-            receiver_id: user.id,
-            content: replyText,
-            reply_to_story_id: currentStory.id, // Ensure DB has column or omit context visually
-            message_type: 'text'
-        });
+        setIsSending(true);
+        try {
+            // Send message with story context
+            const { error } = await supabase.from('messages').insert({
+                sender_id: currentUser.id,
+                receiver_id: user.id,
+                content: replyText,
+                reply_to_story_id: currentStory.id,
+                message_type: 'text'
+            });
 
-        if (!error) {
+            if (error) throw error;
+
             setReplyText('');
-            // Resume correctly: reset start time based on current progress
             startTimeRef.current = Date.now() - (progress / 100 * STORY_DURATION);
             setIsPaused(false);
             
-            // Show success toast
             setToast({ message: 'Message sent successfully! 📤' });
             setTimeout(() => setToast(null), 3000);
+        } catch (err) {
+            console.error('Reply error:', err);
+            setToast({ message: 'Failed to send reply. Please try again.' });
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -238,17 +245,17 @@ export default function StoryViewer({
                     </div>
                     <div className="actions">
                         {isOwner && (
-                            <>
-                                <button className="action-btn edit-btn" onClick={handleEditClick} title="Edit Caption">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                            <div className="owner-actions">
+                                <button className="action-btn edit-btn prominent" onClick={handleEditClick} title="Edit Caption">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                                 </button>
-                                <button className="action-btn delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(); }} title="Delete Story">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                <button className="action-btn delete-btn prominent" onClick={(e) => { e.stopPropagation(); handleDelete(); }} title="Delete Story">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                 </button>
-                            </>
+                            </div>
                         )}
                         <button className="action-btn close-btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                     </div>
                 </div>
@@ -292,17 +299,20 @@ export default function StoryViewer({
                         <form className="reply-form" onSubmit={handleReply}>
                             <input 
                                 type="text" 
-                                placeholder="Send message..." 
+                                placeholder="Write a reply..." 
                                 value={replyText}
                                 onChange={e => setReplyText(e.target.value)}
                                 onFocus={() => setIsPaused(true)}
                                 onBlur={() => {
-                                    // Resume correctly: reset start time based on current progress
                                     startTimeRef.current = Date.now() - (progress / 100 * STORY_DURATION);
                                     setIsPaused(false);
                                 }}
+                                autoComplete="off"
+                                autoCorrect="off"
                             />
-                            <button type="submit" disabled={!replyText.trim()}>Send</button>
+                            <button type="submit" disabled={!replyText.trim() || isSending}>
+                                {isSending ? '...' : 'Send'}
+                            </button>
                         </form>
                     )}
                 </div>
@@ -434,20 +444,41 @@ export default function StoryViewer({
                     gap: 12px;
                 }
                 .action-btn {
-                    background: none;
-                    border: none;
+                    background: rgba(0,0,0,0.3);
+                    border: 1px solid rgba(255,255,255,0.2);
                     color: white;
-                    cursor: pointer;
-                    padding: 4px;
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    cursor: pointer;
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    transition: all 0.2s ease;
                 }
-                .action-btn svg {
-                    width: 24px;
-                    height: 24px;
-                    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
+                .action-btn svg { width: 18px; height: 18px; }
+                .action-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
+                .action-btn:active { transform: scale(0.9); }
+                
+                .owner-actions {
+                    display: flex;
+                    gap: 10px;
+                    margin-right: 10px;
                 }
+
+                .action-btn.prominent {
+                    background: rgba(255, 255, 255, 0.25);
+                    border-color: rgba(255, 255, 255, 0.4);
+                }
+
+                .action-btn.delete-btn:hover {
+                    background: rgba(255, 59, 48, 0.8);
+                    border-color: #ff3b30;
+                }
+
+                .close-btn { background: rgba(0,0,0,0.4); }
 
                 .story-footer {
                     position: absolute;
@@ -541,45 +572,64 @@ export default function StoryViewer({
                 .cancel-caption-btn:active { transform: scale(0.96); }
 
                 /* Viewer List & Reply Styles */
-                .reply-form { width: 100%; display: flex; gap: 12px; position: relative; }
+                .reply-form { 
+                    width: 100%; 
+                    display: flex; 
+                    gap: 12px; 
+                    position: relative;
+                    padding: 0 10px;
+                }
                 .reply-form input {
                     flex: 1;
-                    background: rgba(0, 0, 0, 0.4);
-                    border: 1px solid rgba(255,255,255,0.3);
+                    background: rgba(255, 255, 255, 0.1);
+                    border: 2px solid rgba(255, 255, 255, 0.2);
                     border-radius: 24px;
-                    padding: 12px 20px;
+                    padding: 12px 60px 12px 20px;
                     color: white;
                     font-size: 15px;
-                    backdrop-filter: blur(10px);
+                    backdrop-filter: blur(15px);
+                    -webkit-backdrop-filter: blur(15px);
+                    transition: all 0.2s;
+                    outline: none;
                 }
-                .reply-form input::placeholder { color: rgba(255,255,255,0.6); }
-                .reply-form input:focus { border-color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.6); }
+                .reply-form input::placeholder { color: rgba(255, 255, 255, 0.5); }
+                .reply-form input:focus { 
+                    border-color: #007AFF; 
+                    background: rgba(255, 255, 255, 0.15);
+                    box-shadow: 0 0 10px rgba(0, 122, 255, 0.3);
+                }
                 
                 .reply-form button {
                     position: absolute;
-                    right: 8px; top: 50%; transform: translateY(-50%);
-                    background: white; 
-                    color: black;
+                    right: 18px; top: 50%; transform: translateY(-50%);
+                    background: #007AFF; 
+                    color: white;
                     border: none;
-                    border-radius: 20px;
-                    padding: 6px 14px;
-                    font-weight: 700;
+                    border-radius: 18px;
+                    padding: 6px 16px;
+                    font-weight: 600;
                     font-size: 13px;
                     cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .reply-form button:disabled {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: rgba(255, 255, 255, 0.3);
+                    cursor: not-allowed;
                 }
 
                 .viewers-list-snippet {
                     color: white; font-weight: 500; font-size: 14px;
                     display: flex; align-items: center; gap: 8px;
                     cursor: pointer;
-                    background: rgba(30, 30, 30, 0.6);
-                    padding: 10px 20px;
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 10px 24px;
                     border-radius: 30px;
                     backdrop-filter: blur(12px);
                     border: 1px solid rgba(255,255,255,0.1);
                     transition: background 0.2s;
                 }
-                .viewers-list-snippet:active { background: rgba(50, 50, 50, 0.8); }
+                .viewers-list-snippet:active { background: rgba(255, 255, 255, 0.2); }
 
                 .viewers-modal {
                     position: absolute;

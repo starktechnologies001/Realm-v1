@@ -40,110 +40,52 @@ export default function Login() {
   // Derive mode from URL
   const isSignUp = location.pathname === '/signup';
 
-useEffect(() => {
-  let mounted = true;
-
-  // 1️⃣ Handle page reload after Google redirect
-  const checkExistingSession = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session && mounted) {
-      // Validate that the user actually exists (not deleted from Supabase)
-      const { data: userData, error } = await supabase.auth.getUser();
-      
-      if (error || !userData.user) {
-        // Session is invalid (user was deleted), clear it
-        await supabase.auth.signOut();
-        localStorage.removeItem('currentUser');
-        return;
-      }
-      
-      // Check if OAuth user needs to complete profile setup
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, gender, status, avatar_url')
-        .eq('id', userData.user.id)
-        .maybeSingle();
-      
-      // Avatar Self-Healing for OAuth/Auto-Login
-      if (profile && userData.user.user_metadata?.avatar_url) {
-          const metaAvatar = userData.user.user_metadata.avatar_url;
-          const profileAvatar = profile.avatar_url;
-          
-          if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
-               console.log("🚑 [AutoLogin] Healing avatar...", { metaAvatar, profileAvatar });
-               await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
-               // Also update local object if we use it later, though MapHome refetches
-               profile.avatar_url = metaAvatar;
-          }
-      }
-
-      // If OAuth user is missing required fields OR profile doesn't exist yet, redirect to setup
-      console.log("🟡 [Login checkExistingSession] Checking profile completeness:", profile);
-      // Ensure LocalStorage is synced (MapHome uses it for optimistic loading)
-      const currentStored = localStorage.getItem('currentUser');
-      if (!currentStored) {
-          localStorage.setItem('currentUser', JSON.stringify({
-              id: profile?.id || userData.user.id,
-          }));
-      }
-
-      if (!profile || !profile.gender || !profile.status) {
-        console.log("🟡 [Login checkExistingSession] Missing profile data. Redirecting to /map to show setup modal");
-        navigate('/map', { state: { preloadedAvatar: profile?.avatar_url || userData.user.user_metadata?.avatar_url } });
-        return;
-      }
-      
-      console.log("🟡 [Login checkExistingSession] Profile complete.");
-      
-      navigate('/map', { state: { preloadedAvatar: profile?.avatar_url || userData.user.user_metadata?.avatar_url } });
+  const handleGoogleLogin = async () => {
+    try {
+      const siteUrl = import.meta.env.VITE_SITE_URL;
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          redirectTo: `${siteUrl}/map`
+        }
+      });
+    } catch (err) {
+      console.error("Google Login Error:", err);
+      showMessage("Failed to initialize Google Login", 'error');
     }
   };
 
-  checkExistingSession();
+  useEffect(() => {
+    let mounted = true;
 
-  // 2️⃣ Handle fresh sign-in event (e.g. Google OAuth redirect)
-  const { data: listener } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      if (event === 'SIGNED_IN' && session && mounted) {
+    // 1️⃣ Handle page reload after Google redirect (or session recovery)
+    const checkExistingSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session && mounted) {
+        // Validate that the user actually exists
+        const { data: userData, error } = await supabase.auth.getUser();
         
-        // Check if profile is complete
-        console.log("🟢 [Login AuthStateChange] SIGNED_IN event for user:", session.user.id);
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('gender, status')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        console.log("🟢 [Login AuthStateChange] Fetched profile:", profile);
-
-        // Guarantee LocalStorage is populated to prevent MapHome from bouncing back
-        const currentStored = localStorage.getItem('currentUser');
-        if (!currentStored) {
-            localStorage.setItem('currentUser', JSON.stringify({
-                id: session.user.id
-            }));
+        if (error || !userData.user) {
+          await supabase.auth.signOut();
+          localStorage.removeItem('currentUser');
+          return;
         }
-
-        if (!profile || !profile.gender || !profile.status) {
-             console.log("🟢 [Login AuthStateChange] Missing profile data. Redirecting to /map to show setup modal");
-             // Incomplete profile or missing -> Go to map where the modal will appear
-             const avatar = session.user?.user_metadata?.avatar_url;
-             navigate('/map', { state: { preloadedAvatar: avatar } });
-        } else {
-             console.log("🟢 [Login AuthStateChange] Profile complete. Redirecting to /map");
-             // Complete -> Go to map
-             const avatar = session.user?.user_metadata?.avatar_url;
-             navigate('/map', { state: { preloadedAvatar: avatar } });
-        }
+        
+        // Profiles are handled by MapHome/Layout now
+        navigate('/map');
       }
-    }
-  );
+    };
 
-  return () => {
-    mounted = false;
-    listener.subscription.unsubscribe();
-  };
-}, [navigate]);
+    checkExistingSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
 
   const [error, setError] = useState('');
   const [messageType, setMessageType] = useState('error'); // 'error' | 'success'
@@ -502,25 +444,7 @@ useEffect(() => {
     }
   };
 
-  const handleGoogleLogin = async () => {
-  try {
-    const siteUrl = import.meta.env.VITE_SITE_URL;
 
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-        redirectTo: `${siteUrl}/login`
-      }
-    });
-  } catch (err) {
-    console.error("Google Login Error:", err);
-    showMessage("Failed to initialize Google Login", 'error');
-  }
-};
 
   return (
     <div className="login-container">

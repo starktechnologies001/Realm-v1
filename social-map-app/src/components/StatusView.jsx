@@ -160,6 +160,28 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
         }
     };
 
+    const handleDeleteStory = async (storyId, e) => {
+        if (e) e.stopPropagation();
+        if (!window.confirm('Are you sure you want to delete this story?')) return;
+
+        try {
+            setLoading(true);
+            const { error } = await supabase
+                .from('stories')
+                .delete()
+                .eq('id', storyId);
+
+            if (error) throw error;
+            await fetchStories();
+            Toast.show('Story deleted! 🗑️');
+        } catch (error) {
+            console.error('Delete failed:', error);
+            alert('Failed to delete story.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="status-view">
             {/* Upload Preview Overlay */}
@@ -190,27 +212,43 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
             )}
 
             {/* My Status */}
-            <div className="status-row my-status" onClick={() => {
-                if (myStories.length > 0) {
-                    onSelectFriend({
-                        user: currentUser,
-                        stories: myStories
-                    });
-                }
-            }}>
-                <div className="status-avatar-wrapper">
-                    <div className={`status-ring ${myStories.length > 0 ? 'active' : 'empty'}`}>
-                        <img src={getAvatarHeadshot(currentUser?.avatar_url, currentUser?.username)} alt="My Avatar" />
+            <div className="status-row my-status-container">
+                <div className="my-status-main" onClick={() => {
+                    if (myStories.length > 0) {
+                        onSelectFriend({
+                            user: currentUser,
+                            stories: myStories
+                        });
+                    }
+                }}>
+                    <div className="status-avatar-wrapper">
+                        <div className={`status-ring ${myStories.length > 0 ? 'active' : 'empty'}`}>
+                            <img src={getAvatarHeadshot(currentUser?.avatar_url, currentUser?.username)} alt="My Avatar" />
+                        </div>
+                        <label className="add-status-btn" onClick={(e) => e.stopPropagation()}>
+                            <input type="file" accept="image/*" onChange={handleFileSelect} disabled={uploading} hidden />
+                            {uploading ? '...' : '+'}
+                        </label>
                     </div>
-                    <label className="add-status-btn" onClick={(e) => e.stopPropagation()}>
-                        <input type="file" accept="image/*" onChange={handleFileSelect} disabled={uploading} hidden />
-                        {uploading ? '...' : '+'}
-                    </label>
+                    <div className="status-info">
+                        <h3>My Status</h3>
+                        <p>{myStories.length > 0 ? `${myStories.length} active` : 'Tap to add status'}</p>
+                    </div>
                 </div>
-                <div className="status-info">
-                    <h3>My Status</h3>
-                    <p>{myStories.length > 0 ? `${myStories.length} active` : 'Tap to add status'}</p>
-                </div>
+
+                {/* Individual Story Management for Me */}
+                {myStories.length > 0 && (
+                    <div className="my-stories-management">
+                        {myStories.map(story => (
+                            <div key={story.id} className="mini-story-item">
+                                <img src={story.media_url} alt="Mini story" />
+                                <button className="mini-delete-btn" onClick={(e) => handleDeleteStory(story.id, e)}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="section-divider">Recent Updates</div>
@@ -308,6 +346,56 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                     margin: 2px 0 0;
                     font-size: 13px;
                     color: var(--text-secondary, rgba(0,0,0,0.5));
+                }
+                .my-status-container {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 12px;
+                    border-bottom: 1px solid var(--separator, rgba(0,0,0,0.05));
+                    padding-bottom: 20px;
+                }
+                .my-status-main {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    width: 100%;
+                }
+                .my-stories-management {
+                    display: flex;
+                    gap: 10px;
+                    width: 100%;
+                    overflow-x: auto;
+                    padding: 4px 2px;
+                }
+                .mini-story-item {
+                    position: relative;
+                    width: 50px;
+                    height: 50px;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    flex-shrink: 0;
+                    border: 1px solid rgba(0,0,0,0.1);
+                }
+                .mini-story-item img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+                .mini-delete-btn {
+                    position: absolute;
+                    top: 2px;
+                    right: 2px;
+                    width: 18px;
+                    height: 18px;
+                    background: rgba(255, 59, 48, 0.9);
+                    border: none;
+                    border-radius: 4px;
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }
                 .section-divider {
                     margin: 20px 0 10px;
