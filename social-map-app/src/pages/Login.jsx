@@ -966,9 +966,6 @@ export default function Login() {
                 padding: 32px 24px;
                 border-radius: 20px;
             }
-            .app-title {
-                font-size: 6rem; /* Slightly smaller on very small screens */
-            }
         }
         
         /* Subtle shine effect */
@@ -980,19 +977,18 @@ export default function Login() {
         }
 
         .app-title {
-          font-size: 8rem;
+          font-size: clamp(4.5rem, 12vw, 6.5rem);
           font-weight: 800;
-          margin: 10px 0 20px 0; /* Adjusted margin */
+          margin: 10px 0 20px 0;
           background: linear-gradient(135deg, #0052cc 0%, #00c6ff 100%);
           -webkit-background-clip: text;
           background-clip: text;
           color: transparent;
           text-shadow: 0 10px 50px rgba(163, 193, 225, 0.5);
-          letter-spacing: 0.1px;
+          letter-spacing: -2px;
           padding: 0 20px;
-          line-height: 1.1;
-          transform: scale(1.2, 1.3); /* Stretch length and breadth */
-          display: inline-block; /* Needed for transform */
+          line-height: 1;
+          display: inline-block;
         }
 
         .app-subtitle {
