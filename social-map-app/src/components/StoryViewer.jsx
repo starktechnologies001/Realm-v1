@@ -10,7 +10,11 @@ export default function StoryViewer({
     onNextUser, 
     onPrevUser 
 }) {
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentIndex, setCurrentIndex] = useState(() => {
+        const idx = userStories?.startIndex ?? 0;
+        const len = userStories?.stories?.length ?? 0;
+        return (idx >= 0 && idx < len) ? idx : 0;
+    });
     const [progress, setProgress] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
     const [replyText, setReplyText] = useState('');

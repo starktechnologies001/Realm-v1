@@ -29,7 +29,7 @@ export default function OAuthProfileSetup() {
   const [status, setStatus] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
   
-  // Photo selection
+  
   // Photo selection
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);

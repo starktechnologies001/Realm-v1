@@ -426,7 +426,16 @@ export default function MapHome() {
     const [showFullProfile, setShowFullProfile] = useState(false);
     const [fullProfileUser, setFullProfileUser] = useState(null);
 
-    // Image Preloader for Instant Rendering
+    // 🚀 INSTANT Preload: current user's avatar from localStorage on first paint (no Supabase wait)
+    useEffect(() => {
+        if (currentUser?.avatar_url) {
+            const img = new Image();
+            img.src = getAvatar2D(currentUser.avatar_url);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // intentionally runs only once on mount with localStorage data
+
+    // Image Preloader for Instant Rendering (fires when nearby users arrive)
     useEffect(() => {
         if (!nearbyUsers || nearbyUsers.length === 0) return;
 
@@ -436,13 +445,7 @@ export default function MapHome() {
                 img.src = getAvatar2D(user.avatar);
             }
         });
-
-        // Also preload current user
-        if (currentUser?.avatar_url) {
-            const img = new Image();
-            img.src = getAvatar2D(currentUser.avatar_url);
-        }
-    }, [nearbyUsers, currentUser?.avatar_url]);
+    }, [nearbyUsers]);
 
 
     // Floating Thought State
@@ -926,18 +929,42 @@ export default function MapHome() {
                     };
 
                     if (exists) {
+                        const existingUser = prev[existingIndex];
+                        
+                        // Check if pure data changed (anything other than location)
+                        const didDataChange = 
+                            existingUser.name !== newUserObj.name ||
+                            existingUser.avatar !== newUserObj.avatar ||
+                            existingUser.status !== newUserObj.status ||
+                            existingUser.thought !== newUserObj.thought ||
+                            existingUser.isLocationOn !== newUserObj.isLocationOn ||
+                            existingUser.relationshipStatus !== newUserObj.relationshipStatus ||
+                            existingUser.mood !== newUserObj.mood ||
+                            existingUser.moodUpdatedAt !== newUserObj.moodUpdatedAt ||
+                            existingUser.status_updated_at !== newUserObj.status_updated_at ||
+                            existingUser.is_public !== newUserObj.is_public ||
+                            existingUser.hide_status !== newUserObj.hide_status ||
+                            existingUser.show_last_seen !== newUserObj.show_last_seen;
 
                         // 🔥 Smooth animation ONLY when already on map
                         animateMarkerMovement(updatedUser.id, renderLat, renderLng);
 
                         // 🔥 Update card dynamically if focused
-                        setSelectedUser(prev => prev?.id === updatedUser.id ? { ...prev, ...newUserObj } : prev);
+                        setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
 
-                        return prev.map(u =>
-                            u.id === updatedUser.id
-                                ? { ...u, ...newUserObj }
-                                : u
-                        );
+                        if (didDataChange) {
+                            // If non-location data changed, we MUST update state so markers re-render visual changes
+                            return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
+                        } else {
+                            // 🔥 CRITICAL PERFORMANCE OPTIMIZATION: 
+                            // If ONLY location changed, we already slid the DOM marker. Do NOT change state array 
+                            // reference, or Leaflet will destroy and recreate the marker DOM node.
+                            // However, we silently update the internal object by mutating it so future distance checks are correct
+                            existingUser.lat = renderLat;
+                            existingUser.lng = renderLng;
+                            existingUser.lastActive = newUserObj.lastActive;
+                            return prev;
+                        }
 
                     } else {
 

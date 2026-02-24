@@ -2593,8 +2593,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     };
 
     const handleFileSelect = (e) => {
-        const files = Array.from(e.target.files);
+        let files = Array.from(e.target.files);
         if (files.length === 0) return;
+
+        if (files.length > 10) {
+            showToast("Maximum 10 photos allowed at once ⚠️");
+            files = files.slice(0, 10);
+        }
 
         // Validate all files
         const validFiles = [];
@@ -3613,6 +3618,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         ref={fileInputRef}
                         style={{ display: 'none' }}
                         accept="image/*"
+                        multiple
                         onChange={handleFileSelect}
                     />
                     {/* Hidden file inputs for attachment system */}

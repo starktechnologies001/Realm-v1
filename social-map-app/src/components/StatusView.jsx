@@ -9,6 +9,9 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
     const [viewedStoryIds, setViewedStoryIds] = useState(new Set());
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [editingStory, setEditingStory] = useState(null); // { id, caption }
+    const [editCaptionText, setEditCaptionText] = useState('');
+    const [savingCaption, setSavingCaption] = useState(false);
 
     useEffect(() => {
         if (currentUser) {
@@ -173,12 +176,38 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
 
             if (error) throw error;
             await fetchStories();
-            Toast.show('Story deleted! 🗑️');
         } catch (error) {
             console.error('Delete failed:', error);
             alert('Failed to delete story.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleOpenEditCaption = (story, e) => {
+        if (e) e.stopPropagation();
+        setEditingStory(story);
+        setEditCaptionText(story.caption || '');
+    };
+
+    const handleSaveEditCaption = async () => {
+        if (!editingStory) return;
+        setSavingCaption(true);
+        try {
+            const { error } = await supabase
+                .from('stories')
+                .update({ caption: editCaptionText.trim() })
+                .eq('id', editingStory.id);
+            if (error) throw error;
+            // Update local state
+            setMyStories(prev => prev.map(s =>
+                s.id === editingStory.id ? { ...s, caption: editCaptionText.trim() } : s
+            ));
+            setEditingStory(null);
+        } catch (err) {
+            alert('Failed to update caption.');
+        } finally {
+            setSavingCaption(false);
         }
     };
 
@@ -205,6 +234,36 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                             }}>Cancel</button>
                             <button className="post-btn" onClick={handleUpload} disabled={uploading}>
                                 {uploading ? 'Posting...' : 'Post Status'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Caption Modal */}
+            {editingStory && (
+                <div className="edit-caption-overlay" onClick={() => setEditingStory(null)}>
+                    <div className="edit-caption-sheet" onClick={e => e.stopPropagation()}>
+                        <div className="edit-caption-header">
+                            <span>Edit Caption</span>
+                            <button className="edit-caption-close" onClick={() => setEditingStory(null)}>✕</button>
+                        </div>
+                        {editingStory.media_url && (
+                            <img src={editingStory.media_url} alt="Story" className="edit-caption-preview" />
+                        )}
+                        <input
+                            type="text"
+                            className="edit-caption-input"
+                            placeholder="Add a caption..."
+                            value={editCaptionText}
+                            onChange={e => setEditCaptionText(e.target.value)}
+                            autoFocus
+                            maxLength={150}
+                        />
+                        <div className="edit-caption-actions">
+                            <button className="ec-cancel-btn" onClick={() => setEditingStory(null)}>Cancel</button>
+                            <button className="ec-save-btn" onClick={handleSaveEditCaption} disabled={savingCaption}>
+                                {savingCaption ? 'Saving...' : 'Save'}
                             </button>
                         </div>
                     </div>
@@ -240,11 +299,26 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                 {myStories.length > 0 && (
                     <div className="my-stories-management">
                         {myStories.map(story => (
-                            <div key={story.id} className="mini-story-item">
+                            <div key={story.id} className="mini-story-item"
+                                onClick={() => onSelectFriend({ user: currentUser, stories: myStories, startIndex: myStories.indexOf(story) })}>
                                 <img src={story.media_url} alt="Mini story" />
-                                <button className="mini-delete-btn" onClick={(e) => handleDeleteStory(story.id, e)}>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                </button>
+                                {story.caption && (
+                                    <div className="mini-story-caption">{story.caption}</div>
+                                )}
+                                <div className="mini-story-actions">
+                                    <button
+                                        className="mini-action-btn mini-edit-btn"
+                                        title="Edit Caption"
+                                        onClick={(e) => handleOpenEditCaption(story, e)}>
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                    </button>
+                                    <button
+                                        className="mini-action-btn mini-delete-btn"
+                                        title="Delete Story"
+                                        onClick={(e) => handleDeleteStory(story.id, e)}>
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -369,25 +443,47 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                 }
                 .mini-story-item {
                     position: relative;
-                    width: 50px;
-                    height: 50px;
-                    border-radius: 8px;
+                    width: 70px;
+                    height: 90px;
+                    border-radius: 10px;
                     overflow: hidden;
                     flex-shrink: 0;
-                    border: 1px solid rgba(0,0,0,0.1);
+                    border: 1.5px solid rgba(0,0,0,0.08);
+                    cursor: pointer;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    transition: transform 0.15s ease;
                 }
+                .mini-story-item:active { transform: scale(0.96); }
                 .mini-story-item img {
                     width: 100%;
                     height: 100%;
                     object-fit: cover;
+                    display: block;
                 }
-                .mini-delete-btn {
+                .mini-story-caption {
                     position: absolute;
-                    top: 2px;
-                    right: 2px;
-                    width: 18px;
+                    bottom: 22px; left: 0; right: 0;
+                    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+                    color: white;
+                    font-size: 8px;
+                    padding: 2px 4px;
+                    text-align: center;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .mini-story-actions {
+                    position: absolute;
+                    bottom: 0; left: 0; right: 0;
+                    display: flex;
+                    gap: 2px;
+                    padding: 3px;
+                    background: rgba(0,0,0,0.5);
+                    backdrop-filter: blur(4px);
+                }
+                .mini-action-btn {
+                    flex: 1;
                     height: 18px;
-                    background: rgba(255, 59, 48, 0.9);
                     border: none;
                     border-radius: 4px;
                     color: white;
@@ -395,8 +491,12 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    transition: background 0.15s;
                 }
+                .mini-edit-btn { background: rgba(66, 133, 244, 0.85); }
+                .mini-edit-btn:active { background: rgba(66, 133, 244, 1); }
+                .mini-delete-btn { background: rgba(255, 59, 48, 0.85); }
+                .mini-delete-btn:active { background: rgba(255, 59, 48, 1); }
                 .section-divider {
                     margin: 20px 0 10px;
                     font-size: 13px;
@@ -457,6 +557,104 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                     background: #0095f6; border: none; color: white; padding: 10px 24px; border-radius: 20px; font-weight: 600;
                 }
                 .post-btn:disabled { opacity: 0.7; }
+
+                /* Edit Caption Modal */
+                .edit-caption-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.6);
+                    backdrop-filter: blur(8px);
+                    z-index: 6000;
+                    display: flex;
+                    align-items: flex-end;
+                    justify-content: center;
+                }
+                .edit-caption-sheet {
+                    background: var(--bg-card, #fff);
+                    border-top-left-radius: 24px;
+                    border-top-right-radius: 24px;
+                    width: 100%;
+                    max-width: 500px;
+                    padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+                    box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+                    animation: ecSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                @keyframes ecSlideUp {
+                    from { transform: translateY(100%); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                .edit-caption-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 14px;
+                    font-weight: 700;
+                    font-size: 16px;
+                    color: var(--text-primary, #000);
+                }
+                .edit-caption-close {
+                    background: rgba(120,120,128,0.15);
+                    border: none;
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 50%;
+                    font-size: 14px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--text-primary, #000);
+                }
+                .edit-caption-preview {
+                    width: 100%;
+                    max-height: 200px;
+                    object-fit: contain;
+                    border-radius: 12px;
+                    margin-bottom: 14px;
+                    background: #111;
+                }
+                .edit-caption-input {
+                    width: 100%;
+                    padding: 13px 16px;
+                    border: 1.5px solid rgba(120,120,128,0.2);
+                    border-radius: 14px;
+                    font-size: 16px;
+                    outline: none;
+                    background: var(--bg-paper, #f5f5f7);
+                    color: var(--text-primary, #000);
+                    box-sizing: border-box;
+                    transition: border-color 0.2s;
+                    margin-bottom: 14px;
+                }
+                .edit-caption-input:focus { border-color: #007AFF; }
+                .edit-caption-actions {
+                    display: flex;
+                    gap: 12px;
+                }
+                .ec-cancel-btn {
+                    flex: 1;
+                    padding: 13px;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    background: rgba(120,120,128,0.12);
+                    color: var(--text-primary, #000);
+                    cursor: pointer;
+                }
+                .ec-save-btn {
+                    flex: 1;
+                    padding: 13px;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    background: #007AFF;
+                    color: white;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(0,122,255,0.3);
+                }
+                .ec-save-btn:disabled { opacity: 0.6; }
             `}</style>
         </div>
     );

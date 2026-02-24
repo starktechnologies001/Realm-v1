@@ -7,31 +7,42 @@ const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }
 
     if (!files || files.length === 0) return null;
 
-    // We assume the first file is the one driving the preview for now.
-    const file = files[0];
-    const isImage = file.type.startsWith('image/');
-    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+    const isMultiple = files.length > 1;
 
     return (
         <div className="attachment-preview-overlay fullscreen">
             <div className="preview-top-bar">
                 <button className="preview-close-btn" onClick={onCancel}>✕</button>
+                {isMultiple && <span className="preview-file-count">{files.length} selected</span>}
             </div>
 
             <div className="preview-content-area">
-                {isImage ? (
-                    <img 
-                        src={previewUrl} 
-                        alt="Preview"
-                        className="fullscreen-image-preview"
-                    />
-                ) : (
-                    <div className="preview-file-icon-large">
-                        {file.type.startsWith('video/') ? '🎥' : '📄'}
-                        <div className="file-name-large">{file.name}</div>
-                        <div className="file-size-large">{formatFileSize(file.size)}</div>
-                    </div>
-                )}
+                <div className="preview-gallery-container">
+                    {files.map((file, index) => {
+                        const isImage = file.type.startsWith('image/');
+                        const previewUrl = isImage ? URL.createObjectURL(file) : null;
+                        
+                        return (
+                            <div key={index} className={`preview-thumbnail-wrapper ${isMultiple ? 'multiple' : ''}`}>
+                                {isImage ? (
+                                    <img 
+                                        src={previewUrl} 
+                                        alt={`Preview ${index + 1}`}
+                                    />
+                                ) : (
+                                    <div className="preview-file-icon-large">
+                                        {file.type.startsWith('video/') ? '🎥' : '📄'}
+                                        <div className="file-name-large">{file.name}</div>
+                                        <div className="file-size-large">{formatFileSize(file.size)}</div>
+                                    </div>
+                                )}
+                                <button className="remove-file-badge" onClick={() => onRemove(index)}>
+                                    ✕
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             <div className="preview-bottom-bar">
