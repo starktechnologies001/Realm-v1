@@ -28,6 +28,8 @@ export default function OAuthProfileSetup() {
   const [gender, setGender] = useState('');
   const [status, setStatus] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const clearFieldError = (field) => setFieldErrors(prev => ({ ...prev, [field]: '' }));
   
   
   // Photo selection
@@ -146,13 +148,21 @@ export default function OAuthProfileSetup() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
     try {
-      if (!username.trim() || username.length < 3) throw new Error('Please enter a valid username (min 3 chars)');
-      if (usernameError) throw new Error('Please choose a different username');
-      if (!gender) throw new Error('Please select a gender');
-      if (!status) throw new Error('Please select a relationship status');
+      // Inline per-field validation
+      const errs = {};
+      if (!username.trim() || username.length < 3) errs.username = 'Please enter a valid username (min 3 chars)';
+      if (usernameError) errs.username = 'Please choose a different username';
+      if (!gender) errs.gender = 'Please select a gender';
+      if (!status) errs.status = 'Please select a relationship status';
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
+        setLoading(false);
+        return;
+      }
 
       let finalAvatarUrl;
 
@@ -293,14 +303,14 @@ export default function OAuthProfileSetup() {
               <input
                 type="text"
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => { setUsername(e.target.value); clearFieldError('username'); }}
                 className="select-field"
                 placeholder="Choose a unique username"
-                style={usernameError ? { borderColor: '#ff453a' } : {}}
+                style={(usernameError || fieldErrors.username) ? { borderColor: '#ff453a' } : {}}
                 required
               />
               {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
-              {usernameError && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{usernameError}</span>}
+              {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
             </div>
           </div>
 
@@ -311,6 +321,7 @@ export default function OAuthProfileSetup() {
               value={gender} 
               onChange={e => {
                 setGender(e.target.value);
+                clearFieldError('gender');
                 // Only update preview if no custom/google photo is active
                 if (!avatarFile && !googlePhotoUrl) {
                   const defaultAvatar = e.target.value === 'Male' ? DEFAULT_MALE_AVATAR : 
@@ -320,6 +331,7 @@ export default function OAuthProfileSetup() {
                 }
               }}
               className="select-field"
+              style={fieldErrors.gender ? { borderColor: '#ff453a' } : {}}
               required
             >
               <option value="">Select Gender</option>
@@ -328,6 +340,7 @@ export default function OAuthProfileSetup() {
               <option value="Non-binary">Non-binary</option>
               <option value="Other">Other</option>
             </select>
+            {fieldErrors.gender && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.gender}</span>}
           </div>
 
           {/* Status */}
@@ -335,8 +348,9 @@ export default function OAuthProfileSetup() {
             <label>Relationship Status *</label>
             <select 
               value={status} 
-              onChange={e => setStatus(e.target.value)}
+              onChange={e => { setStatus(e.target.value); clearFieldError('status'); }}
               className="select-field"
+              style={fieldErrors.status ? { borderColor: '#ff453a' } : {}}
               required
             >
               <option value="">Select Status</option>
@@ -344,6 +358,7 @@ export default function OAuthProfileSetup() {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            {fieldErrors.status && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.status}</span>}
           </div>
 
           {/* Interests */}

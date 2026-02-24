@@ -396,11 +396,13 @@ export default function StoryViewer({
                 }
 
                 .story-image {
+                    position: absolute;
+                    top: 0; left: 0;
                     width: 100%;
                     height: 100%;
-                    object-fit: contain;
-                    background: #111;
-                    flex-grow: 1;
+                    object-fit: cover;
+                    object-position: center;
+                    z-index: 0;
                 }
 
                 .story-header {

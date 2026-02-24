@@ -5,6 +5,8 @@ import { getAvatar2D } from '../utils/avatarUtils';
 export default function PokeNotifications({ currentUser }) {
     const [pendingPokes, setPendingPokes] = useState([]);
     const [showNotifications, setShowNotifications] = useState(false);
+    // Track whether user manually dismissed the panel this session
+    const dismissedKey = 'poke_panel_dismissed';
 
     useEffect(() => {
         if (!currentUser) return;
@@ -25,7 +27,11 @@ export default function PokeNotifications({ currentUser }) {
 
             if (!error && data) {
                 setPendingPokes(data);
-                if (data.length > 0) setShowNotifications(true);
+                // Only auto-open if user hasn't dismissed the panel this session
+                const wasDismissed = sessionStorage.getItem(dismissedKey) === 'true';
+                if (data.length > 0 && !wasDismissed) {
+                    setShowNotifications(true);
+                }
             }
         };
 
@@ -54,6 +60,8 @@ export default function PokeNotifications({ currentUser }) {
                             requester
                         };
                         setPendingPokes(prev => [newPoke, ...prev]);
+                        // A brand-new poke always shows the panel — clear dismissed flag
+                        sessionStorage.removeItem(dismissedKey);
                         setShowNotifications(true);
                         
                         // Play notification sound
@@ -92,6 +100,8 @@ export default function PokeNotifications({ currentUser }) {
                              if (prev.find(p => p.id === newPoke.id)) return prev;
                              return [newPoke, ...prev];
                          });
+                         // A re-poke always shows the panel — clear dismissed flag
+                         sessionStorage.removeItem(dismissedKey);
                          setShowNotifications(true);
                          
                          // Play sound
@@ -192,7 +202,11 @@ export default function PokeNotifications({ currentUser }) {
                 <div className="poke-notifications-panel" ref={panelRef}>
                     <div className="panel-header">
                         <h3>👋 Poke Requests</h3>
-                        <button onClick={() => setShowNotifications(false)}>✕</button>
+                        <button onClick={() => {
+                            // Mark as manually dismissed — won't auto-reopen this session
+                            sessionStorage.setItem(dismissedKey, 'true');
+                            setShowNotifications(false);
+                        }}>✕</button>
                     </div>
                     <div className="poke-list">
                         {pendingPokes.map(poke => (

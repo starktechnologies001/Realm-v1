@@ -2478,7 +2478,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
             };
             fetchLatest();
-        }, 3000); // Poll every 3 seconds
+        }, 1500); // Poll every 1.5 seconds as a reliability fallback (realtime handles instant delivery)
 
         return () => clearInterval(interval);
     }, [currentUser.id, targetUser.id, blockStatus]);

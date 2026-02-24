@@ -91,6 +91,9 @@ export default function Login() {
   const [messageType, setMessageType] = useState('error'); // 'error' | 'success'
   const [signupStep, setSignupStep] = useState(1); // 1: Email, 2: Username, 3: Password, 4: Profile
   const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({}); // per-field inline errors
+
+  const clearFieldError = (field) => setFieldErrors(prev => ({ ...prev, [field]: '' }));
 
   const showMessage = (msg, type = 'error') => {
     setError(msg);
@@ -103,11 +106,16 @@ export default function Login() {
   // Step Navigation Handlers
   const handleNextStep = async () => {
     setError('');
+    setFieldErrors({});
     
     if (signupStep === 1) {
       // Validate Email Format
-      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        showMessage('Please enter a valid email address', 'error');
+      if (!email.trim()) {
+        setFieldErrors({ email: 'Email address is required' });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setFieldErrors({ email: 'Please enter a valid email address' });
         return;
       }
       
@@ -131,11 +139,11 @@ export default function Login() {
     } else if (signupStep === 2) {
       // Validate Username & Check Availability
       if (!username.trim() || username.length < 3) {
-        showMessage('Username must be at least 3 characters', 'error');
+        setFieldErrors({ username: 'Username must be at least 3 characters' });
         return;
       }
       if (usernameError) {
-        showMessage('Username already exists', 'error');
+        setFieldErrors({ username: 'Username already exists' });
         return;
       }
       // Double-check availability before proceeding
@@ -147,7 +155,7 @@ export default function Login() {
           .maybeSingle();
         
         if (data) {
-          showMessage('Username already exists', 'error');
+          setFieldErrors({ username: 'Username already exists' });
           setUsernameError('Username is already taken');
           return;
         }
@@ -157,8 +165,12 @@ export default function Login() {
       setSignupStep(3);
     } else if (signupStep === 3) {
       // Validate Password
+      if (!password.trim()) {
+        setFieldErrors({ password: 'Password is required' });
+        return;
+      }
       if (!validatePassword(password)) {
-        showMessage('Password must be 8+ chars with Upper, Lower, Number & Symbol.', 'error');
+        setFieldErrors({ password: 'Password must be 8+ chars with Upper, Lower, Number & Symbol' });
         return;
       }
       setSignupStep(4);
@@ -267,12 +279,29 @@ export default function Login() {
   const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
-    if (isSignUp ? !email.trim() : !username.trim() || !password.trim()) {
-      showMessage(`Please enter ${isSignUp ? "email" : "username"} and password.`, 'error');
-      setLoading(false);
-      return;
+    if (!isSignUp) {
+      // Login: validate both fields inline
+      const errs = {};
+      if (!username.trim()) errs.username = 'Username is required';
+      if (!password.trim()) errs.password = 'Password is required';
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
+        setLoading(false);
+        return;
+      }
+    } else {
+      // Signup step 4: validate gender and status
+      const errs = {};
+      if (!gender) errs.gender = 'Please select a gender';
+      if (!status) errs.status = 'Please select a relationship status';
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
+        setLoading(false);
+        return;
+      }
     }
 
     try {
@@ -489,9 +518,11 @@ export default function Login() {
                   className="input-field"
                   placeholder="Username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
+                  style={fieldErrors.username ? { borderColor: '#ff453a' } : {}}
                   required
                 />
+                {fieldErrors.username && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.username}</span>}
               </div>
               <div className="input-group" style={{ position: 'relative' }}>
                 <input
@@ -499,8 +530,8 @@ export default function Login() {
                   className="input-field"
                   placeholder="Password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={{ paddingRight: '40px' }}
+                  onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
+                  style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                   required
                 />
                 <button 
@@ -510,6 +541,7 @@ export default function Login() {
                 >
                   {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
+                {fieldErrors.password && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.password}</span>}
               </div>
               <div style={{ textAlign: 'right', marginTop: '8px' }}>
                 <span 
@@ -549,9 +581,11 @@ export default function Login() {
                       className="input-field"
                       placeholder="Email Address"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
+                      style={fieldErrors.email ? { borderColor: '#ff453a' } : {}}
                       autoFocus
                     />
+                    {fieldErrors.email && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.email}</span>}
                   </div>
                 </div>
               )}
@@ -566,12 +600,12 @@ export default function Login() {
                       className="input-field"
                       placeholder="Username"
                       value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      style={usernameError ? { borderColor: '#ff453a' } : {}}
+                      onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
+                      style={(usernameError || fieldErrors.username) ? { borderColor: '#ff453a' } : {}}
                       autoFocus
                     />
                     {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
-                    {usernameError && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{usernameError}</span>}
+                    {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
                   </div>
                 </div>
               )}
@@ -586,8 +620,8 @@ export default function Login() {
                       className="input-field"
                       placeholder="Password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      style={{ paddingRight: '40px' }}
+                      onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
+                      style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                       autoFocus
                     />
                     <button 
@@ -597,9 +631,10 @@ export default function Login() {
                     >
                       {showPassword ? '👁️' : '👁️‍🗨️'}
                     </button>
-                    <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', marginLeft: '4px' }}>
-                      8+ chars with Upper, Lower, Number & Symbol
-                    </p>
+                    {fieldErrors.password
+                      ? <p style={{ fontSize: '0.75rem', color: '#ff453a', marginTop: '8px', marginLeft: '4px' }}>{fieldErrors.password}</p>
+                      : <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', marginLeft: '4px' }}>8+ chars with Upper, Lower, Number & Symbol</p>
+                    }
                   </div>
                 </div>
               )}
@@ -661,12 +696,13 @@ export default function Login() {
 
                   {/* Gender */}
                   <div className="field-section">
-                    <label>Gender</label>
+                    <label>Gender {!gender && <span style={{ color: '#ff453a', fontSize: '0.8rem' }}>*</span>}</label>
                     <div className="custom-select-wrapper">
                       <select 
                         value={gender} 
-                        onChange={e => setGender(e.target.value)}
+                        onChange={e => { setGender(e.target.value); clearFieldError('gender'); }}
                         className="glass-select"
+                        style={fieldErrors.gender ? { borderColor: '#ff453a' } : {}}
                       >
                         <option value="" disabled>Select Gender</option>
                         <option value="Male">Male</option>
@@ -676,16 +712,18 @@ export default function Login() {
                       </select>
                       <div className="select-arrow">▼</div>
                     </div>
+                    {fieldErrors.gender && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '2px', display: 'block', marginLeft: '4px' }}>{fieldErrors.gender}</span>}
                   </div>
 
                   {/* Status */}
                   <div className="field-section">
-                    <label>Relationship Status</label>
+                    <label>Relationship Status {!status && <span style={{ color: '#ff453a', fontSize: '0.8rem' }}>*</span>}</label>
                     <div className="custom-select-wrapper">
                       <select 
                         value={status} 
-                        onChange={e => setStatus(e.target.value)}
+                        onChange={e => { setStatus(e.target.value); clearFieldError('status'); }}
                         className="glass-select"
+                        style={fieldErrors.status ? { borderColor: '#ff453a' } : {}}
                       >
                         <option value="" disabled>Select Status</option>
                         {STATUS_OPTIONS.map(s => (
@@ -694,6 +732,7 @@ export default function Login() {
                       </select>
                       <div className="select-arrow">▼</div>
                     </div>
+                    {fieldErrors.status && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '2px', display: 'block', marginLeft: '4px' }}>{fieldErrors.status}</span>}
                   </div>
 
                   {/* Interests */}

@@ -104,14 +104,15 @@ html[data-theme="dark"] {
 }
 
 .profile-bio {
-    font-size: 0.95rem; color: var(--text-primary); /* Brighter text */
-    font-weight: 600; /* Bold */
-    max-width: 85%; 
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* Single line */
-    cursor: pointer; padding: 6px 14px; border-radius: 10px;
+    font-size: 0.95rem; color: var(--text-primary);
+    font-weight: 500;
+    max-width: 100%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* Single line — ellipsis if very long */
+    cursor: pointer; padding: 4px 10px; border-radius: 10px;
     transition: background 0.2s;
-    margin-top: 6px;
+    margin-top: 4px;
     text-align: center;
+    letter-spacing: 0.01em;
 }
 .profile-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
 .profile-bio.empty { font-style: italic; opacity: 0.6; }

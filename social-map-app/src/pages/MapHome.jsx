@@ -341,16 +341,15 @@ export default function MapHome() {
             const user = session?.user;
             if (!user) return;
 
-            // Requests
-            const { count: requestCount } = await supabase
+            // Requests — fetch actual IDs so realtime accept/decline filtering works correctly
+            const { data: pendingRequests } = await supabase
                 .from('friendships')
-                .select('id', { count: 'exact', head: true })
+                .select('id')
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending');
             
-            if (requestCount !== null) {
-                // Mock array for length since we only use .length for badge
-                setFriendRequests(new Array(requestCount).fill(0));
+            if (pendingRequests) {
+                setFriendRequests(pendingRequests.map(r => r.id));
             }
         };
 
@@ -579,7 +578,7 @@ export default function MapHome() {
             }, (payload) => {
                 const { eventType, old: oldRec, new: newRec } = payload;
 
-                // CASE 1: DELETE (Unfriend)
+                // CASE 1: DELETE (Unfriend / Decline Request)
                 if (eventType === 'DELETE') {
                     const deletedId = oldRec.id;
                     const partnerId = friendshipsRef.current.get(deletedId);
@@ -591,6 +590,8 @@ export default function MapHome() {
                         setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null } : u));
                         showToast("Friend removed. You can now poke them again.");
                     }
+                    // Also remove from pending requests badge if it was a pending request
+                    setFriendRequests(prev => prev.filter(id => id !== deletedId));
                     return;
                 }
 
@@ -613,6 +614,8 @@ export default function MapHome() {
                     showToast(`Friend request accepted! 🎉`);
                     setSelectedUser(prev => prev && prev.id === relevantId ? { ...prev, friendshipStatus: 'accepted' } : prev);
                     setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
+                    // Remove from pending requests badge (I accepted their poke)
+                    setFriendRequests(prev => prev.filter(id => id !== newRec.id));
                 }
 
                 // CASE 4: PENDING (New Poke)
@@ -622,6 +625,8 @@ export default function MapHome() {
                     const isIncoming = newRec.receiver_id === currentUser.id;
                     if (isIncoming) {
                         showToast(`New Poke received! 👋`);
+                        // Increment badge INSTANTLY for incoming poke requests
+                        setFriendRequests(prev => [...prev, newRec.id]);
                     }
 
                     // Update UI
@@ -1750,9 +1755,10 @@ export default function MapHome() {
         if (isSelf) {
             className += ' self';
             if (isGhost) {
-                style += ' opacity: 0.5; filter: grayscale(100%);';
+                // Ghost mode: fade to indicate invisible — no grayscale filter (CSS handles protection)
+                style += ' opacity: 0.45;';
             }
-        }   
+        }
         // Only show thought if it exists (simplified check)
         const thoughtHTML = thought
             ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
@@ -3535,6 +3541,27 @@ export default function MapHome() {
                 .dark-map-tiles {
                     filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
                     -webkit-filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+                }
+
+                /* ✅ Always show avatar images in their TRUE colors — never inherit tile layer inversion or any stacking-context filter */
+                .custom-avatar-icon,
+                .custom-avatar-icon * {
+                    filter: none !important;
+                    -webkit-filter: none !important;
+                    isolation: isolate;
+                }
+
+                /* Ghost mode self-marker: use opacity only, not grayscale */
+                .avatar-marker.self.ghost-mode {
+                    opacity: 0.5;
+                    filter: none !important;
+                    -webkit-filter: none !important;
+                }
+
+                /* Catch-all: ensure Leaflet marker pane never dims avatars */
+                .leaflet-marker-pane .custom-avatar-icon {
+                    filter: none !important;
+                    -webkit-filter: none !important;
                 }
 
                 .thought-input-overlay {
