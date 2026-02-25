@@ -2145,88 +2145,13 @@ export default function MapHome() {
     }, [currentUser]);
 
     // ------------------------------------------------------------------
-    // 📍 MEMOIZED MARKERS (Clustered & Spiral)
+    // 📍 MEMOIZED MARKERS
     // ------------------------------------------------------------------
     const userMarkers = useMemo(() => {
-        // Process users to handle overlap (Spiderfy / Separation)
-        // Density-Based Clustering & Spiral Layout
-        
         // 1. Sort for stability
         const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
-        const clusters = [];
-        // Threshold: ~330m covers marker size even at Zoom 15. Ensures 1m-apart users get spiraled.
-        const CLUSTER_THRESHOLD = 0.003; 
 
-        // ✅ Add current user as a hidden anchor to force separation 
-        // if anyone has the exact same coordinates (e.g. Realtime updates)
-        if (userLocation?.lat && userLocation?.lng) {
-            clusters.push([{ 
-                lat: userLocation.lat, 
-                lng: userLocation.lng, 
-                isVirtualCenter: true 
-            }]);
-        }
-
-        // 2. Cluster Users
-        sortedUsers.forEach(u => {
-            let placed = false;
-            for (let cluster of clusters) {
-                // Check distance to cluster center (using first user as anchor for stability)
-                const anchor = cluster[0];
-                if (Math.abs(u.lat - anchor.lat) < CLUSTER_THRESHOLD &&
-                    Math.abs(u.lng - anchor.lng) < CLUSTER_THRESHOLD) {
-                    cluster.push(u);
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) clusters.push([u]);
-        });
-
-        // 3. Apply Spiral Layout
-        const processedUsers = [];
-        // Decreased from 0.0003 (~33m) to 0.00008 (~9m) to keep scattered avatars 
-        // close enough to still clearly indicate they are at the "same place"
-        const SPIRAL_SPACING = 0.00008;
-        // Minimum radius so even the first user in a cluster doesn't sit at the exact center
-        // when there are multiple users (prevents z-index stacking hiding avatars)
-        const MIN_RADIUS = SPIRAL_SPACING;
-
-        clusters.forEach(cluster => {
-            const hasVirtual = cluster[0].isVirtualCenter;
-            const actualUsers = hasVirtual ? cluster.slice(1) : cluster;
-
-            if (actualUsers.length === 0) return; // Only virtual center, no one to spiral
-
-            if (actualUsers.length === 1 && !hasVirtual) {
-                processedUsers.push(actualUsers[0]);
-            } else {
-                // Calculate center of mass for the group (or just use anchor if virtual)
-                let avgLat = cluster[0].lat;
-                let avgLng = cluster[0].lng;
-                
-                if (!hasVirtual) {
-                    avgLat = cluster.reduce((sum, c) => sum + c.lat, 0) / cluster.length;
-                    avgLng = cluster.reduce((sum, c) => sum + c.lng, 0) / cluster.length;
-                }
-
-                actualUsers.forEach((u, i) => {
-                    // Archimedean Spiral / Golden Angle Packing
-                    // If virtual center exists, shift index up by 1 so we don't place someone dead center
-                    const indexOffset = hasVirtual ? i + 1 : i;
-                    const angle = indexOffset * 2.4; // ~137.5 degrees (golden angle)
-                    const radius = MIN_RADIUS + SPIRAL_SPACING * Math.sqrt(indexOffset + 1);
-
-                    processedUsers.push({
-                        ...u,
-                        lat: avgLat + (Math.cos(angle) * radius),
-                        lng: avgLng + (Math.sin(angle) * radius)
-                    });
-                });
-            }
-        });
-
-        return processedUsers.map((u, index) => (
+        return sortedUsers.map((u, index) => (
             <UserMarker 
                 key={u.id}
                 user={u}
@@ -2237,7 +2162,7 @@ export default function MapHome() {
                 createAvatarIcon={createAvatarIcon}
             />
         ));
-    }, [filteredUsers, userLocation, handleMarkerClick, createAvatarIcon]);
+    }, [filteredUsers, handleMarkerClick, createAvatarIcon]);
 
 
 

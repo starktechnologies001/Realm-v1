@@ -146,18 +146,20 @@
 
 .preview-caption-input input {
     width: 100%;
-    background: rgba(40, 40, 40, 0.8);
-    border: none;
+    background: rgba(255, 255, 255, 0.15); /* Lighter background for better contrast */
+    border: 1px solid rgba(255, 255, 255, 0.2); /* Subtle border to define the field */
     border-radius: 24px;
     padding: 14px 20px;
-    color: white;
+    color: #ffffff !important; /* Force white text */
     font-size: 1rem;
     outline: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .preview-caption-input input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.7) !important; /* Brighter placeholder */
 }
+
 
 .preview-actions-row {
     display: flex;
