@@ -21,6 +21,7 @@ import StatusView from '../components/StatusView';
 import StoryViewer from '../components/StoryViewer';
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
+import { mapEventChannel } from './MapHome'; // Instant map updates
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID; // Moved to environment variable for security
 
@@ -1452,11 +1453,46 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             await unblockUser(currentUser.id, targetUser.id);
             setBlockStatus(prev => ({ ...prev, blockedByMe: false }));
             Toast.show(`Unblocked ${targetUser.username || targetUser.full_name}`);
+            
+            // Notify MapHome to show avatar instantly (same device)
+            if (mapEventChannel && mapEventChannel.postMessage) {
+                mapEventChannel.postMessage({ type: 'USER_UNBLOCKED', userId: targetUser.id });
+            }
+            
+            // Cross-device fast path
+            const broadcastChan = supabase.channel('global_map_events');
+            broadcastChan.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    broadcastChan.send({
+                        type: 'broadcast',
+                        event: 'USER_UNBLOCKED_CROSS_DEVICE',
+                        payload: { blocker_id: currentUser.id, blocked_id: targetUser.id }
+                    });
+                }
+            });
         } else {
             // Block
             await blockUser(currentUser.id, targetUser.id);
             setBlockStatus(prev => ({ ...prev, blockedByMe: true, blockedAt: new Date().toISOString() }));
             Toast.show(`Blocked ${targetUser.username || targetUser.full_name}`);
+            
+            // Notify MapHome to hide avatar instantly (same device)
+            if (mapEventChannel && mapEventChannel.postMessage) {
+                mapEventChannel.postMessage({ type: 'USER_BLOCKED', userId: targetUser.id });
+                console.log('⚡ Emitted USER_BLOCKED to Map Event Channel');
+            }
+            
+            // Cross-device fast path
+            const broadcastChan = supabase.channel('global_map_events');
+            broadcastChan.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    broadcastChan.send({
+                        type: 'broadcast',
+                        event: 'USER_BLOCKED_CROSS_DEVICE',
+                        payload: { blocker_id: currentUser.id, blocked_id: targetUser.id }
+                    });
+                }
+            });
             
             // Note: We do NOT clear chat history (Requirement 6)
         }

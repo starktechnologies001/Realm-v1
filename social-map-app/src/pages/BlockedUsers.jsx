@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { unblockUser } from '../utils/blockUtils';
 import Toast from '../components/Toast';
 import { getAvatarHeadshot, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { mapEventChannel } from './MapHome'; // Instant map updates
 
 export default function BlockedUsers() {
     const [blockedList, setBlockedList] = useState([]);
@@ -60,6 +61,24 @@ export default function BlockedUsers() {
             showToast(`Unblocked ${name}`);
             // Optimistic update
             setBlockedList(prev => prev.filter(item => item.blocked_id !== targetId));
+            
+            // Notify map instantly (same device)
+            if (mapEventChannel && mapEventChannel.postMessage) {
+                mapEventChannel.postMessage({ type: 'USER_UNBLOCKED', userId: targetId });
+                console.log('⚡ Emitted USER_UNBLOCKED to Map Event Channel');
+            }
+            
+            // Cross-device fast path
+            const broadcastChan = supabase.channel('global_map_events');
+            broadcastChan.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    broadcastChan.send({
+                        type: 'broadcast',
+                        event: 'USER_UNBLOCKED_CROSS_DEVICE',
+                        payload: { blocker_id: currentUser.id, blocked_id: targetId }
+                    });
+                }
+            });
         } else {
             showToast('Failed to unblock');
         }
@@ -119,7 +138,8 @@ export default function BlockedUsers() {
                         {blockedList.map(item => {
                             const profile = item.profile;
                             if (!profile) return null;
-                            const name = profile.full_name || profile.username || 'Unknown';
+                            const name = profile.username || 'Unknown';
+                            const displayName = profile.username ? `@${profile.username}` : 'Unknown';
                             const avatar = getAvatarHeadshot(profile.avatar_url, profile.gender);
                             
                             return (
@@ -145,7 +165,7 @@ export default function BlockedUsers() {
                                     
                                     <button 
                                         className="unblock-btn"
-                                        onClick={() => handleUnblock(item.blocked_id, name)}
+                                        onClick={() => handleUnblock(item.blocked_id, displayName)}
                                         style={{
                                             background: 'rgba(0,0,0,0.05)',
                                             color: '#000', // Default (Light mode)

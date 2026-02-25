@@ -295,34 +295,7 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                     </div>
                 </div>
 
-                {/* Individual Story Management for Me */}
-                {myStories.length > 0 && (
-                    <div className="my-stories-management">
-                        {myStories.map(story => (
-                            <div key={story.id} className="mini-story-item"
-                                onClick={() => onSelectFriend({ user: currentUser, stories: myStories, startIndex: myStories.indexOf(story) })}>
-                                <img src={story.media_url} alt="Mini story" />
-                                {story.caption && (
-                                    <div className="mini-story-caption">{story.caption}</div>
-                                )}
-                                <div className="mini-story-actions">
-                                    <button
-                                        className="mini-action-btn mini-edit-btn"
-                                        title="Edit Caption"
-                                        onClick={(e) => handleOpenEditCaption(story, e)}>
-                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                                    </button>
-                                    <button
-                                        className="mini-action-btn mini-delete-btn"
-                                        title="Delete Story"
-                                        onClick={(e) => handleDeleteStory(story.id, e)}>
-                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+
             </div>
 
             <div className="section-divider">Recent Updates</div>

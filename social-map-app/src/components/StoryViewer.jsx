@@ -23,6 +23,7 @@ export default function StoryViewer({
     const [isEditing, setIsEditing] = useState(false);
     const [editCaption, setEditCaption] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [showOptions, setShowOptions] = useState(false);
 
     // Derived state
     const stories = userStories?.stories || [];
@@ -88,7 +89,7 @@ export default function StoryViewer({
 
     // Timer Logic
     useEffect(() => {
-        if (!currentStory || isPaused || showViewersList) return;
+        if (!currentStory || isPaused || showViewersList || showOptions) return;
 
         const interval = setInterval(() => {
             const elapsed = Date.now() - startTimeRef.current;
@@ -102,7 +103,7 @@ export default function StoryViewer({
         }, 50); // Fluid update
 
         return () => clearInterval(interval);
-    }, [currentStory, currentIndex, isPaused, showViewersList]);
+    }, [currentStory, currentIndex, isPaused, showViewersList, showOptions]);
 
     const handleNext = () => {
         if (currentIndex < stories.length - 1) {
@@ -215,9 +216,9 @@ export default function StoryViewer({
             <div className="nav-zone right" onClick={handleNext}></div>
 
             <div className="story-content-wrapper" 
-                 onMouseDown={() => { setIsPaused(true); }}
+                 onMouseDown={() => { setIsPaused(true); setShowOptions(false); }}
                  onMouseUp={() => { setIsPaused(false); startTimeRef.current = Date.now() - (progress / 100 * STORY_DURATION); }}
-                 onTouchStart={() => { setIsPaused(true); }}
+                 onTouchStart={() => { setIsPaused(true); setShowOptions(false); }}
                  onTouchEnd={() => { setIsPaused(false); startTimeRef.current = Date.now() - (progress / 100 * STORY_DURATION); }}
             >
                 {/* Progress Bars */}
@@ -249,13 +250,47 @@ export default function StoryViewer({
                     </div>
                     <div className="actions">
                         {isOwner && (
-                            <div className="owner-actions">
-                                <button className="action-btn edit-btn prominent" onClick={handleEditClick} title="Edit Caption">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                            <div className="owner-actions" style={{ position: 'relative' }}>
+                                <button 
+                                    className="action-btn options-btn" 
+                                    onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        setShowOptions(!showOptions); 
+                                    }} 
+                                    title="Options"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
                                 </button>
-                                <button className="action-btn delete-btn prominent" onClick={(e) => { e.stopPropagation(); handleDelete(); }} title="Delete Story">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                </button>
+
+                                {showOptions && (
+                                    <div className="options-dropdown" onClick={(e) => e.stopPropagation()}>
+                                        <button 
+                                            onPointerDown={(e) => { 
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                setShowOptions(false); 
+                                                handleEditClick(e); 
+                                            }}
+                                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width: 16, height: 16}}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                            Edit
+                                        </button>
+                                        <button 
+                                            className="danger-text" 
+                                            onPointerDown={(e) => { 
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                setShowOptions(false); 
+                                                handleDelete(e); 
+                                            }}
+                                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width: 16, height: 16}}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                            Delete
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                         <button className="action-btn close-btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>
@@ -361,10 +396,14 @@ export default function StoryViewer({
                 .story-content-wrapper {
                     position: relative;
                     width: 100%;
-                    height: 100%;
-                    max-width: 500px;
+                    height: 85dvh;
+                    max-height: 800px;
+                    max-width: 440px;
                     display: flex;
                     flex-direction: column;
+                    border-radius: 20px;
+                    overflow: hidden;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
                 }
                 .nav-zone {
                     position: absolute;
@@ -412,11 +451,8 @@ export default function StoryViewer({
                     justify-content: space-between;
                     align-items: flex-start; /* Align for top padding */
                     z-index: 20;
-                    background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, transparent 100%);
-                    padding-top: max(20px, env(safe-area-inset-top)); /* Dynamic Safe Area */
-                    padding-left: max(20px, env(safe-area-inset-left));
-                    padding-right: max(20px, env(safe-area-inset-right));
-                    padding-bottom: 40px;
+                    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, transparent 100%);
+                    padding: 24px 16px 40px;
                 }
                 
                 .user-info {
@@ -479,9 +515,52 @@ export default function StoryViewer({
                     border-color: rgba(255, 255, 255, 0.4);
                 }
 
-                .action-btn.delete-btn:hover {
-                    background: rgba(255, 59, 48, 0.8);
-                    border-color: #ff3b30;
+                .options-dropdown {
+                    position: absolute;
+                    top: 110%;
+                    right: 0;
+                    background: rgba(30, 30, 30, 0.95);
+                    backdrop-filter: blur(12px);
+                    border-radius: 12px;
+                    padding: 6px;
+                    display: flex;
+                    flex-direction: column;
+                    min-width: 150px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
+                .options-dropdown button {
+                    background: transparent;
+                    border: none;
+                    color: white;
+                    padding: 10px 12px;
+                    text-align: left;
+                    font-size: 14px;
+                    font-weight: 500;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    transition: background 0.2s;
+                }
+                
+                .options-dropdown button:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                }
+
+                .options-dropdown button.danger-text {
+                    color: #ff453a;
+                }
+                .options-dropdown button.danger-text:hover {
+                    background: rgba(255, 69, 58, 0.15);
                 }
 
                 .close-btn { background: rgba(0,0,0,0.4); }
@@ -489,11 +568,8 @@ export default function StoryViewer({
                 .story-footer {
                     position: absolute;
                     bottom: 0; left: 0; right: 0;
-                    padding-bottom: max(20px, env(safe-area-inset-bottom)); /* Dynamic Safe Area */
-                    padding-left: max(20px, env(safe-area-inset-left));
-                    padding-right: max(20px, env(safe-area-inset-right));
-                    padding-top: 20px;
-                    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);
+                    padding: 20px 16px 24px;
+                    background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
                     z-index: 20;
                     display: flex;
                     justify-content: center;

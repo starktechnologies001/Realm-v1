@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import SmoothMarker from '../components/SmoothMarker';
 import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
@@ -20,7 +21,7 @@ import ImageCropper from '../components/ImageCropper';
 import BottomNav from '../components/BottomNav';
 
 // 📍 MEMOIZED MARKER COMPONENT
-const UserMarker = React.memo(({ user, markerRefs, onMarkerClick, createAvatarIcon }) => {
+const UserMarker = React.memo(({ user, index, animate, markerRefs, onMarkerClick, createAvatarIcon }) => {
     // Check thought expiration (3 hours)
     let displayThought = user.thought;
     if (user.status_updated_at) {
@@ -28,17 +29,20 @@ const UserMarker = React.memo(({ user, markerRefs, onMarkerClick, createAvatarIc
         if (diffHours > 3) displayThought = null;
     }
 
+    // Stagger algorithm: only if 'animate' is true
+    const delay = animate ? (index * 80) : 0;
+
     return (
-        <Marker
+        <SmoothMarker
             position={[user.lat, user.lng]}
-            ref={(ref) => {
+            innerRef={(ref) => {
                 if (ref) {
                     markerRefs.current.set(user.id, ref);
                 } else {
                     markerRefs.current.delete(user.id);
                 }
             }}
-            icon={createAvatarIcon(getAvatar2D(user.avatar_url || user.avatar), false, displayThought, user.name || user.username || 'User', user.status, user.mood, user.mood_updated_at)}
+            icon={createAvatarIcon(getAvatar2D(user.avatar_url || user.avatar), false, displayThought, user.name || user.username || 'User', user.status, user.mood, user.mood_updated_at, delay)}
             riseOnHover={true}
             eventHandlers={{
                 click: () => onMarkerClick(user)
@@ -56,9 +60,12 @@ L.Icon.Default.mergeOptions({
     shadowUrl: null,
 });
 
+// Cross-tab communication channel for extremely fast local overrides
+export const mapEventChannel = new BroadcastChannel('map_events');
+
 // Helper: Distance
-function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-    var R = 6371;
+const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3;
     var dLat = deg2rad(lat2 - lat1);
     var dLon = deg2rad(lon2 - lon1);
     var a =
@@ -314,6 +321,15 @@ function UserSelectionController({ selectedUser }) {
     return null;
 }
 
+// Ensure the style exists in MapHome
+const mapAvatarStyle = `
+    @keyframes avatarPopIn {
+        0% { transform: scale(0) translateY(15px); opacity: 0; }
+        60% { transform: scale(1.1) translateY(-3px); opacity: 1; }
+        100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+`;
+
 export default function MapHome() {
     // Map UI State
     const [searchQuery, setSearchQuery] = useState('');
@@ -453,11 +469,30 @@ export default function MapHome() {
 
     // --- Onboarding State ---
     const [showProfileSetup, setShowProfileSetup] = useState(false);
-    const [setupData, setSetupData] = useState({ gender: '', status: '', relationshipStatus: '', username: '' });
+    const [setupErrors, setSetupErrors] = useState({ username: false, gender: false, relationshipStatus: false });
+    const [setupData, setSetupData] = useState({
+        username: '', gender: '', relationshipStatus: '',
+    });
     // New state for modal upload
     const [avatarFile, setAvatarFile] = useState(null);
     const [avatarPreview, setAvatarPreview] = useState(null);
     const [cropImage, setCropImage] = useState(null); // State for cropping
+
+    // Initial Marker Animation state
+    const isFirstMapLoad = useRef(!sessionStorage.getItem('avatars_animated_once'));
+    useEffect(() => {
+        if (isFirstMapLoad.current) {
+            // Give the markers time to mount and run their CSS animation, 
+            // then set it so future renders (filtering, moving, real-time) skip animation.
+            setTimeout(() => {
+                isFirstMapLoad.current = false;
+                sessionStorage.setItem('avatars_animated_once', 'true');
+            }, 2500); 
+        }
+    }, []);
+
+    // ------------------------------------------------------------------
+    // EFFECTS & FETCHING
     const [onboardingImage, setOnboardingImage] = useState(null);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const videoRef = React.useRef(null);
@@ -604,7 +639,16 @@ export default function MapHome() {
 
                 // CASE 2: BLOCKED
                 if (newRec?.status === 'blocked') {
-                    window.location.reload();
+                    // Update blockedIds ref instantly
+                    blockedIdsRef.current.add(relevantId);
+                    
+                    // Remove from nearbyUsers instantly
+                    setNearbyUsers(prev => prev.filter(u => u.id !== relevantId));
+                    
+                    // Close selected user profile if they are the one blocked
+                    setSelectedUser(prev => prev && prev.id === relevantId ? null : prev);
+                    
+                    showToast("User blocked and removed from map.");
                     return;
                 }
 
@@ -647,11 +691,110 @@ export default function MapHome() {
             })
             .subscribe();
 
+        // Listen for new blocks in 'blocked_users' table AND custom broadcasts (cross-device instant)
+        const blockChannel = supabase
+            .channel('global_map_events')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'blocked_users'
+            }, (payload) => {
+                const { new: newBlock } = payload;
+                if (!newBlock) return;
+
+                const isMeBlocker = newBlock.blocker_id === currentUser.id;
+                const isMeBlocked = newBlock.blocked_id === currentUser.id;
+
+                // If I am involved in this block in any way
+                if (isMeBlocker || isMeBlocked) {
+                    const partnerId = isMeBlocker ? newBlock.blocked_id : newBlock.blocker_id;
+                    
+                    // Add to our blocked set to prevent them from showing up again
+                    blockedIdsRef.current.add(partnerId);
+
+                    // Remove them from the map instantly
+                    setNearbyUsers(prev => prev.filter(u => u.id !== partnerId));
+
+                    // If they are currently selected, close their profile
+                    setSelectedUser(prev => prev && prev.id === partnerId ? null : prev);
+                }
+            })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'blocked_users'
+            }, (payload) => {
+                const { old: oldBlock } = payload;
+                if (!oldBlock) return;
+                
+                // If the block is lifted, we just remove them from the ref. 
+                // They will reappear next time nearbyUsers is polled.
+                if (oldBlock.blocker_id === currentUser.id) {
+                    blockedIdsRef.current.delete(oldBlock.blocked_id);
+                } else if (oldBlock.blocked_id === currentUser.id) {
+                    blockedIdsRef.current.delete(oldBlock.blocker_id);
+                }
+            })
+            // ADD BROADCAST LISTENER
+            .on('broadcast', { event: 'USER_BLOCKED_CROSS_DEVICE' }, (payload) => {
+                const { blocker_id, blocked_id } = payload.payload;
+                if (currentUser.id === blocker_id || currentUser.id === blocked_id) {
+                    const partnerId = currentUser.id === blocker_id ? blocked_id : blocker_id;
+                    blockedIdsRef.current.add(partnerId);
+                    setNearbyUsers(prev => prev.filter(u => u.id !== partnerId));
+                    setSelectedUser(prev => prev && prev.id === partnerId ? null : prev);
+                    console.log('⚡ Received Cross-Device Block Event for:', partnerId);
+                }
+            })
+            .on('broadcast', { event: 'USER_UNBLOCKED_CROSS_DEVICE' }, (payload) => {
+                const { blocker_id, blocked_id } = payload.payload;
+                if (currentUser.id === blocker_id || currentUser.id === blocked_id) {
+                    const partnerId = currentUser.id === blocker_id ? blocked_id : blocker_id;
+                    blockedIdsRef.current.delete(partnerId);
+                    console.log('⚡ Received Cross-Device Unblock Event for:', partnerId);
+                }
+            })
+            .subscribe((status) => {
+                if(status === 'SUBSCRIBED') {
+                    console.log('⚡ Subscribed to global_map_events');
+                }
+            });
+
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(friendshipChannel);
+            supabase.removeChannel(blockChannel);
         };
     }, [currentUser, userLocation]);
+
+    // Fast-path block listener (Cross-tab BroadcastChannel)
+    // Supabase real-time is good, but BroadcastChannel is INSTANT across tabs.
+    useEffect(() => {
+        const handleMapEvent = (event) => {
+            if (event.data?.type === 'USER_BLOCKED' && event.data?.userId) {
+                const blockedUserId = event.data.userId;
+                
+                // Instantly update block cache
+                blockedIdsRef.current.add(blockedUserId);
+                
+                // Instantly remove from map
+                setNearbyUsers(prev => prev.filter(u => u.id !== blockedUserId));
+                
+                // Close profile if open
+                setSelectedUser(prev => prev && prev.id === blockedUserId ? null : prev);
+                
+                console.log('⚡ Fast-path block processed for user:', blockedUserId);
+            } else if (event.data?.type === 'USER_UNBLOCKED' && event.data?.userId) {
+                // If unblocked, just remove from ref so they can appear next poll
+                blockedIdsRef.current.delete(event.data.userId);
+            }
+        };
+
+        mapEventChannel.addEventListener('message', handleMapEvent);
+        return () => {
+            mapEventChannel.removeEventListener('message', handleMapEvent);
+        };
+    }, []);
 
     // Poll for nearby users
     useEffect(() => {
@@ -1258,10 +1401,22 @@ export default function MapHome() {
     };
 
     const handleCompleteSetup = async () => {
-        if (!setupData.gender || !setupData.relationshipStatus) {
-            showToast("Please select Gender and Relationship Status!");
+        // Validation
+        const newErrors = {
+            username: !setupData.username || setupData.username.trim() === '',
+            gender: !setupData.gender,
+            relationshipStatus: !setupData.relationshipStatus
+        };
+
+        if (newErrors.username || newErrors.gender || newErrors.relationshipStatus) {
+            setSetupErrors(newErrors);
+            showToast("Please fill in all required fields.");
+            // Slight visual shake effect could be added here later
             return;
         }
+        
+        // Clear errors if any existed
+        setSetupErrors({ username: false, gender: false, relationshipStatus: false });
 
         try {
             showToast("Saving profile... ⏳");
@@ -1416,21 +1571,10 @@ export default function MapHome() {
     };
 
     // Calculate distance between two coordinates in meters (Haversine formula)
-    const calculateDistance = (lat1, lon1, lat2, lon2) => {
-        const R = 6371e3; // Earth's radius in meters
-        const φ1 = lat1 * Math.PI / 180;
-        const φ2 = lat2 * Math.PI / 180;
-        const Δφ = (lat2 - lat1) * Math.PI / 180;
-        const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return R * c; // Distance in meters
-    };
-
+  // Helper: Distance
+// Cross-tab communication channel for extremely fast local overrides 
+// (e.g. instantly hiding a blocked user without waiting for DB sync)
+// export const mapEventChannel = new BroadcastChannel('map_events'); // Distance in meters
     const handleUserAction = async (action, targetUser) => {
         if (!currentUser) return;
 
@@ -1625,12 +1769,34 @@ export default function MapHome() {
                     }
                 } else {
                     showToast(`Blocked ${targetUser.name}`);
+                    
+                    // INSTANT MAP UPDATE
+                    blockedIdsRef.current.add(targetUser.id);
+                    setNearbyUsers(prev => prev.filter(u => u.id !== targetUser.id));
+                    
                     setSelectedUser(null);
                     setShowFullProfile(false);
                     // Also delete friendship if it exists, to remove from map (optional but cleaner)
                     if (targetUser.friendshipId) {
                         await supabase.from('friendships').delete().eq('id', targetUser.friendshipId);
                     }
+                    
+                    // Dispatch to other tabs just in case (same device)
+                    if (mapEventChannel && mapEventChannel.postMessage) {
+                        mapEventChannel.postMessage({ type: 'USER_BLOCKED', userId: targetUser.id });
+                    }
+                    
+                    // Push Cross-Device Broadcast
+                    const broadcastChan = supabase.channel('global_map_events');
+                    broadcastChan.subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            broadcastChan.send({
+                                type: 'broadcast',
+                                event: 'USER_BLOCKED_CROSS_DEVICE',
+                                payload: { blocker_id: currentUser.id, blocked_id: targetUser.id }
+                            });
+                        }
+                    });
                 }
             } catch (err) {
                 console.error('Block error:', err);
@@ -1738,10 +1904,10 @@ export default function MapHome() {
 
     const iconCache = useRef(new Map());
 
-    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null) => {
+    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
-        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}`;
+        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -1759,6 +1925,13 @@ export default function MapHome() {
                 style += ' opacity: 0.45;';
             }
         }
+        
+        // Add staggered pop animation if not self and delay is set
+        let containerStyle = 'position: relative;';
+        if (!isSelf && animationDelay > 0) {
+            containerStyle += ` animation: avatarPopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; animation-delay: ${animationDelay}ms; opacity: 0; transform-origin: center bottom;`;
+        }
+
         // Only show thought if it exists (simplified check)
         const thoughtHTML = thought
             ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
@@ -1780,7 +1953,7 @@ export default function MapHome() {
         const icon = L.divIcon({
             className: 'custom-avatar-icon',
             html: `
-                <div class="avatar-group" style="position: relative;">
+                <div class="avatar-group" style="${containerStyle}">
                     ${thoughtHTML}
                     <div class="${className}" style="${style}"></div>
                     ${moodHTML}
@@ -1825,9 +1998,9 @@ export default function MapHome() {
         if (!currentUser || !userLocation || !currentUserIcon) return null;
 
         return (
-            <Marker
+            <SmoothMarker
                 position={[userLocation.lat, userLocation.lng]}
-                ref={(ref) => {
+                innerRef={(ref) => {
                     if (ref) markerRefs.current.set(currentUser.id, ref);
                 }}  
                 icon={currentUserIcon}
@@ -1839,6 +2012,19 @@ export default function MapHome() {
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
     // We use nearbyUsers directly which is already filtered to 300m and active users.
+
+    // Utility for distance calculation needed by "Nearby" filter
+    const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+        const R = 6371; // Radius of the earth in km
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c; // Distance in km
+    };
 
     const filteredUsers = useMemo(() => {
 
@@ -2040,10 +2226,12 @@ export default function MapHome() {
             }
         });
 
-        return processedUsers.map(u => (
+        return processedUsers.map((u, index) => (
             <UserMarker 
                 key={u.id}
                 user={u}
+                index={index}
+                animate={isFirstMapLoad.current}
                 markerRefs={markerRefs}
                 onMarkerClick={handleMarkerClick}
                 createAvatarIcon={createAvatarIcon}
@@ -2091,62 +2279,83 @@ export default function MapHome() {
             <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', zIndex: 10000 }}>
                 <style>{`
                     .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 999999; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-                    .onboarding-card { background: #18181b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 380px; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6); color: white; display: flex; flex-direction: column; gap: 20px; }
-                    .onboarding-card h2 { margin: 0; font-size: 1.6rem; color: #fff; text-align: left; }
-                    .onboarding-card h2 span.wave { color: #00a8ff; }
-                    .onboarding-card p { margin: 0; font-size: 0.95rem; color: #a1a1aa; text-align: left; margin-top: -12px; }
-                    .ob-section { display: flex; flex-direction: column; gap: 12px; text-align: left; }
-                    .ob-section label { font-size: 0.9rem; font-weight: 600; color: #fff; }
-                    .ob-input { background: #27272a; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px 16px; color: white; font-size: 1rem; outline: none; transition: all 0.2s; width: 100%; box-sizing: border-box; }
-                    .ob-input:focus { border-color: #0084ff; background: #2f2f33; }
-                    .chip-group { display: flex; flex-wrap: wrap; gap: 10px; }
-                    .chip { background: transparent; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 8px 18px; color: #a1a1aa; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
-                    .chip:hover { background: rgba(255, 255, 255, 0.05); }
-                    .chip.selected { background: transparent; border-color: rgba(255, 255, 255, 0.3); color: white; }
-                    .complete-btn { background: #0084ff; color: white; border: none; border-radius: 14px; padding: 16px; font-size: 1.05rem; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s, transform 0.1s; }
-                    .complete-btn:hover { background: #0073e6; }
-                    .complete-btn:active { transform: scale(0.98); }
+                    .onboarding-card { background: #121214; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; padding: 36px 28px; width: 100%; max-width: 400px; box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1); color: white; display: flex; flex-direction: column; gap: 24px; }
+                    .onboarding-card h2 { margin: 0; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; color: #fff; text-align: left; }
+                    .onboarding-card h2 span.wave { color: #0084ff; }
+                    .onboarding-card p.subtitle { margin: 0; font-size: 1rem; color: #a1a1aa; text-align: left; margin-top: -16px; }
+                    .ob-section { display: flex; flex-direction: column; gap: 10px; text-align: left; position: relative; }
+                    .ob-section label { font-size: 0.95rem; font-weight: 600; color: #f4f4f5; letter-spacing: -0.2px; }
+                    .ob-input { background: #1f1f22; border: 1.5px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 18px; color: white; font-size: 1.05rem; outline: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); width: 100%; box-sizing: border-box; }
+                    .ob-input::placeholder { color: #52525b; }
+                    .ob-input:focus { border-color: #0084ff; background: #27272a; box-shadow: 0 0 0 4px rgba(0, 132, 255, 0.15); }
+                    .ob-input.error { border-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+                    .ob-input.error:focus { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15); }
+                    
+                    .chip-group { display: flex; flex-wrap: wrap; gap: 10px; transition: all 0.2s; padding: 4px; border-radius: 22px; }
+                    .chip-group.error { background: rgba(239, 68, 68, 0.1); border: 1px dashed #ef4444; margin: -5px; padding: 4px; }
+                    .chip { background: #1f1f22; border: 1.5px solid transparent; border-radius: 20px; padding: 10px 20px; color: #a1a1aa; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); user-select: none; }
+                    .chip:hover { background: #27272a; color: #f4f4f5; }
+                    .chip.selected { background: #0084ff; border-color: #0084ff; color: white; box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3); }
+                    
+                    .complete-btn { background: #0084ff; color: white; border: none; border-radius: 16px; padding: 18px; font-size: 1.1rem; font-weight: 600; cursor: pointer; margin-top: 12px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 8px 20px rgba(0, 132, 255, 0.25); }
+                    .complete-btn:hover { background: #0073e6; transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 132, 255, 0.35); }
+                    .complete-btn:active { transform: scale(0.97); box-shadow: 0 4px 12px rgba(0, 132, 255, 0.2); }
+                    
+                    .error-text { color: #ef4444; font-size: 0.85rem; font-weight: 500; margin-top: -4px; animation: slideDown 0.2s ease-out; display: flex; align-items: center; gap: 4px; }
+                    @keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
                 `}</style>
                 <div className="onboarding-overlay">
                     <div className="onboarding-card">
-                        <h2>Welcome to SocialMap! 👋</h2>
-                        <p>Complete your profile to join.</p>
+                        <h2>Welcome to Nearo! 👋</h2>
+                        <p className="subtitle">Complete your profile to join.</p>
 
                         <div className="ob-section">
                             <label>Username</label>
                             <input
                                 type="text"
-                                className="ob-input"
+                                className={`ob-input ${setupErrors.username ? 'error' : ''}`}
                                 value={setupData.username}
-                                onChange={(e) => setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+                                onChange={(e) => {
+                                    setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') });
+                                    if(setupErrors.username) setSetupErrors({...setupErrors, username: false});
+                                }}
                                 placeholder="Choose a username"
                             />
+                            {setupErrors.username && <span className="error-text">⚠️ Username is required</span>}
                         </div>
 
                         <div className="ob-section">
                             <label>Gender</label>
-                            <div className="chip-group">
+                            <div className={`chip-group ${setupErrors.gender ? 'error' : ''}`}>
                                 {['Male', 'Female', 'Non-binary', 'Other'].map(g => (
                                     <button
                                         key={g}
                                         className={`chip ${setupData.gender === g ? 'selected' : ''}`}
-                                        onClick={() => setSetupData({ ...setupData, gender: g })}
+                                        onClick={() => {
+                                            setSetupData({ ...setupData, gender: g });
+                                            if(setupErrors.gender) setSetupErrors({...setupErrors, gender: false});
+                                        }}
                                     >{g}</button>
                                 ))}
                             </div>
+                            {setupErrors.gender && <span className="error-text" style={{marginTop: '2px'}}>⚠️ Please select a gender</span>}
                         </div>
 
                         <div className="ob-section">
                             <label>Relationship Status</label>
-                            <div className="chip-group">
+                            <div className={`chip-group ${setupErrors.relationshipStatus ? 'error' : ''}`}>
                                 {['Single', 'Married', 'Committed', 'Open to Date'].map(s => (
                                     <button
                                         key={s}
                                         className={`chip ${setupData.relationshipStatus === s ? 'selected' : ''}`}
-                                        onClick={() => setSetupData({ ...setupData, relationshipStatus: s })}
+                                        onClick={() => {
+                                            setSetupData({ ...setupData, relationshipStatus: s });
+                                            if(setupErrors.relationshipStatus) setSetupErrors({...setupErrors, relationshipStatus: false});
+                                        }}
                                     >{s}</button>
                                 ))}
                             </div>
+                            {setupErrors.relationshipStatus && <span className="error-text" style={{marginTop: '2px'}}>⚠️ Please select a relationship status</span>}
                         </div>
 
                         <div className="ob-section">
@@ -2433,6 +2642,7 @@ export default function MapHome() {
             overscrollBehavior: 'none',
             zIndex: isOverlayActive ? 10000 : 1
         }}>
+            <style dangerouslySetInnerHTML={{__html: mapAvatarStyle}} />
             <style>{`
                 .onboarding-overlay {
                     position: fixed;
