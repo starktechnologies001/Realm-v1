@@ -154,14 +154,17 @@ export function LocationProvider({ children }) {
         }
       },
       (err) => {
-        console.log("⚠️ Watch error:", err);
+        // Code 3 is Timeout. It's non-fatal for watchPosition (it will keep trying), but it spams the console.
+        if (err.code !== 3) {
+            console.log("⚠️ Watch error:", err);
+        }
         // If we lose tracking mid-way, stop gracefully
         if (err.code === 1) { // 1 = PERMISSION_DENIED
            // This will handle the OS-level revocation edge case
            internalStopLocation(false);
         }
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
     );
   };
 
