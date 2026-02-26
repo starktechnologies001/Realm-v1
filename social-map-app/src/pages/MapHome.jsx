@@ -217,7 +217,7 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
 }
 
 // 📍 NATIVE MARKERS SYNC COMPONENT (Bypasses React Re-renders)
-function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, createAvatarIcon, markerRefs, handleMarkerClick, animateNativeMarker }) {
+function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, createAvatarIcon, markerRefs, handleMarkerClick, animateNativeMarker, setSelectedUser }) {
     const map = useMap();
 
     // Sync remote users
@@ -261,8 +261,12 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 marker.on('click', () => handleMarkerClick(u));
                 markerRefs.current.set(u.id, marker);
             } else {
-                // Update icon if profile data changed
-                marker.setIcon(icon);
+                // 🔥 CRITICAL: Only rebuild the DOM node when the icon HTML actually changed
+                // (e.g. avatar image, status, mood). DO NOT rebuild on every GPS update — 
+                // that kills the requestAnimationFrame glide mid-flight.
+                if (marker.options.icon !== icon) {
+                    marker.setIcon(icon);
+                }
             }
         });
     }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs]);
@@ -275,7 +279,8 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
         if (!marker) {
             // First time spawn
             marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: 1000 }).addTo(map);
-            marker.on('click', () => handleMarkerClick(currentUser));
+            // Clicking your own avatar closes any open profile card — it does NOT open one for yourself
+            marker.on('click', () => setSelectedUser(null));
             markerRefs.current.set(currentUser.id, marker);
         } else {
             // DO NOT update position here. That is handled by animateNativeMarker.
@@ -543,6 +548,8 @@ export default function MapHome() {
     const canvasRef = React.useRef(null);
     const markerRefs = React.useRef(new Map());
     const animationRefs = React.useRef(new Map());
+    // 🔥 Ref-based location for non-reactive reads (prevents GPS updates causing full re-renders)
+    const userLocationRef = React.useRef(userLocation);
 
     // 🔥 NATIVE HARDWARE ACCELERATED ANIMATION MANAGER
     const animateNativeMarker = React.useCallback((id, newLat, newLng) => {
@@ -588,6 +595,11 @@ export default function MapHome() {
 
         animationRefs.current.set(id, requestAnimationFrame(animate));
     }, []);
+
+    // 🔥 Keep userLocationRef in sync with context without causing downstream re-renders
+    useEffect(() => {
+        userLocationRef.current = userLocation;
+    }, [userLocation]);
 
     // 🚀 LOCAL USER HIGH-FREQUENCY GPS TRACKING (Overrides Context internally for map smoothness)
     useEffect(() => {
@@ -938,8 +950,9 @@ export default function MapHome() {
                 const allBlockedIds = new Set([...blockedByMe, ...blockedMe]);
                 blockedIdsRef.current = allBlockedIds; // Update Ref for real-time subscriptions
 
-                // Run queries in parallel for faster loading
-                const [profilesResult, friendshipResult, storiesResult, viewsResult] = await Promise.all([
+                // Run queries in parallel for faster loading.
+                // Use allSettled so a failed sub-query (e.g. 525 SSL) doesn't cancel the rest.
+                const [profilesResult, friendshipResult, storiesResult, viewsResult] = await Promise.allSettled([
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
@@ -968,11 +981,29 @@ export default function MapHome() {
                         .eq('viewer_id', currentUser.id)
                 ]);
 
+                // Unwrap allSettled results safely — a rejected promise won't crash the rest
+                const safeValue = (settled) => settled?.status === 'fulfilled' ? settled.value : { data: null, error: settled?.reason };
+                const pr = safeValue(profilesResult);
+                const fr = safeValue(friendshipResult);
+                const sr = safeValue(storiesResult);
+                const vr = safeValue(viewsResult);
+
+                // Silently warn on non-critical failures (stories/views can gracefully degrade)
+                if (sr.error) console.warn('⚠️ Stories fetch failed (non-fatal):', sr.error?.message || sr.error);
+                if (vr.error) console.warn('⚠️ Views fetch failed (non-fatal):', vr.error?.message || vr.error);
+
+                // Reassign to familiar variable names
+                const profilesData = pr;
+                const friendshipData = fr;
+                const storiesData = sr;
+                const viewsData = vr;
+
+
                 // Populate friendships map
                 const myFriendships = new Map();
 
-                if (friendshipResult.data) {
-                    friendshipResult.data.forEach(f => {
+                if (friendshipData.data) {
+                    friendshipData.data.forEach(f => {
                         const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
                         if (f.status === 'accepted') {
                             friendshipsRef.current.set(f.id, partnerId);
@@ -995,13 +1026,13 @@ export default function MapHome() {
                 const usersWithUnseenStories = new Set();
 
                 const myViewedStoryIds = new Set(
-                    viewsResult.data ? viewsResult.data.map(v => v.story_id) : []
+                    viewsData.data ? viewsData.data.map(v => v.story_id) : []
                 );
 
-                if (storiesResult.data) {
+                if (storiesData.data) {
                     // Group stories by user
                     const storiesByUser = {};
-                    storiesResult.data.forEach(s => {
+                    storiesData.data.forEach(s => {
                         if (!storiesByUser[s.user_id]) storiesByUser[s.user_id] = [];
                         storiesByUser[s.user_id].push(s);
                         usersWithStories.add(s.user_id);
@@ -1018,13 +1049,12 @@ export default function MapHome() {
                 }
 
                 // Debug: Log raw fetch results
-                if (profilesResult.error) {
-                    console.error('❌ [MapHome] Fetch Error:', profilesResult.error);
+                if (profilesData.error) {
+                    console.error('❌ [MapHome] Fetch Error:', profilesData.error);
                 }
-                console.log('📍 [MapHome] Raw Profiles Fetched:', profilesResult.data?.length, profilesResult.data);
 
                 // Filter and map users (exclude blocked users, those with location off, AND current user)
-                const validUsers = (profilesResult.data || [])
+                const validUsers = (profilesData.data || [])
                     .filter(u => {
                         const isBlocked = allBlockedIds.has(u.id);
                         const isMe = u.id === currentUser.id;
@@ -2029,7 +2059,8 @@ export default function MapHome() {
     const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
-        const cacheKey = `${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
+        // v2 prefix invalidates old cached icons when HTML template changes
+        const cacheKey = `v2_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -2068,7 +2099,7 @@ export default function MapHome() {
         if (mood && moodUpdatedAt) {
             const isExpired = new Date(moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
             if (!isExpired) {
-                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -5px; right: -5px; font-size: 1.2rem; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 2px; line-height: 1; z-index: 10;">${mood}</div>`;
+                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -8px; right: -8px; font-size: 1.4rem; background: #000000; border: 2px solid #ffffff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; line-height: 1; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,0.6);">${mood}</div>`;
             }
         }
 
@@ -2113,7 +2144,7 @@ export default function MapHome() {
         }
 
         return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at);
-    }, [currentUser?.id, userLocation?.lat, userLocation?.lng, currentUserIcon]);
+    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, createAvatarIcon]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -2145,8 +2176,8 @@ export default function MapHome() {
             u.isLocationShared !== false
         );
 
-        const myLat = userLocation?.lat ?? currentUser?.latitude;
-        const myLng = userLocation?.lng ?? currentUser?.longitude;
+        const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+        const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
 
         switch (activeFilter) {
 
@@ -2181,9 +2212,11 @@ export default function MapHome() {
         case "All":
         default:
             return visibleUsers;
-    }
+        }
 
-}, [nearbyUsers, activeFilter, currentUser, userLocation]);
+    }, [nearbyUsers, activeFilter, currentUser]);
+    // 🔥 Removed `userLocation` from deps — accessed via userLocationRef so GPS updates
+    // don't rebuild filteredUsers and restart NativeMarkerSync on every tick.
 
 
     // Search Suggestions (derived from ALL users, ignoring current tab filter to find anyone)
@@ -2903,6 +2936,7 @@ export default function MapHome() {
                     markerRefs={markerRefs}
                     handleMarkerClick={handleMarkerClick}
                     animateNativeMarker={animateNativeMarker}
+                    setSelectedUser={setSelectedUser}
                 />
             </MapContainer>
             ) : null}
