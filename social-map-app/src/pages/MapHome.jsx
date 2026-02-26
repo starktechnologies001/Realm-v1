@@ -499,15 +499,6 @@ export default function MapHome() {
     const canvasRef = React.useRef(null);
     const markerRefs = React.useRef(new Map());
 
-    // 🔥 Smooth animation helper used by Location Sync
-    const animateMarkerMovement = React.useCallback((id, newLat, newLng) => {
-        if (!markerRefs.current) return;
-        const marker = markerRefs.current.get(id);
-        if (marker && typeof marker.setLatLng === 'function') {
-            marker.setLatLng([newLat, newLng]);
-        }
-    }, []);
-
     // Check Profile Completeness
     useEffect(() => {
         const checkUser = async () => {
@@ -1094,25 +1085,11 @@ export default function MapHome() {
                             existingUser.hide_status !== newUserObj.hide_status ||
                             existingUser.show_last_seen !== newUserObj.show_last_seen;
 
-                        // 🔥 Smooth animation ONLY when already on map
-                        animateMarkerMovement(updatedUser.id, renderLat, renderLng);
-
                         // 🔥 Update card dynamically if focused
                         setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
 
-                        if (didDataChange) {
-                            // If non-location data changed, we MUST update state so markers re-render visual changes
-                            return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
-                        } else {
-                            // 🔥 CRITICAL PERFORMANCE OPTIMIZATION: 
-                            // If ONLY location changed, we already slid the DOM marker. Do NOT change state array 
-                            // reference, or Leaflet will destroy and recreate the marker DOM node.
-                            // However, we silently update the internal object by mutating it so future distance checks are correct
-                            existingUser.lat = renderLat;
-                            existingUser.lng = renderLng;
-                            existingUser.lastActive = newUserObj.lastActive;
-                            return prev;
-                        }
+                        // Return the completely fresh object so React recognizes the state change and `<SmoothMarker>` animates it.
+                        return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
 
                     } else {
 
@@ -2096,17 +2073,6 @@ export default function MapHome() {
         // So clearing search query restores the view.
         setSelectedUser(user); // Triggers Zoom via UserSelectionController
     };
-
-    // 🔥 SMOOTH SELF MOVEMENT EFFECT
-    useEffect(() => {
-        if (!currentUser?.id || !userLocation) return;
-
-        animateMarkerMovement(
-            currentUser.id,
-            userLocation.lat,
-            userLocation.lng
-        );
-    }, [userLocation?.lat, userLocation?.lng]);
 
     // Use a memoized click handler to prevent UserMarker from re-rendering
     const handleMarkerClick = React.useCallback(async (u) => {
