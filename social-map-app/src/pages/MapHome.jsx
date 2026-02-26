@@ -84,7 +84,7 @@ const generateMockUsers = (centerLat, centerLng) => {
 };
 
 // Control to manually recenter map
-function RecenterControl({ lat, lng }) {
+function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng }) {
     const map = useMap();
     const controlRef = useRef(null);
 
@@ -97,6 +97,13 @@ function RecenterControl({ lat, lng }) {
     }, []);
 
     const handleRecenter = () => {
+        // 🔥 Read the LIVE native marker position (not stale React state)
+        // The native marker is updated every GPS tick via animateNativeMarker.
+        const liveMarker = markerRefs?.current?.get(currentUserId);
+        const liveLatLng = liveMarker ? liveMarker.getLatLng() : null;
+        const lat = liveLatLng?.lat ?? fallbackLat;
+        const lng = liveLatLng?.lng ?? fallbackLng;
+
         if (!lat || !lng) return;
 
         const currentCenter = map.getCenter();
@@ -112,13 +119,13 @@ function RecenterControl({ lat, lng }) {
         if (distance < 50) {
             map.flyTo(targetLatLng, 17, { 
                 animate: true, 
-                duration: 0.8, // Faster but smooth for short distance
+                duration: 0.8,
                 easeLinearity: 0.25
             });
         } else {
             map.flyTo(targetLatLng, 17, { 
                 animate: true, 
-                duration: 1.8, // Slightly longer for "premium" feel over distance
+                duration: 1.8,
                 easeLinearity: 0.25
             });
         }
@@ -239,10 +246,15 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
             let marker = markerRefs.current.get(u.id);
 
             let displayThought = u.thought;
-            if (u.status_updated_at) {
-                const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
+            // Use camelCase moodUpdatedAt — nearbyUsers stores all timestamps in camelCase
+            const thoughtUpdatedAt = u.status_updated_at || u.statusUpdatedAt;
+            if (thoughtUpdatedAt) {
+                const diffHours = (new Date() - new Date(thoughtUpdatedAt)) / (1000 * 60 * 60);
                 if (diffHours > 3) displayThought = null;
             }
+
+            // moodUpdatedAt is camelCase in nearbyUsers; fallback to snake_case for safety
+            const moodUpdatedAt = u.moodUpdatedAt || u.mood_updated_at;
 
             const icon = createAvatarIcon(
                 getAvatar2D(u.avatar_url || u.avatar), 
@@ -251,7 +263,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 u.name || u.username || 'User', 
                 u.status, 
                 u.mood, 
-                u.mood_updated_at,
+                moodUpdatedAt,
                 0 // no stagger delay needed natively
             );
 
@@ -2060,7 +2072,7 @@ export default function MapHome() {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
         // v2 prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v2_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
+        const cacheKey = `v5_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -2099,7 +2111,7 @@ export default function MapHome() {
         if (mood && moodUpdatedAt) {
             const isExpired = new Date(moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
             if (!isExpired) {
-                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -8px; right: -8px; font-size: 1.4rem; background: #000000; border: 2px solid #ffffff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; line-height: 1; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,0.6);">${mood}</div>`;
+                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -8px; right: -8px; font-size: 1.2rem; line-height: 1; z-index: 10;">${mood}</div>`;
             }
         }
 
@@ -2911,7 +2923,12 @@ export default function MapHome() {
                     />
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
-                <RecenterControl lat={userLocation.lat} lng={userLocation.lng} />
+                <RecenterControl 
+                    markerRefs={markerRefs}
+                    currentUserId={currentUser?.id}
+                    fallbackLat={userLocation?.lat}
+                    fallbackLng={userLocation?.lng}
+                />
                 <UserSelectionController selectedUser={selectedUser} />
 
                 <Circle

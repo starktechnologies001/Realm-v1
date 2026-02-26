@@ -230,6 +230,20 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                         ✔ Verified
                                     </span>
                                 )}
+                                {/* Mood emoji — shown if set and not expired (6h) */}
+                                {(() => {
+                                    if (!user.mood || !user.moodUpdatedAt) return null;
+                                    const isExpired = new Date(user.moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
+                                    if (isExpired) return null;
+                                    return (
+                                        <span 
+                                            title="Mood"
+                                            style={{ fontSize: '1.4rem', marginLeft: '6px', verticalAlign: 'middle' }}
+                                        >
+                                            {user.mood}
+                                        </span>
+                                    );
+                                })()}
                             </h2>
                             <div className="badges-row">
                                 {!canViewDetails ? (
