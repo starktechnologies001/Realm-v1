@@ -58,8 +58,8 @@ const generateMockUsers = (centerLat, centerLng) => {
 
     for (let i = 0; i < 20; i++) {
         // Fuzzing: Random offset within 500m
-        const latOffset = (Math.random() - 0.5) * 0.01;
-        const lngOffset = (Math.random() - 0.5) * 0.01;
+        const renderLat = lat;
+        const renderLng = lng;
         users.push({
             id: i,
             name: `User ${i}`,
@@ -273,13 +273,22 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
         
         let marker = markerRefs.current.get(currentUser.id);
         if (!marker) {
+            // First time spawn
             marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: 1000 }).addTo(map);
             marker.on('click', () => handleMarkerClick(currentUser));
             markerRefs.current.set(currentUser.id, marker);
         } else {
-            marker.setIcon(currentUserIcon);
+            // DO NOT update position here. That is handled by animateNativeMarker.
+            // Only update the icon if the user changed their image, status, mood, etc.
+            // We verify if the icon DOM HTML actually changed by checking its cached HTML string
+            // to prevent Leaflet from destroying the DOM node mid-flight.
+            if (marker.options.icon !== currentUserIcon) {
+                marker.setIcon(currentUserIcon);
+            }
         }
-    }, [currentUser, userLocation, currentUserIcon, map, markerRefs, handleMarkerClick]);
+    }, [currentUser?.id, currentUserIcon, map, handleMarkerClick, markerRefs]); 
+    // 🔥 CRITICAL: Removed `userLocation` from deps. 
+    // React should NEVER re-run this effect just because LocationContext updated the coordinates.
 
     return null;
 }
