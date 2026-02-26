@@ -1,5 +1,4 @@
 import { MapContainer, TileLayer, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
-import SmoothMarker from '../components/SmoothMarker';
 import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
@@ -19,38 +18,6 @@ import { uploadToStorage } from '../utils/fileUpload';
 import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import ImageCropper from '../components/ImageCropper';
 import BottomNav from '../components/BottomNav';
-
-// 📍 MEMOIZED MARKER COMPONENT
-const UserMarker = React.memo(({ user, index, animate, markerRefs, onMarkerClick, createAvatarIcon }) => {
-    // Check thought expiration (3 hours)
-    let displayThought = user.thought;
-    if (user.status_updated_at) {
-        const diffHours = (new Date() - new Date(user.status_updated_at)) / (1000 * 60 * 60);
-        if (diffHours > 3) displayThought = null;
-    }
-
-    // Stagger algorithm: only if 'animate' is true
-    const delay = animate ? (index * 80) : 0;
-
-    return (
-        <SmoothMarker
-            position={[user.lat, user.lng]}
-            innerRef={(ref) => {
-                if (ref) {
-                    markerRefs.current.set(user.id, ref);
-                } else {
-                    markerRefs.current.delete(user.id);
-                }
-            }}
-            icon={createAvatarIcon(getAvatar2D(user.avatar_url || user.avatar), false, displayThought, user.name || user.username || 'User', user.status, user.mood, user.mood_updated_at, delay)}
-            riseOnHover={true}
-            eventHandlers={{
-                click: () => onMarkerClick(user)
-            }}
-        />
-    );
-});
-
 
 // Fix icon issues
 delete L.Icon.Default.prototype._getIconUrl;
@@ -245,6 +212,74 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
             }
         }
     }, [mapMode, lat, lng, map]);
+
+    return null;
+}
+
+// 📍 NATIVE MARKERS SYNC COMPONENT (Bypasses React Re-renders)
+function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, createAvatarIcon, markerRefs, handleMarkerClick, animateNativeMarker }) {
+    const map = useMap();
+
+    // Sync remote users
+    useEffect(() => {
+        if (!map) return;
+        const currentIds = new Set(users.map(u => u.id));
+
+        // 1. Remove markers for users no longer active or visible
+        for (const [id, marker] of markerRefs.current.entries()) {
+            if (id === currentUser?.id) continue; // handle self separately
+            if (!currentIds.has(id)) {
+                marker.remove();
+                markerRefs.current.delete(id);
+            }
+        }
+
+        // 2. Add or update markers
+        users.forEach((u) => {
+            let marker = markerRefs.current.get(u.id);
+
+            let displayThought = u.thought;
+            if (u.status_updated_at) {
+                const diffHours = (new Date() - new Date(u.status_updated_at)) / (1000 * 60 * 60);
+                if (diffHours > 3) displayThought = null;
+            }
+
+            const icon = createAvatarIcon(
+                getAvatar2D(u.avatar_url || u.avatar), 
+                false, 
+                displayThought, 
+                u.name || u.username || 'User', 
+                u.status, 
+                u.mood, 
+                u.mood_updated_at,
+                0 // no stagger delay needed natively
+            );
+
+            if (!marker) {
+                // Create native Leaflet marker
+                marker = L.marker([u.lat, u.lng], { icon, zIndexOffset: 100 }).addTo(map);
+                marker.on('click', () => handleMarkerClick(u));
+                markerRefs.current.set(u.id, marker);
+            } else {
+                // Update icon if profile data changed
+                marker.setIcon(icon);
+            }
+        });
+    }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs]);
+
+    // Sync local user marker visually (initial creation and icon changes)
+    useEffect(() => {
+        if (!map || !currentUser || !userLocation || !currentUserIcon) return;
+        
+        let marker = markerRefs.current.get(currentUser.id);
+        if (!marker) {
+            marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: 1000 }).addTo(map);
+            marker.on('click', () => handleMarkerClick(currentUser));
+            markerRefs.current.set(currentUser.id, marker);
+        } else {
+            marker.setIcon(currentUserIcon);
+        }
+    }, [currentUser, userLocation, currentUserIcon, map, markerRefs, handleMarkerClick]);
 
     return null;
 }
@@ -498,6 +533,95 @@ export default function MapHome() {
     const videoRef = React.useRef(null);
     const canvasRef = React.useRef(null);
     const markerRefs = React.useRef(new Map());
+    const animationRefs = React.useRef(new Map());
+
+    // 🔥 NATIVE HARDWARE ACCELERATED ANIMATION MANAGER
+    const animateNativeMarker = React.useCallback((id, newLat, newLng) => {
+        const marker = markerRefs.current.get(id);
+        if (!marker) return;
+
+        const currentLatLng = marker.getLatLng();
+        const startLat = currentLatLng.lat;
+        const startLng = currentLatLng.lng;
+
+        // Ignore micro GPS jitter (do not animate if movement < 3 meters)
+        const dist = getDistance(startLat, startLng, newLat, newLng);
+        if (dist < 3) return;
+
+        // Cancel previous animation to prevent stacking/flickering
+        if (animationRefs.current.has(id)) {
+            cancelAnimationFrame(animationRefs.current.get(id));
+        }
+
+        let startTime = null;
+        const duration = 1000; // 1 second smooth glide
+
+        const animate = (timestamp) => {
+            if (!startTime) startTime = timestamp;
+            const progress = timestamp - startTime;
+
+            // EaseOutCubic interpolation
+            let t = Math.min(progress / duration, 1);
+            t = 1 - Math.pow(1 - t, 3);
+
+            const lat = startLat + (newLat - startLat) * t;
+            const lng = startLng + (newLng - startLng) * t;
+
+            marker.setLatLng([lat, lng]);
+
+            if (progress < duration) {
+                animationRefs.current.set(id, requestAnimationFrame(animate));
+            } else {
+                marker.setLatLng([newLat, newLng]); // Snap exactly to target at end
+                animationRefs.current.delete(id);
+            }
+        };
+
+        animationRefs.current.set(id, requestAnimationFrame(animate));
+    }, []);
+
+    // 🚀 LOCAL USER HIGH-FREQUENCY GPS TRACKING (Overrides Context internally for map smoothness)
+    useEffect(() => {
+        if (!locationEnabled || !currentUser || currentUser.is_ghost_mode) {
+            // If location turned OFF, visually remove marker & update DB
+            if (currentUser) {
+                const marker = markerRefs.current.get(currentUser.id);
+                if (marker) {
+                    marker.remove();
+                    markerRefs.current.delete(currentUser.id);
+                }
+            }
+            return;
+        }
+
+        let lastDbUpdate = 0;
+        const watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const newLat = pos.coords.latitude;
+                const newLng = pos.coords.longitude;
+
+                // Animate local marker natively IMMEDIATELY (no React state wait)
+                animateNativeMarker(currentUser.id, newLat, newLng);
+
+                // Update Supabase throttled (every 2-3 seconds)
+                const now = Date.now();
+                if (now - lastDbUpdate >= 2500) {
+                    lastDbUpdate = now;
+                    supabase.from("profiles").update({
+                        latitude: newLat,
+                        longitude: newLng,
+                        last_location: `POINT(${newLng} ${newLat})`,
+                        is_location_on: true,
+                        is_ghost_mode: false
+                    }).eq("id", currentUser.id).then();
+                }
+            },
+            (err) => console.log("High-freq map watch error", err),
+            { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, [locationEnabled, currentUser, animateNativeMarker]);
 
     // Check Profile Completeness
     useEffect(() => {
@@ -1088,8 +1212,20 @@ export default function MapHome() {
                         // 🔥 Update card dynamically if focused
                         setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
 
-                        // Return the completely fresh object so React recognizes the state change and `<SmoothMarker>` animates it.
-                        return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
+                        if (didDataChange) {
+                            // Data changed (like avatar or status), so update React state and NativeMarkerSync will handle icon refresh
+                            return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
+                        } else {
+                            // 🔥 REALTIME SMOOTH MOVEMENT OPTIMIZATION
+                            // ONLY coordinates changed. Animate marker locally natively to avoid a full MapHome re-render.
+                            animateNativeMarker(updatedUser.id, renderLat, renderLng);
+                            
+                            // Silently mutate internal state array element for future calculations without triggering re-render
+                            existingUser.lat = renderLat;
+                            existingUser.lng = renderLng;
+                            existingUser.lastActive = newUserObj.lastActive;
+                            return prev;
+                        }
 
                     } else {
 
@@ -1968,22 +2104,6 @@ export default function MapHome() {
         }
 
         return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at);
-    }, [currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at]);
-
-    // Memoize current user marker to avoid hook order issues
-    const currentUserMarker = useMemo(() => {
-        if (!currentUser || !userLocation || !currentUserIcon) return null;
-
-        return (
-            <SmoothMarker
-                position={[userLocation.lat, userLocation.lng]}
-                innerRef={(ref) => {
-                    if (ref) markerRefs.current.set(currentUser.id, ref);
-                }}  
-                icon={currentUserIcon}
-                eventHandlers={{ click: () => setSelectedUser(null) }}
-            />
-        );
     }, [currentUser?.id, userLocation?.lat, userLocation?.lng, currentUserIcon]);
 
  // 4. Main App (Map & Overlays)
@@ -2111,27 +2231,12 @@ export default function MapHome() {
     }, [currentUser]);
 
     // ------------------------------------------------------------------
-    // 📍 MEMOIZED MARKERS
+    // 📍 SORTED USERS FOR NATIVE MARKERS
     // ------------------------------------------------------------------
-    const userMarkers = useMemo(() => {
+    const sortedFilteredUsers = useMemo(() => {
         // 1. Sort for stability
-        const sortedUsers = [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
-
-        return sortedUsers.map((u, index) => (
-            <UserMarker 
-                key={u.id}
-                user={u}
-                index={index}
-                animate={isFirstMapLoad.current}
-                markerRefs={markerRefs}
-                onMarkerClick={handleMarkerClick}
-                createAvatarIcon={createAvatarIcon}
-            />
-        ));
-    }, [filteredUsers, handleMarkerClick, createAvatarIcon]);
-
-
-
+        return [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
+    }, [filteredUsers]);
     // -------------------------------------------------
     // 🔄 SYNC LOCATION STATE
     // -------------------------------------------------
@@ -2779,11 +2884,17 @@ export default function MapHome() {
                     }}
                 />
 
-                {/* Current User Marker (Memoized above) */}
-                {currentUserMarker}
-
-                {/* Memoized User Markers */}
-                {userMarkers}
+                {/* 🔥 NATIVE MARKERS SYNC (No React Re-Renders for GPS Motion) */}
+                <NativeMarkerSync 
+                    users={sortedFilteredUsers} 
+                    currentUser={currentUser} 
+                    userLocation={userLocation} 
+                    currentUserIcon={currentUserIcon}
+                    createAvatarIcon={createAvatarIcon}
+                    markerRefs={markerRefs}
+                    handleMarkerClick={handleMarkerClick}
+                    animateNativeMarker={animateNativeMarker}
+                />
             </MapContainer>
             ) : null}
 
