@@ -35,8 +35,20 @@ export function LocationProvider({ children }) {
     // ✅ Clear manual disable flag since the user explicitly wants to turn it ON
     localStorage.removeItem("manualLocationDisable");
 
+    // 🔥 PHASE 1: Immediately broadcast "online" to DB — no GPS fix needed yet.
+    // This fires a realtime event so OTHER users see this user appear on their map
+    // at their last known position right away, instead of waiting 10-60s for GPS cold start.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        supabase.from("profiles").update({
+          is_location_on: true,
+          is_ghost_mode: false
+        }).eq("id", session.user.id).then();
+      }
+    });
+
     navigator.geolocation.getCurrentPosition(
-      // SUCCESS
+      // SUCCESS — Phase 2: Now we have fresh coordinates, update them
       (position) => {
         const newLoc = {
           lat: position.coords.latitude,
@@ -51,7 +63,7 @@ export function LocationProvider({ children }) {
         // Start live tracking
         startWatching();
 
-        // Sync to DB
+        // 🔥 PHASE 2: Update actual coordinates now that GPS has fired
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session?.user) {
             supabase.from("profiles").update({
@@ -75,7 +87,7 @@ export function LocationProvider({ children }) {
         setLocationEnabled(false);
         setUserLocation(null);
 
-        // Sync denied state to DB
+        // Revert the Phase 1 "online" signal since GPS actually failed
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session?.user) {
             supabase.from("profiles").update({
@@ -104,10 +116,10 @@ export function LocationProvider({ children }) {
         }
       },
 
-      // OPTIONS
+      // OPTIONS — allow up to 5s cached position to get a quick initial fix
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
+        maximumAge: 5000,
         timeout: 30000,
       }
     );

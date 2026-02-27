@@ -1260,18 +1260,14 @@ export default function MapHome() {
                             existingUser.hide_status !== newUserObj.hide_status ||
                             existingUser.show_last_seen !== newUserObj.show_last_seen;
 
-                        // 🔥 Update card dynamically if focused
-                        setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
-
                         if (didDataChange) {
-                            // Data changed (like avatar or status), so update React state and NativeMarkerSync will handle icon refresh
+                            // Data changed (avatar, status, mood etc.) → Update React state.
+                            // Also sync selected card if this is the focused user.
+                            setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
                             return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
                         } else {
-                            // 🔥 REALTIME SMOOTH MOVEMENT OPTIMIZATION
-                            // ONLY coordinates changed. Animate marker locally natively to avoid a full MapHome re-render.
+                            // 🔥 COORD-ONLY UPDATE — animate natively, NO React state change, NO profile card re-render
                             animateNativeMarker(updatedUser.id, renderLat, renderLng);
-                            
-                            // Silently mutate internal state array element for future calculations without triggering re-render
                             existingUser.lat = renderLat;
                             existingUser.lng = renderLng;
                             existingUser.lastActive = newUserObj.lastActive;
@@ -2179,10 +2175,12 @@ export default function MapHome() {
 
         if (!nearbyUsers || !currentUser) return [];
 
-        // 🌎 GLOBAL RULE (MOST IMPORTANT)
-        // ONLY users with LOCATION ON appear on map
+        // 🌎 GLOBAL RULE: Only show users whose location is explicitly ON
+        // Use !== false to match the realtime UPDATE handler's isVisible check.
+        // This ensures users appear instantly when they turn location on without
+        // waiting for the next 30s poll.
         const visibleUsers = nearbyUsers.filter(u =>
-            u.isLocationOn === true &&
+            u.isLocationOn !== false &&
             u.lat != null &&
             u.lng != null &&
             u.isLocationShared !== false
