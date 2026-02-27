@@ -45,6 +45,19 @@ export default function OAuthProfileSetup() {
         navigate('/login');
         return;
       }
+
+      // If returning Google user already completed setup, go straight to map
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('username, gender, onboarding_completed')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (existingProfile?.onboarding_completed === true ||
+          (existingProfile?.username?.trim() && existingProfile?.gender)) {
+        navigate('/map', { replace: true });
+        return;
+      }
       
       setUserId(user.id);
       setEmail(user.email);
@@ -191,7 +204,8 @@ export default function OAuthProfileSetup() {
           gender,
           relationship_status: status,
           interests: selectedInterests,
-          avatar_url: finalAvatarUrl
+          avatar_url: finalAvatarUrl,
+          onboarding_completed: true  // ✅ Mark setup done so popup never shows again
         })
         .eq('id', userId);
 
@@ -209,19 +223,21 @@ export default function OAuthProfileSetup() {
         }
       });
 
-      // Update localStorage
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      // Update localStorage with complete profile
+      const storedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       localStorage.setItem('currentUser', JSON.stringify({
-        ...currentUser,
+        ...storedUser,
+        id: userId,
         username,
         full_name: username,
         gender,
         relationship_status: status,
         avatar_url: finalAvatarUrl,
-        interests: selectedInterests
+        interests: selectedInterests,
+        onboarding_completed: true
       }));
 
-      navigate('/map');
+      navigate('/map', { replace: true });
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to save profile');

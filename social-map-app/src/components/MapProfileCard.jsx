@@ -262,15 +262,30 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                                                 {user.relationshipStatus}
                                             </span>
                                         )}
-                                        {user.status && <span className="badge-pill status">{user.status}</span>}
+                                        {/* Unified presence badge — Online OR last-seen, never both */}
                                         {(() => {
-                                            const lastActive = getLastActive(user.lastActive);
-                                            // Prevent showing "Online" twice if user.status is already "Online"
-                                            if (lastActive === 'Online' && user.status === 'Online') return null;
+                                            if (!user.lastActive) return null;
+                                            const diffMs = Date.now() - new Date(user.lastActive).getTime();
+                                            const isOnline = diffMs < 5 * 60 * 1000; // online if active in last 5 min
 
-                                            if (lastActive === 'Online' || (canShowLastSeen && lastActive)) {
-                                                return <span className="badge-pill active-time">{lastActive}</span>;
+                                            if (isOnline) {
+                                                return (
+                                                    <span className="badge-pill active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
+                                                        🟢 Online
+                                                    </span>
+                                                );
                                             }
+
+                                            if (canShowLastSeen) {
+                                                const mins = Math.floor(diffMs / 60000);
+                                                const timeStr = mins < 60
+                                                    ? `${mins}m ago`
+                                                    : mins < 1440
+                                                        ? `${Math.floor(mins / 60)}h ago`
+                                                        : 'Offline';
+                                                return <span className="badge-pill active-time">⏱ {timeStr}</span>;
+                                            }
+
                                             return null;
                                         })()}
                                     </>

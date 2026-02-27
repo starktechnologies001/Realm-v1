@@ -689,7 +689,16 @@ export default function MapHome() {
 
             setCurrentUser(profile);
 
-            if (!profile.onboarding_completed) {
+            // Detect auth provider — email/password users already fill everything during the
+            // 4-step signup wizard. Only Google OAuth users need the profile setup popup.
+            const provider = user.app_metadata?.provider || 'email';
+            const isGoogleUser = provider === 'google';
+
+            const hasRequiredFields = Boolean(profile.username?.trim() && profile.gender);
+            const isComplete = profile.onboarding_completed === true || hasRequiredFields;
+
+            if (isGoogleUser && !isComplete) {
+                // Google OAuth user — needs to provide username, gender, etc.
                 setSetupData({
                     username: profile.username || '',
                     gender: profile.gender || '',
@@ -697,6 +706,11 @@ export default function MapHome() {
                 });
                 setShowProfileSetup(true);
             } else {
+                // Email signup user — fields already collected during signup wizard.
+                // Self-heal: mark complete in DB if not already flagged.
+                if (!isComplete || profile.onboarding_completed !== true) {
+                    supabase.from('profiles').update({ onboarding_completed: true }).eq('id', profile.id).then();
+                }
                 setShowProfileSetup(false);
             }
 
@@ -1176,7 +1190,25 @@ export default function MapHome() {
                     longitude: updatedUser.longitude
                 });
 
-                if (updatedUser.id === currentUser.id) return; // Skip self
+                // 🔥 Self-update: only update our own profile data (mood, avatar, status).
+                // Do NOT update nearbyUsers (we're not in that list) and do NOT animate our own marker here.
+                if (updatedUser.id === currentUser.id) {
+                    setCurrentUser(prev => {
+                        if (!prev) return prev;
+                        // Only update profile display fields — NOT lat/lng (handled by watchPosition natively)
+                        return {
+                            ...prev,
+                            mood: updatedUser.mood,
+                            mood_updated_at: updatedUser.mood_updated_at,
+                            status: updatedUser.status,
+                            status_message: updatedUser.status_message,
+                            status_updated_at: updatedUser.status_updated_at,
+                            avatar_url: updatedUser.avatar_url || prev.avatar_url,
+                            username: updatedUser.username || prev.username,
+                        };
+                    });
+                    return; // Skip nearbyUsers update for self
+                }
 
                 // FILTER BLOCKED USERS
                 if (blockedIdsRef.current.has(updatedUser.id)) {
