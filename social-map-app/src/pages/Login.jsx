@@ -50,7 +50,7 @@ export default function Login() {
             access_type: 'offline',
             prompt: 'consent',
           },
-          redirectTo: `${siteUrl}/oauth-profile-setup`
+          redirectTo: `${siteUrl}/map`
         }
       });
     } catch (err) {
@@ -396,68 +396,64 @@ export default function Login() {
         if (signInError) throw signInError;
 
         if (data.session) {
-          const authUser = data.session.user;
-          const userMeta = authUser.user_metadata || {};
-
-          // Fetch complete profile from database
+          // Fetch complete profile from database to get avatar and all fields
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', authUser.id)
+            .eq('id', data.session.user.id)
             .maybeSingle();
 
-          if (profileError || !profile) {
-            // Profile fetch failed — use metadata as fallback and head to map
+          if (profileError) {
             console.error('Profile fetch error:', profileError);
+            const userMeta = data.session.user.user_metadata;
             localStorage.setItem('currentUser', JSON.stringify({
-              id: authUser.id,
+              id: data.session.user.id,
+              name: userMeta.username || data.session.user.email,
               username: userMeta.username,
               full_name: userMeta.full_name,
               gender: userMeta.gender,
               avatar_url: userMeta.avatar_url,
-              status: 'Online',
-              relationship_status: userMeta.relationship_status,
-              onboarding_completed: true
+              status: userMeta.status || 'Online',
+              relationship_status: userMeta.relationship_status
             }));
-            navigate('/map');
-            return;
-          }
+          } else {
+            localStorage.setItem('currentUser', JSON.stringify({
+              id: profile.id,
+              name: profile.username || profile.full_name,
+              username: profile.username,
+              full_name: profile.full_name,
+              gender: profile.gender,
+              avatar_url: profile.avatar_url, 
+              status: profile.status || 'Online',
+              relationship_status: profile.relationship_status,
+              interests: profile.interests
+            }));
 
-          // 🔧 SELF-HEAL: If DB trigger didn't copy metadata fields, fix now
-          const missingUsername = !profile.username?.trim() && userMeta.username;
-          const missingGender = !profile.gender && userMeta.gender;
-          const missingAvatar = (!profile.avatar_url || profile.avatar_url.startsWith('/defaults/') || profile.avatar_url.includes('dicebear')) && userMeta.avatar_url?.startsWith('http');
-          const missingOnboarding = profile.onboarding_completed !== true;
-
-          if (missingUsername || missingGender || missingAvatar || missingOnboarding) {
-            const healUpdates = { onboarding_completed: true };
-            if (missingUsername) healUpdates.username = userMeta.username;
-            if (missingGender) healUpdates.gender = userMeta.gender;
-            if (profile.relationship_status == null && userMeta.relationship_status) {
-              healUpdates.relationship_status = userMeta.relationship_status;
+            // SELF-HEALING: Check if Auth Metadata has a photo but Profile is default
+            // This fixes cases where the DB Trigger failed to copy the signup photo
+            const metaAvatar = data.session.user.user_metadata.avatar_url;
+            const profileAvatar = profile.avatar_url;
+            
+            if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
+                 console.log("🚑 Avatar Mismatch Detected! Healing profile...", { metaAvatar, profileAvatar });
+                 // Force update profile
+                 await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
+                 
+                 // Update local storage to reflect the fix immediately
+                 const healedUser = JSON.parse(localStorage.getItem('currentUser'));
+                 healedUser.avatar_url = metaAvatar;
+                 localStorage.setItem('currentUser', JSON.stringify(healedUser));
+                 
+                 // Navigate with healed avatar
+                 navigate('/map', { state: { preloadedAvatar: metaAvatar } });
+            } else {
+                 navigate('/map', { state: { preloadedAvatar: profile.avatar_url } });
             }
-            if (missingAvatar) healUpdates.avatar_url = userMeta.avatar_url;
-            await supabase.from('profiles').update(healUpdates).eq('id', authUser.id);
-            Object.assign(profile, healUpdates); // apply heal to local copy too
+
+            // Mark setup as complete since they are logging in with a valid profile
+            localStorage.setItem('setup_complete', 'true');
           }
-
-          // Store complete profile in localStorage
-          const finalUser = {
-            id: profile.id,
-            username: profile.username || userMeta.username,
-            full_name: profile.full_name || userMeta.full_name,
-            gender: profile.gender || userMeta.gender,
-            avatar_url: profile.avatar_url || userMeta.avatar_url,
-            status: profile.status || 'Online',
-            relationship_status: profile.relationship_status || userMeta.relationship_status,
-            interests: profile.interests,
-            is_location_on: profile.is_location_on,
-            is_ghost_mode: profile.is_ghost_mode,
-            onboarding_completed: true
-          };
-          localStorage.setItem('currentUser', JSON.stringify(finalUser));
-
-          navigate('/map', { state: { preloadedAvatar: finalUser.avatar_url }, replace: true });
+          navigate('/map');
         }
       }
     } catch (err) {

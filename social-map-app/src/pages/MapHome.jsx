@@ -689,26 +689,35 @@ export default function MapHome() {
 
             setCurrentUser(profile);
 
-            // Detect auth provider — email/password users already fill everything during the
-            // 4-step signup wizard. Only Google OAuth users need the profile setup popup.
-            const provider = user.app_metadata?.provider || 'email';
-            const isGoogleUser = provider === 'google';
+            // 🔥 Fallback: manual signup stores gender/relationship_status in user_metadata.
+            // The Supabase trigger may not have copied them to profiles yet (race condition on first login).
+            // We use metadata as a source of truth and self-heal the profile row if needed.
+            const meta = user.user_metadata || {};
+            const gender = profile.gender || meta.gender || null;
+            const relationshipStatus = profile.relationship_status || meta.relationship_status || null;
 
-            const hasRequiredFields = Boolean(profile.username?.trim() && profile.gender);
-            const isComplete = profile.onboarding_completed === true || hasRequiredFields;
+            // If metadata has data that the profile is missing, heal the DB row silently
+            if ((!profile.gender && meta.gender) || (!profile.relationship_status && meta.relationship_status)) {
+                supabase.from('profiles').update({
+                    gender: gender,
+                    relationship_status: relationshipStatus,
+                    onboarding_completed: true
+                }).eq('id', user.id).then();
+            }
 
-            if (isGoogleUser && !isComplete) {
-                // Google OAuth user — needs to provide username, gender, etc.
+            // Show popup ONLY if gender or relationship_status is truly missing from both sources
+            const needsSetup = !gender || !relationshipStatus;
+
+            if (needsSetup) {
                 setSetupData({
-                    username: profile.username || '',
-                    gender: profile.gender || '',
-                    relationshipStatus: profile.relationship_status || '',
+                    username: profile.username || meta.username || '',
+                    gender: gender || '',
+                    relationshipStatus: relationshipStatus || '',
                 });
                 setShowProfileSetup(true);
             } else {
-                // Email signup user — fields already collected during signup wizard.
-                // Self-heal: mark complete in DB if not already flagged.
-                if (!isComplete || profile.onboarding_completed !== true) {
+                // Self-heal: ensure onboarding_completed flag is set in DB
+                if (profile.onboarding_completed !== true) {
                     supabase.from('profiles').update({ onboarding_completed: true }).eq('id', profile.id).then();
                 }
                 setShowProfileSetup(false);

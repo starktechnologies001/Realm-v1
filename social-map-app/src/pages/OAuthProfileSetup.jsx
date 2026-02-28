@@ -45,19 +45,6 @@ export default function OAuthProfileSetup() {
         navigate('/login');
         return;
       }
-
-      // If returning Google user already completed setup, go straight to map
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('username, gender, onboarding_completed')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (existingProfile?.onboarding_completed === true ||
-          (existingProfile?.username?.trim() && existingProfile?.gender)) {
-        navigate('/map', { replace: true });
-        return;
-      }
       
       setUserId(user.id);
       setEmail(user.email);
@@ -205,7 +192,7 @@ export default function OAuthProfileSetup() {
           relationship_status: status,
           interests: selectedInterests,
           avatar_url: finalAvatarUrl,
-          onboarding_completed: true  // ✅ Mark setup done so popup never shows again
+          onboarding_completed: true   // ← mark complete so popup never shows again
         })
         .eq('id', userId);
 
@@ -223,21 +210,19 @@ export default function OAuthProfileSetup() {
         }
       });
 
-      // Update localStorage with complete profile
-      const storedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      // Update localStorage
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       localStorage.setItem('currentUser', JSON.stringify({
-        ...storedUser,
-        id: userId,
+        ...currentUser,
         username,
         full_name: username,
         gender,
         relationship_status: status,
         avatar_url: finalAvatarUrl,
-        interests: selectedInterests,
-        onboarding_completed: true
+        interests: selectedInterests
       }));
 
-      navigate('/map', { replace: true });
+      navigate('/map');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to save profile');
