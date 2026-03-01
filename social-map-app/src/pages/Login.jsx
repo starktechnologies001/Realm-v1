@@ -534,19 +534,30 @@ export default function Login() {
                   style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                   required
                 />
-                <button 
-                  type="button" 
-                  onClick={() => setShowPassword(!showPassword)} 
-                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                  {showPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  )}
                 </button>
                 {fieldErrors.password && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.password}</span>}
               </div>
-              <div style={{ textAlign: 'right', marginTop: '8px' }}>
-                <span 
+              <div style={{ textAlign: 'right', marginTop: '6px' }}>
+                <span
                   onClick={() => setShowForgotPassword(true)}
-                  style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  className="forgot-link"
                 >
                   Forgot Password?
                 </span>
@@ -624,12 +635,23 @@ export default function Login() {
                       style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                       autoFocus
                     />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)} 
-                      style={{ position: 'absolute', right: '12px', top: '22px', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: '1.2rem' }}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? '👁️' : '👁️‍🗨️'}
+                      {showPassword ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                      )}
                     </button>
                     {fieldErrors.password
                       ? <p style={{ fontSize: '0.75rem', color: '#ff453a', marginTop: '8px', marginLeft: '4px' }}>{fieldErrors.password}</p>
@@ -956,63 +978,84 @@ export default function Login() {
 
 
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
         :root {
-          --glass-border: rgba(255, 255, 255, 0.08);
-          --glass-bg: rgba(20, 20, 20, 0.7);
-          --brand-blue: #007aff;
-          --brand-gradient: linear-gradient(135deg, #0A84FF 0%, #007AFF 100%);
-          --brand-glow: 0 0 20px rgba(10, 132, 255, 0.3);
+          --glass-border: rgba(255, 255, 255, 0.09);
+          --brand-blue: #0a84ff;
+          --brand-gradient: linear-gradient(135deg, #0055ff 0%, #00b4ff 100%);
+          --brand-glow: 0 4px 24px rgba(0, 140, 255, 0.35);
           --text-primary: #ffffff;
-          --text-secondary: rgba(255, 255, 255, 0.6);
-          --input-bg: rgba(0, 0, 0, 0.3);
+          --text-secondary: rgba(255, 255, 255, 0.55);
+          --input-bg: rgba(255, 255, 255, 0.04);
         }
 
         .login-container {
           min-height: 100vh;
-          min-height: 100dvh; /* Mobile viewport fix */
+          min-height: 100dvh;
           display: flex;
-          background-color: #050505;
-          background-image: 
-              radial-gradient(circle at 50% 0%, rgba(10, 132, 255, 0.15) 0%, transparent 60%),
-              radial-gradient(circle at 100% 100%, rgba(10, 132, 255, 0.05) 0%, transparent 40%);
-          font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          align-items: center;
+          justify-content: center;
+          background-color: #080810;
+          background-image:
+            radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 100, 255, 0.22) 0%, transparent 70%),
+            radial-gradient(ellipse 60% 40% at 90% 100%, rgba(0, 180, 255, 0.1) 0%, transparent 60%),
+            radial-gradient(ellipse 40% 30% at 10% 80%, rgba(120, 40, 255, 0.08) 0%, transparent 50%);
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
           padding: 20px;
-          padding-bottom: env(safe-area-inset-bottom); /* Safe area */
+          padding-bottom: env(safe-area-inset-bottom);
           overflow-y: auto;
           box-sizing: border-box;
         }
 
         .login-card {
           width: 100%;
-          max-width: 380px;
-          background: rgba(28, 28, 30, 0.6);
-          backdrop-filter: blur(20px) saturate(180%);
-          -webkit-backdrop-filter: blur(20px) saturate(180%);
-          border-radius: 24px;
-          padding: 40px 32px;
-          border: 1px solid var(--glass-border);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+          max-width: 400px;
+          background: rgba(18, 18, 28, 0.75);
+          backdrop-filter: blur(32px) saturate(180%);
+          -webkit-backdrop-filter: blur(32px) saturate(180%);
+          border-radius: 28px;
+          padding: 44px 36px 40px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow:
+            0 0 0 1px rgba(0, 100, 255, 0.08),
+            0 32px 64px rgba(0, 0, 0, 0.5),
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255,255,255,0.08);
           display: flex;
           flex-direction: column;
           align-items: center;
-          margin: auto;
           position: relative;
           overflow: hidden;
+          animation: cardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @keyframes cardIn {
+          from { opacity: 0; transform: translateY(24px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Top glow line */
+        .login-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 15%; right: 15%; height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(80, 180, 255, 0.6), transparent);
+          border-radius: 50%;
+        }
+
+        /* Ambient glow blob */
+        .login-card::after {
+          content: '';
+          position: absolute;
+          top: -80px; left: 50%; transform: translateX(-50%);
+          width: 300px; height: 200px;
+          background: radial-gradient(ellipse, rgba(0, 100, 255, 0.12) 0%, transparent 70%);
+          pointer-events: none;
         }
 
         @media (max-width: 480px) {
-            .login-card {
-                padding: 32px 24px;
-                border-radius: 20px;
-            }
-        }
-        
-        /* Subtle shine effect */
-        .login-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+          .login-card { padding: 36px 24px 32px; border-radius: 24px; }
         }
 
         .app-title {
@@ -1032,189 +1075,187 @@ export default function Login() {
 
         .app-subtitle {
           color: var(--text-secondary);
-          font-size: 0.9rem;
-          margin: 0 0 32px 0;
+          font-size: 0.88rem;
+          margin: 0 0 30px 0;
           font-weight: 500;
+          letter-spacing: 0.2px;
         }
 
-        /* Segmented Control Toggle */
+        /* Segmented pill toggle */
         .auth-toggle {
           display: flex;
-          background: rgba(0, 0, 0, 0.3);
+          background: rgba(255, 255, 255, 0.05);
           padding: 4px;
-          border-radius: 14px;
-          border: 1px solid var(--glass-border);
+          border-radius: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
           width: 100%;
           margin-bottom: 28px;
-          position: relative;
         }
 
         .toggle-btn {
           flex: 1;
-          padding: 10px;
+          padding: 10px 0;
           background: transparent;
           border: none;
           color: var(--text-secondary);
           font-weight: 600;
-          font-size: 0.9rem;
-          border-radius: 10px;
+          font-size: 0.88rem;
+          letter-spacing: 0.2px;
+          border-radius: 12px;
           cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-          z-index: 1;
+          transition: all 0.25s ease;
         }
 
         .toggle-btn.active {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.11);
           color: white;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
         }
 
         .login-form {
           width: 100%;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 14px;
         }
 
         .input-group {
           width: 100%;
           position: relative;
         }
-        
-        /* Icons removed as per request */
 
         .input-field {
           width: 100%;
           background: var(--input-bg);
-          border: 1px solid var(--glass-border);
-          padding: 18px 16px; /* Restored padding since icons are gone */
+          border: 1px solid rgba(255, 255, 255, 0.09);
+          padding: 16px 48px 16px 16px;
           border-radius: 14px;
           color: white;
-          font-size: 1.05rem;
+          font-size: 1rem;
+          font-family: inherit;
           outline: none;
-          transition: all 0.2s ease;
+          transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
           box-sizing: border-box;
         }
 
-        .input-field::placeholder {
-          color: rgba(255, 255, 255, 0.5);
-        }
+        .input-field::placeholder { color: rgba(255, 255, 255, 0.3); }
 
         .input-field:focus {
-          border-color: #0caeff;
-          background: rgba(0, 174, 255, 0.05);
-          box-shadow: 0 0 0 4px rgba(0, 174, 255, 0.1);
+          border-color: rgba(80, 160, 255, 0.6);
+          background: rgba(0, 100, 255, 0.05);
+          box-shadow: 0 0 0 3px rgba(0, 120, 255, 0.12);
         }
 
         .btn-primary {
           width: 100%;
-          padding: 12px;
+          padding: 15px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 12px;
+          border-radius: 14px;
           color: white;
           font-size: 0.95rem;
-          font-weight: 600;
+          font-weight: 700;
+          font-family: inherit;
+          letter-spacing: 0.2px;
           cursor: pointer;
           transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
           box-shadow: var(--brand-glow);
-          margin-top: 8px;
+          margin-top: 6px;
+          position: relative;
+          overflow: hidden;
         }
 
-        .btn-primary:active {
-          transform: scale(0.98);
+        .btn-primary::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent);
+          border-radius: inherit;
+          pointer-events: none;
         }
 
-        .btn-primary:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-          box-shadow: none;
+        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-primary:active { transform: scale(0.98); filter: brightness(0.95); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; transform: none; filter: none; }
+
+        /* Forgot password */
+        .forgot-link {
+          color: rgba(100, 180, 255, 0.8);
+          font-size: 0.82rem;
+          cursor: pointer;
+          text-align: right;
+          font-weight: 500;
+          transition: color 0.2s;
+          margin-top: -4px;
         }
+        .forgot-link:hover { color: #60b4ff; }
 
         .auth-separator {
           width: 100%;
           display: flex;
           align-items: center;
-          margin: 24px 0;
+          margin: 20px 0;
           color: var(--text-secondary);
-          font-size: 0.85rem;
-          font-weight: 500;
         }
 
         .auth-separator::before,
         .auth-separator::after {
-          content: "";
+          content: '';
           flex: 1;
           height: 1px;
-          background: var(--glass-border);
+          background: rgba(255, 255, 255, 0.07);
         }
 
         .auth-separator span {
           padding: 0 12px;
           text-transform: uppercase;
-          font-size: 0.7rem;
-          letter-spacing: 0.5px;
+          font-size: 0.68rem;
+          letter-spacing: 1px;
+          font-weight: 500;
         }
 
         .btn-google {
           width: 100%;
-          background: white;
-          color: #1c1c1e;
+          background: rgba(255, 255, 255, 0.97);
+          color: #111;
           font-weight: 600;
+          font-family: inherit;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 10px;
-          padding: 10px;
-          border-radius: 12px;
+          padding: 14px;
+          border-radius: 14px;
           border: none;
           cursor: pointer;
           font-size: 0.9rem;
-          transition: transform 0.2s;
+          letter-spacing: 0.1px;
+          transition: all 0.2s;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.2);
         }
+        .btn-google:hover { background: #fff; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+        .btn-google:active { transform: scale(0.98); }
 
-        .btn-google:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .btn-google:active {
-            transform: scale(0.98);
-        }
-
-        /* Alert Styles */
+        /* Alert */
         .alert-message {
-          display: flex; align-items: flex-start; gap: 12px;
-          padding: 14px 16px;
+          display: flex; align-items: flex-start; gap: 10px;
+          padding: 13px 15px;
           border-radius: 12px;
-          font-size: 0.9rem;
-          line-height: 1.4;
+          font-size: 0.875rem;
+          line-height: 1.45;
           width: 100%;
-          backdrop-filter: blur(10px);
-          animation: slideIn 0.3s ease-out;
+          animation: slideIn 0.25s ease-out;
           text-align: left;
           box-sizing: border-box;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
         }
-        
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-
-        .alert-error {
-          background: rgba(255, 69, 58, 0.1);
-          border: 1px solid rgba(255, 69, 58, 0.2);
-          color: #ff453a;
-        }
-
-        .alert-success {
-          background: rgba(48, 209, 88, 0.1);
-          border: 1px solid rgba(48, 209, 88, 0.2);
-          color: #30d158;
-        }
-        
-        .alert-icon { font-size: 1.1rem; margin-top: -2px; }
+        .alert-error { background: rgba(255, 60, 50, 0.1); border: 1px solid rgba(255, 60, 50, 0.25); color: #ff6259; }
+        .alert-success { background: rgba(52, 199, 89, 0.1); border: 1px solid rgba(52, 199, 89, 0.25); color: #34c759; }
+        .alert-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
         .alert-content { flex: 1; }
 
         /* Step Indicator */
@@ -1222,36 +1263,37 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 30px;
+          margin-bottom: 28px;
           width: 100%;
+          gap: 0;
         }
 
         .step {
-          width: 32px;
-          height: 32px;
+          width: 30px; height: 30px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.07);
           color: var(--text-secondary);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 600;
-          font-size: 0.9rem;
-          transition: all 0.3s;
-          border: 1px solid transparent;
+          font-weight: 700;
+          font-size: 0.8rem;
+          transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+          border: 1px solid rgba(255,255,255,0.08);
+          flex-shrink: 0;
         }
-
         .step.active {
           background: var(--brand-gradient);
           color: white;
-          box-shadow: 0 0 15px rgba(0, 122, 255, 0.4);
-          border-color: rgba(255,255,255,0.2);
+          box-shadow: 0 0 16px rgba(0, 140, 255, 0.45);
+          border-color: transparent;
         }
-
         .step-line {
-          width: 40px;
-          height: 2px;
-          background: rgba(255, 255, 255, 0.1);
+          flex: 1;
+          max-width: 44px;
+          height: 1.5px;
+          background: rgba(255, 255, 255, 0.08);
+          margin: 0 4px;
         }
 
         /* Signup Step */
@@ -1259,210 +1301,161 @@ export default function Login() {
           width: 100%;
           animation: fadeIn 0.3s ease-out;
         }
-
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
 
         .step-title {
-          font-size: 1.4rem;
+          font-size: 1.3rem;
           font-weight: 700;
           color: white;
-          margin: 0 0 24px 0;
+          margin: 0 0 22px 0;
           text-align: center;
-          letter-spacing: -0.5px;
+          letter-spacing: -0.4px;
         }
 
         /* Step Navigation */
         .step-navigation {
           display: flex;
-          gap: 12px;
+          gap: 10px;
           width: 100%;
-          margin-top: 10px;
+          margin-top: 8px;
         }
-
         .btn-back {
           flex: 1;
-          padding: 16px;
+          padding: 15px;
           background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.8);
+          color: rgba(255,255,255,0.75);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 14px;
           cursor: pointer;
-          font-size: 0.95rem;
+          font-size: 0.9rem;
           font-weight: 600;
+          font-family: inherit;
           transition: all 0.2s;
         }
-
-        .btn-back:hover {
-          background: rgba(255,255,255,0.1);
-          color: white;
-        }
+        .btn-back:hover { background: rgba(255,255,255,0.1); color: white; }
 
         .btn-next, .btn-submit {
           flex: 1;
-          padding: 16px;
+          padding: 15px;
           background: var(--brand-gradient);
           border: none;
           border-radius: 14px;
           color: white;
-          font-size: 0.95rem;
-          font-weight: 600;
+          font-size: 0.9rem;
+          font-weight: 700;
+          font-family: inherit;
           cursor: pointer;
           transition: all 0.2s;
           box-shadow: var(--brand-glow);
         }
-
-        .btn-next:hover, .btn-submit:hover {
-            transform: translateY(-1px);
-        }
-        
-        .btn-next:active, .btn-submit:active {
-            transform: scale(0.98);
-        }
-
-        .btn-submit:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
+        .btn-next:hover, .btn-submit:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-next:active, .btn-submit:active { transform: scale(0.98); }
+        .btn-submit:disabled { opacity: 0.55; cursor: not-allowed; transform: none; filter: none; }
 
         /* Field Sections */
-        .field-section {
-          margin-bottom: 20px;
-        }
-
+        .field-section { margin-bottom: 18px; }
         .field-section label {
           display: block;
           color: var(--text-secondary);
-          font-size: 0.9rem;
-          margin-bottom: 8px;
-          margin-left: 4px;
+          font-size: 0.82rem;
+          margin-bottom: 7px;
+          margin-left: 2px;
           font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
-        
-        .sub-label {
-             font-size: 0.75rem; opacity: 0.7; font-weight: 400;
-        }
+        .sub-label { font-size: 0.75rem; opacity: 0.6; font-weight: 400; text-transform: none; letter-spacing: 0; }
 
-        .custom-select-wrapper {
-          position: relative;
-        }
-
+        .custom-select-wrapper { position: relative; }
         .glass-select {
           width: 100%;
           background: var(--input-bg);
           color: white;
-          border: 1px solid var(--glass-border);
-          padding: 14px 16px;
+          border: 1px solid rgba(255,255,255,0.09);
+          padding: 14px 40px 14px 14px;
           border-radius: 14px;
-          font-size: 1rem;
+          font-size: 0.95rem;
+          font-family: inherit;
           appearance: none;
           outline: none;
           transition: all 0.2s;
         }
-        
-        .glass-select:focus {
-             border-color: #0A84FF;
-             background: rgba(0,0,0,0.4);
-        }
-
+        .glass-select option { background: #1c1c2e; color: white; }
+        .glass-select:focus { border-color: rgba(80,160,255,0.5); background: rgba(0,80,255,0.04); }
         .select-arrow {
-          position: absolute;
-          right: 16px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-secondary);
-          pointer-events: none;
-          font-size: 0.8rem;
+          position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+          color: var(--text-secondary); pointer-events: none; font-size: 0.75rem;
         }
 
-        .chip-group {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
+        .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
         .chip {
-          padding: 8px 16px;
-          border-radius: 20px;
-          background: rgba(255, 255, 255, 0.05);
-          color: #ccc;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          cursor: pointer;
-          font-size: 0.9rem;
+          padding: 7px 14px; border-radius: 20px;
+          background: rgba(255,255,255,0.05);
+          color: rgba(255,255,255,0.65);
+          border: 1px solid rgba(255,255,255,0.09);
+          cursor: pointer; font-size: 0.85rem; font-family: inherit;
           transition: all 0.2s;
         }
+        .chip:hover { background: rgba(255,255,255,0.1); color: white; }
+        .chip.selected { background: rgba(0,130,255,0.2); border-color: rgba(0,150,255,0.5); color: #7dd3fc; }
 
-        .chip:hover {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255,255,255,0.2);
+        .glass-input-small {
+          flex: 1;
+          background: var(--input-bg);
+          border: 1px solid rgba(255,255,255,0.09);
           color: white;
+          padding: 12px 13px;
+          border-radius: 12px;
+          font-size: 0.9rem;
+          font-family: inherit;
+          outline: none;
         }
-
-        .chip.selected {
-          background: rgba(10, 132, 255, 0.2);
-          border-color: #0A84FF;
-          color: #5AC8FA;
-        }
-        
-         .glass-input-small {
-            flex: 1;
-            background: var(--input-bg);
-            border: 1px solid var(--glass-border);
-            color: white;
-            padding: 12px 14px;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            outline: none;
-        }
-        .btn-primary-small {
-            transition: transform 0.1s;
-        }
+        .btn-primary-small { transition: transform 0.1s; }
         .btn-primary-small:active { transform: scale(0.95); }
-        
-        /* Modal Styles */
+
+        /* Modal */
         .modal-backdrop {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,0,0,0.85);
-          backdrop-filter: blur(8px);
+          background: rgba(0,0,0,0.88);
+          backdrop-filter: blur(12px);
           z-index: 1000;
           display: flex; align-items: center; justify-content: center;
         }
-        
         .modal-content {
-          background: #1c1c1e;
+          background: rgba(20, 20, 32, 0.98);
           width: 90%; max-width: 380px;
-          padding: 32px; border-radius: 24px;
+          padding: 36px 32px; border-radius: 28px;
           border: 1px solid rgba(255,255,255,0.1);
           text-align: center;
           color: white;
-          box-shadow: 0 40px 80px rgba(0,0,0,0.6);
-          animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+          box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
+          animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
-        
         @keyframes popIn {
-          from { transform: scale(0.95) translateY(10px); opacity: 0; }
-          to { transform: scale(1) translateY(0); opacity: 1; }
+          from { transform: scale(0.9) translateY(16px); opacity: 0; }
+          to   { transform: scale(1) translateY(0); opacity: 1; }
         }
-        .modal-content h3 { margin: 0 0 10px 0; color: white; font-weight: 700; font-size: 1.4rem; }
-        .modal-content p { color: #aaa; font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5; }
+        .modal-content h3 { margin: 0 0 10px; color: white; font-weight: 700; font-size: 1.35rem; }
+        .modal-content p { color: #888; font-size: 0.9rem; margin-bottom: 22px; line-height: 1.5; }
         .modal-content input {
-          width: 100%; padding: 14px; border-radius: 12px;
-          background: #2c2c2e; border: 1px solid rgba(255,255,255,0.1);
-          color: white; font-size: 1.1rem; margin-bottom: 24px;
-          text-align: center; letter-spacing: 1px;
+          width: 100%; padding: 14px; border-radius: 12px; box-sizing: border-box;
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          color: white; font-size: 1.1rem; margin-bottom: 20px;
+          text-align: center; letter-spacing: 2px; font-family: inherit;
         }
-        .modal-content input:focus { border-color: #0A84FF; outline: none; background: #333; }
-        .modal-footer { display: flex; gap: 12px; }
+        .modal-content input:focus { border-color: #0a84ff; outline: none; }
+        .modal-footer { display: flex; gap: 10px; }
         .btn-sec, .btn-pri {
-          flex: 1; padding: 14px; border-radius: 12px; border: none;
-          font-weight: 600; cursor: pointer; font-size: 0.95rem; transition: all 0.2s;
+          flex: 1; padding: 13px; border-radius: 12px; border: none;
+          font-weight: 600; font-family: inherit; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
         }
-        .btn-sec { background: rgba(255,255,255,0.1); color: #ccc; }
-        .btn-sec:hover { background: rgba(255,255,255,0.15); color: white; }
+        .btn-sec { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); }
+        .btn-sec:hover { background: rgba(255,255,255,0.12); color: white; }
         .btn-pri { background: var(--brand-gradient); color: white; box-shadow: var(--brand-glow); }
-        .btn-pri:hover { transform: translateY(-1px); }
+        .btn-pri:hover { filter: brightness(1.1); }
 
       `}</style>
       {cropImage && (

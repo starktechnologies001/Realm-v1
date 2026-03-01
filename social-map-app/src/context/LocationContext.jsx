@@ -87,15 +87,13 @@ export function LocationProvider({ children }) {
         setLocationEnabled(false);
         setUserLocation(null);
 
-        // Revert the Phase 1 "online" signal since GPS actually failed
+        // Revert the Phase 1 "online" signal since GPS actually failed.
+        // Keep coordinates intact — same rule as stopLocation.
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session?.user) {
             supabase.from("profiles").update({
               is_location_on: false,
-              is_ghost_mode: true,
-              latitude: null,
-              longitude: null,
-              last_location: null
+              is_ghost_mode: true
             }).eq("id", session.user.id).then(({ error }) => {
               if (error) console.error("Location sync error:", error);
             });
@@ -199,12 +197,13 @@ export function LocationProvider({ children }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        // ⚡ Keep lat/lng in DB as "last known position".
+        // They are hidden by is_location_on=false, but when the user re-enables
+        // location, Phase 1 (is_location_on: true) will immediately make
+        // isVisible=true using these saved coords — avatar appears in < 1 second.
         supabase.from("profiles").update({
           is_location_on: false,
-          is_ghost_mode: true,
-          latitude: null,
-          longitude: null,
-          last_location: null
+          is_ghost_mode: true
         }).eq("id", session.user.id).then(({ error }) => {
           if (error) console.error("Location sync error:", error);
         });

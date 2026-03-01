@@ -326,7 +326,6 @@ function UserSelectionController({ selectedUser }) {
         const lng = selectedUser.longitude || selectedUser.lng;
 
         if (!lat || !lng) {
-            console.log('🗺️ [UserSelectionController] No valid coordinates. lat:', lat, 'lng:', lng);
             return;
         }
 
@@ -336,7 +335,6 @@ function UserSelectionController({ selectedUser }) {
 
         // Check for Mobile (Approximate check using window width)
         const isMobile = window.innerWidth <= 768;
-        console.log('🗺️ [UserSelectionController] isMobile:', isMobile, 'width:', window.innerWidth);
 
         if (isMobile) {
             // Calculate Offset used by MapProfileCard (Usually ~45-50vh height)
@@ -354,7 +352,6 @@ function UserSelectionController({ selectedUser }) {
             // Convert back to LatLng
             const newCenter = map.unproject(targetPoint, zoomLevel);
 
-            console.log('🗺️ [UserSelectionController] Flying to (mobile offset):', newCenter, 'zoom:', zoomLevel);
             
             // Use setTimeout to ensure map is ready
             setTimeout(() => {
@@ -366,7 +363,6 @@ function UserSelectionController({ selectedUser }) {
             }, 100);
         } else {
             // Desktop: Center normally
-            console.log('🗺️ [UserSelectionController] Flying to (desktop):', [targetLat, targetLng], 'zoom:', zoomLevel);
             
             setTimeout(() => {
                 map.flyTo([targetLat, targetLng], zoomLevel, {
@@ -649,7 +645,7 @@ export default function MapHome() {
                     }).eq("id", currentUser.id).then();
                 }
             },
-            (err) => console.log("High-freq map watch error", err),
+            (err) => { if (err.code !== 3) console.error('Map watch error:', err); },
             { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
         );
 
@@ -1161,8 +1157,6 @@ export default function MapHome() {
                         };
                     });
 
-                console.log("📍 [MapHome] Fetched Users:", validUsers.length, validUsers);
-                validUsers.forEach(u => console.log(`   - ${u.name}: ${u.lat}, ${u.lng} (Avatar: ${u.avatar ? 'Yes' : 'No'})`));
                 setNearbyUsers(prev => {
                     const map = new Map();
 
@@ -1188,16 +1182,7 @@ export default function MapHome() {
             .channel('public:profiles')
             // Unified UPDATE listener for Location + Profile changes
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
-                console.log("📍 [MapHome] Realtime UPDATE received:", payload);
                 const updatedUser = payload.new;
-
-                console.log("Realtime UPDATE:", {
-                    username: updatedUser.username,
-                    is_location_on: updatedUser.is_location_on,
-                    is_ghost_mode: updatedUser.is_ghost_mode,
-                    latitude: updatedUser.latitude,
-                    longitude: updatedUser.longitude
-                });
 
                 // 🔥 Self-update: only update our own profile data (mood, avatar, status).
                 // Do NOT update nearbyUsers (we're not in that list) and do NOT animate our own marker here.
@@ -3794,6 +3779,8 @@ export default function MapHome() {
                     border: 3px solid #FFFFFF;
                     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
                     background-color: #333;
+                    transform: translateZ(0);  /* Force GPU compositing */
+                    backface-visibility: hidden;
                 }
                 .thought-bubble {
                     position: absolute;
@@ -3812,7 +3799,8 @@ export default function MapHome() {
                 /* Re-enabled for real-time smooth location gliding */
                 .leaflet-marker-icon {
                     transition: transform 0.5s ease-out;
-                    opacity: 1; 
+                    will-change: transform;   /* GPU layer — prevents repaint on every GPS tick */
+                    opacity: 1;
                 }
                 
                 /* Class specific for avatars */
