@@ -2352,8 +2352,8 @@ export default function MapHome() {
         return (
             <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', zIndex: 10000 }}>
                 <style>{`
-                    .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 999999; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-                    .onboarding-card { background: #121214; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; padding: 36px 28px; width: 100%; max-width: 400px; box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1); color: white; display: flex; flex-direction: column; gap: 24px; }
+                    .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; z-index: 999999; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                    .onboarding-card { background: #121214; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; padding: 36px 28px; width: 100%; max-width: 400px; box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1); color: white; display: flex; flex-direction: column; gap: 24px; margin: auto; flex-shrink: 0; }
                     .onboarding-card h2 { margin: 0; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; color: #fff; text-align: left; }
                     .onboarding-card h2 span.wave { color: #0084ff; }
                     .onboarding-card p.subtitle { margin: 0; font-size: 1rem; color: #a1a1aa; text-align: left; margin-top: -16px; }
@@ -2725,10 +2725,11 @@ export default function MapHome() {
                     backdrop-filter: blur(12px);
                     -webkit-backdrop-filter: blur(12px);
                     display: flex;
-                    align-items: center;
+                    align-items: flex-start;
                     justify-content: center;
+                    overflow-y: auto;
                     z-index: 999999;
-                    padding: 20px;
+                    padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 }
                 .onboarding-card {
@@ -2743,6 +2744,8 @@ export default function MapHome() {
                     display: flex;
                     flex-direction: column;
                     gap: 20px;
+                    margin: auto;
+                    flex-shrink: 0;
                 }
                 .onboarding-card h2 {
                     margin: 0;
@@ -3605,7 +3608,9 @@ export default function MapHome() {
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
                     z-index: 999999;
-                    display: flex; align-items: center; justify-content: center;
+                    display: flex; align-items: flex-start; justify-content: center;
+                    overflow-y: auto;
+                    padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
                     animation: fadeIn 0.4s ease-out;
                 }
                 
@@ -3624,6 +3629,8 @@ export default function MapHome() {
                     max-height: 90vh; overflow-y: auto;
                     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
                     position: relative;
+                    margin: auto;
+                    flex-shrink: 0;
                 }
                 
                 /* Scrollbar polish */
