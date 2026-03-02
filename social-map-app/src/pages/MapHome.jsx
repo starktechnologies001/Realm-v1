@@ -1218,9 +1218,14 @@ export default function MapHome() {
 
                 const isVisible =
                     updatedUser.is_location_on !== false &&
-                    updatedUser.is_ghost_mode !== true &&
-                    updatedUser.latitude != null &&
-                    updatedUser.longitude != null;
+                    updatedUser.is_ghost_mode !== true;
+
+                // Only fail visibility entirely if they have NEVER had a location AND it's not cached
+                const hasValidCoords = updatedUser.latitude != null && updatedUser.longitude != null;
+                if (isVisible && !hasValidCoords) {
+                    // We allow them to stay "visible" in logic to prevent deletion, but we won't render unless they have fallback coords
+                    // We handle this below when parsing coordinates.
+                }
 
 
 
@@ -1241,8 +1246,24 @@ export default function MapHome() {
 
                     // ---------- Visible User ----------
 
-                    const renderLat = parseFloat(updatedUser.latitude);
-                    const renderLng = parseFloat(updatedUser.longitude);
+                    let renderLat = parseFloat(updatedUser.latitude);
+                    let renderLng = parseFloat(updatedUser.longitude);
+
+                    // Fallback to parsed last_location if raw columns are lagging but visibility is toggled ON
+                    if (isNaN(renderLat) || isNaN(renderLng)) {
+                         if (updatedUser.last_location) {
+                             const match = updatedUser.last_location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+                             if (match) {
+                                  renderLng = parseFloat(match[1]);
+                                  renderLat = parseFloat(match[2]);
+                             }
+                         }
+                    }
+
+                    // If still no valid coordinates exist, quietly skip rendering without deleting them
+                    if (isNaN(renderLat) || isNaN(renderLng)) {
+                         return prev;
+                    }
 
                     const newUserObj = {
                         id: updatedUser.id,
@@ -2390,7 +2411,7 @@ export default function MapHome() {
                                 className={`ob-input ${setupErrors.username ? 'error' : ''}`}
                                 value={setupData.username}
                                 onChange={(e) => {
-                                    setSetupData({ ...setupData, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') });
+                                    setSetupData({ ...setupData, username: e.target.value });
                                     if(setupErrors.username) setSetupErrors({...setupErrors, username: false});
                                 }}
                                 placeholder="Choose a username"

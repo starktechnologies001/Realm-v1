@@ -108,6 +108,85 @@ export const CallProvider = ({ children }) => {
 
         console.log('%c📡 Call System v2.1 (Filtered) Active for:', 'color: green; font-weight: bold; font-size: 14px', currentUser.id);
 
+        // 0. Initial Fetch for missed "pending" calls
+        const checkPendingCalls = async () => {
+            const { data: pendingCalls, error } = await supabase
+                .from('calls')
+                .select('*')
+                .eq('receiver_id', currentUser.id)
+                .in('status', ['pending', 'ringing'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            if (!error && pendingCalls && pendingCalls.length > 0) {
+                const call = pendingCalls[0];
+                const now = new Date();
+                const createdAt = new Date(call.created_at);
+                const elapsedMs = now.getTime() - createdAt.getTime();
+                
+                // If it's been ringing for less than 30 seconds
+                if (elapsedMs < 30000) {
+                    console.log(`🔍 [CallContext] Found missed pending call ${call.id}`);
+                    handleIncomingCallPayload(call, 30000 - elapsedMs);
+                } else if (call.status === 'pending') {
+                    // Stale pending call, clean it up
+                    await supabase.from('calls').update({ status: 'missed' }).eq('id', call.id);
+                }
+            }
+        };
+
+        // Helper to process an incoming call payload (shared by initial fetch and realtime INSERT)
+        const handleIncomingCallPayload = async (callDataPayload, timeoutDuration = 30000) => {
+            // 0. Check Tombstone
+            if (ignorableCallIds.current.has(callDataPayload.id)) {
+                console.log(`🛡️ [IncomingChannel] Blocking tombstoned call ${callDataPayload.id}`);
+                ignorableCallIds.current.delete(callDataPayload.id);
+                return;
+            }
+
+            // 1. Check Busy
+            if (isCallingRef.current || incomingCallIdRef.current) {
+                console.log("Busy. Auto-rejecting:", callDataPayload.id);
+                await supabase.from('calls').update({ status: 'busy' }).eq('id', callDataPayload.id);
+                return;
+            }
+            
+            // 2. Mute Checks
+            if (currentUser.mute_settings?.mute_all) {
+                const expiry = currentUser.mute_settings.muted_until;
+                if (!expiry || new Date(expiry) > new Date()) {
+                   console.log(`🔕 Global Mute. Suppressing.`);
+                   return; 
+                }
+            }
+            
+            const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', callDataPayload.caller_id).maybeSingle();
+            if (callerProfile) {
+                if (ignorableCallIds.current.has(callDataPayload.id)) return;
+
+                const callInfo = { ...callDataPayload, caller: callerProfile };
+                incomingCallIdRef.current = callInfo.id;
+                setIncomingCall(callInfo);
+                
+                await supabase.from('calls').update({ status: 'ringing' }).eq('id', callDataPayload.id);
+                
+                if (document.hidden && Notification.permission === 'granted') {
+                     new Notification('Incoming Call', { body: `${callerProfile.username} calling...` });
+                }
+
+                const timer = setTimeout(() => {
+                    supabase.from('calls').update({ status: 'missed' }).eq('id', callInfo.id).then(() => {
+                        setIncomingCall(null);
+                        setToastMessage('Missed Call');
+                    });
+                }, Math.max(0, timeoutDuration));
+                setAutoDeclineTimer(timer);
+            }
+        };
+
+        // Run initial check
+        checkPendingCalls();
+
         // 1. Channel for INCOMING calls (I am receiver)
         // This catches INSERT (new call) and UPDATE (caller cancelled)
         const incomingChannel = supabase.channel(`calls:incoming:${currentUser.id}`)
@@ -156,56 +235,7 @@ export const CallProvider = ({ children }) => {
 
                 // B. INSERT: New Incoming Call
                 if (payload.eventType === 'INSERT' && payload.new.status === 'pending') {
-                    // 0. Check Tombstone
-                    if (ignorableCallIds.current.has(payload.new.id)) {
-                        console.log(`🛡️ [IncomingChannel] Blocking tombstoned call ${payload.new.id}`);
-                        ignorableCallIds.current.delete(payload.new.id);
-                        return;
-                    }
-
-                    // 1. Check Busy
-                    if (isCallingRef.current || incomingCallIdRef.current) {
-                        console.log("Busy. Auto-rejecting:", payload.new.id);
-                        await supabase.from('calls').update({ status: 'busy' }).eq('id', payload.new.id);
-                        return;
-                    }
-                    
-                    // 2. Mute Checks
-                    // ... (Mute logic simplified for brevity, assuming standard mute allowed)
-                    if (currentUser.mute_settings?.mute_all) {
-                        const expiry = currentUser.mute_settings.muted_until;
-                        if (!expiry || new Date(expiry) > new Date()) {
-                           console.log(`🔕 Global Mute. Suppressing.`);
-                           return; 
-                        }
-                    }
-                    // Chat mute check requires async fetch, doing minified blocking here to keep sync flow is hard.
-                    // Ideally we fetch caller profile first.
-                    
-                    // Processing continue...
-                    const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', payload.new.caller_id).maybeSingle();
-                    if (callerProfile) {
-                        // Double check tombstone after async await (Critical!)
-                        if (ignorableCallIds.current.has(payload.new.id)) return;
-
-                        const callInfo = { ...payload.new, caller: callerProfile };
-                        incomingCallIdRef.current = callInfo.id;
-                        setIncomingCall(callInfo);
-                        
-                        await supabase.from('calls').update({ status: 'ringing' }).eq('id', payload.new.id);
-                        
-                        if (document.hidden && Notification.permission === 'granted') {
-                             new Notification('Incoming Call', { body: `${callerProfile.username} calling...` });
-                        }
-
-                        const timer = setTimeout(() => {
-                            supabase.from('calls').update({ status: 'missed' }).eq('id', callInfo.id).then(() => {
-                                setIncomingCall(null);
-                                setToastMessage('Missed Call');
-                            });
-                        }, 30000);
-                        setAutoDeclineTimer(timer);
-                    }
+                    handleIncomingCallPayload(payload.new);
                 }
             })
             .subscribe();

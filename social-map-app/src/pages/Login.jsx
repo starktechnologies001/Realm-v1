@@ -284,14 +284,22 @@ export default function Login() {
 
     if (!isSignUp) {
       // Login: validate both fields inline
+      const form = e.target;
+      const actualUsername = username || form.elements[0]?.value || '';
+      const actualPassword = password || form.elements[1]?.value || '';
+
       const errs = {};
-      if (!username.trim()) errs.username = 'Username is required';
-      if (!password.trim()) errs.password = 'Password is required';
+      if (!actualUsername.trim()) errs.username = 'Username is required';
+      if (!actualPassword.trim()) errs.password = 'Password is required';
       if (Object.keys(errs).length > 0) {
         setFieldErrors(errs);
         setLoading(false);
         return;
       }
+      
+      // Sync state if form had autofilled values not caught by React
+      if (!username && actualUsername) setUsername(actualUsername);
+      if (!password && actualPassword) setPassword(actualPassword);
     } else {
       // Signup step 4: validate gender and status
       const errs = {};
@@ -378,10 +386,14 @@ export default function Login() {
 
       } else {
         // Login Logic - Look up email from username
+        const form = e.target;
+        const actualUsername = username || form.elements[0]?.value || '';
+        const actualPassword = password || form.elements[1]?.value || '';
+
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('email')
-          .eq('username', username)
+          .eq('username', actualUsername)
           .maybeSingle();
 
         if (profileError || !profileData || !profileData.email) {
@@ -390,7 +402,7 @@ export default function Login() {
 
         const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email: profileData.email,
-          password,
+          password: actualPassword,
         });
 
         if (signInError) throw signInError;
@@ -429,26 +441,7 @@ export default function Login() {
               interests: profile.interests
             }));
 
-            // SELF-HEALING: Check if Auth Metadata has a photo but Profile is default
-            // This fixes cases where the DB Trigger failed to copy the signup photo
-            const metaAvatar = data.session.user.user_metadata.avatar_url;
-            const profileAvatar = profile.avatar_url;
-            
-            if (metaAvatar && metaAvatar.startsWith('http') && (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear'))) {
-                 console.log("🚑 Avatar Mismatch Detected! Healing profile...", { metaAvatar, profileAvatar });
-                 // Force update profile
-                 await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
-                 
-                 // Update local storage to reflect the fix immediately
-                 const healedUser = JSON.parse(localStorage.getItem('currentUser'));
-                 healedUser.avatar_url = metaAvatar;
-                 localStorage.setItem('currentUser', JSON.stringify(healedUser));
-                 
-                 // Navigate with healed avatar
-                 navigate('/map', { state: { preloadedAvatar: metaAvatar } });
-            } else {
-                 navigate('/map', { state: { preloadedAvatar: profile.avatar_url } });
-            }
+            navigate('/map', { state: { preloadedAvatar: profile.avatar_url } });
 
             // Mark setup as complete since they are logging in with a valid profile
             localStorage.setItem('setup_complete', 'true');
