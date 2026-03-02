@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AgoraRTC from "agora-rtc-sdk-ng";
@@ -1619,6 +1619,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             setTimeout(() => setHighlightedMessageId(null), 2000);
         }
     };
+
+    // Memoized Handlers for MessageBubble to prevent re-renders
+    const handleScrollToMessage = useCallback((id) => scrollToMessage(id), []);
+    const handleSwipeReply = useCallback((m) => setReplyToMessage(m), []);
+    const handleToggleSelection = useCallback((id, forceState) => toggleSelection(id, forceState), []);
+    const handleViewImage = useCallback((url) => setViewingImage(url), []);
 
     // Selection Mode Handlers
     const toggleSelection = (msgId, forceState = null) => {
@@ -3594,17 +3600,18 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     return (
                         <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
                             <MessageBubble
-                                msg={{...msg, delivery_status: displayStatus}}
+                                msg={msg}
+                                deliveryStatus={displayStatus}
                                 userId={currentUser.id}
                                 partner={partner || targetUser}
                                 isSelectionMode={isSelectionMode}
                                 isSelected={isSelected}
                                 isHighlighted={highlightedMessageId === msg.id}
                                 dateHeader={dateHeader}
-                                onSwipeReply={(m) => setReplyToMessage(m)}
-                                onToggleSelection={toggleSelection}
-                                onViewImage={(url) => setViewingImage(url)}
-                                onScrollToMessage={scrollToMessage}
+                                onSwipeReply={handleSwipeReply}
+                                onToggleSelection={handleToggleSelection}
+                                onViewImage={handleViewImage}
+                                onScrollToMessage={handleScrollToMessage}
                             />
                         </React.Fragment>
                     );

@@ -2,8 +2,9 @@ import React, { useRef, memo, useEffect } from 'react';
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion';
 import MessageStatusTick from './MessageStatusTick';
 
-const MessageBubble = memo(({ 
+const MessageBubble = ({ 
     msg, 
+    deliveryStatus,
     userId, 
     partner, 
     isSelectionMode, 
@@ -240,7 +241,7 @@ const MessageBubble = memo(({
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', padding: '4px 4px 0 0', marginTop: '2px' }}>
                             <span className="msg-time-inline" style={{ margin: 0, fontSize: '0.7em', opacity: 0.7 }}>{formatTime(msg.created_at)}</span>
                             <MessageStatusTick 
-                                status={msg.delivery_status || (msg.is_read ? 'seen' : 'delivered')} 
+                                status={deliveryStatus} 
                                 isSender={isMe} 
                             />
                         </div>
@@ -331,7 +332,7 @@ const MessageBubble = memo(({
                         <span className="msg-text">{msg.content}</span>
                         <span className="msg-time-inline">{formatTime(msg.created_at)}</span>
                         <MessageStatusTick 
-                            status={msg.delivery_status || (msg.is_read ? 'seen' : 'delivered')} 
+                            status={deliveryStatus} 
                             isSender={isMe} 
                         />
                     </div>
@@ -339,6 +340,32 @@ const MessageBubble = memo(({
             </motion.div>
         </React.Fragment>
     );
-});
+};
 
-export default MessageBubble;
+// Custom comparison function for React.memo to prevent unnecessary re-renders
+const arePropsEqual = (prevProps, nextProps) => {
+    // Check primitive props
+    if (
+        prevProps.deliveryStatus !== nextProps.deliveryStatus ||
+        prevProps.isSelectionMode !== nextProps.isSelectionMode ||
+        prevProps.isSelected !== nextProps.isSelected ||
+        prevProps.isHighlighted !== nextProps.isHighlighted ||
+        prevProps.dateHeader !== nextProps.dateHeader
+    ) {
+        return false;
+    }
+
+    // Check message content and status
+    if (
+        prevProps.msg.id !== nextProps.msg.id ||
+        prevProps.msg.content !== nextProps.msg.content ||
+        prevProps.msg.delivery_status !== nextProps.msg.delivery_status ||
+        prevProps.msg.is_read !== nextProps.msg.is_read
+    ) {
+        return false;
+    }
+
+    return true; // Props are equal, no re-render needed
+};
+
+export default memo(MessageBubble, arePropsEqual);
