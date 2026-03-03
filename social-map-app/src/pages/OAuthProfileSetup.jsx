@@ -49,11 +49,11 @@ export default function OAuthProfileSetup() {
       setUserId(user.id);
       setEmail(user.email);
       
-      // Get Google profile picture if available
+      // Get Google profile picture - stored for reference only, NOT auto-applied as avatar
       const googlePhoto = user.user_metadata?.avatar_url || user.user_metadata?.picture;
       if (googlePhoto) {
         setGooglePhotoUrl(googlePhoto);
-        setAvatarPreview(googlePhoto);
+        // Do NOT call setAvatarPreview here — user must explicitly upload a photo
       }
       
       const suggestedName = user.user_metadata?.full_name || user.user_metadata?.name || '';
@@ -166,17 +166,14 @@ export default function OAuthProfileSetup() {
 
       let finalAvatarUrl;
 
-      // Priority: 1. Uploaded File, 2. Google Photo, 3. Gender Default
+      // Priority: 1. Uploaded File, 2. Gender Default (Google photo is NOT used)
       if (avatarFile) {
         // Upload custom photo
         const { fileUrl, error: uploadError } = await uploadToStorage(avatarFile, userId, null, 'chat-images');
         if (uploadError) throw uploadError;
         finalAvatarUrl = fileUrl;
-      } else if (googlePhotoUrl) {
-        // Keep Google photo
-        finalAvatarUrl = googlePhotoUrl;
       } else {
-        // Use default based on gender
+        // Use default based on gender — never fall back to Google photo
         if (gender === 'Male') finalAvatarUrl = DEFAULT_MALE_AVATAR;
         else if (gender === 'Female') finalAvatarUrl = DEFAULT_FEMALE_AVATAR;
         else finalAvatarUrl = DEFAULT_GENERIC_AVATAR;
@@ -292,7 +289,7 @@ export default function OAuthProfileSetup() {
                   />
                 </div>
                 <p style={{ fontSize: '0.9rem', color: '#aaa', margin: 0 }}>
-                    {avatarFile ? 'New photo selected' : (googlePhotoUrl ? 'Using Google Photo' : 'Upload a photo')}
+                    {avatarFile ? 'New photo selected ✓' : 'Upload a profile photo (optional)'}
                 </p>
               </div>
           </div>
@@ -323,8 +320,8 @@ export default function OAuthProfileSetup() {
               onChange={e => {
                 setGender(e.target.value);
                 clearFieldError('gender');
-                // Only update preview if no custom/google photo is active
-                if (!avatarFile && !googlePhotoUrl) {
+                // Update preview to gender default if user hasn't uploaded a custom photo
+                if (!avatarFile) {
                   const defaultAvatar = e.target.value === 'Male' ? DEFAULT_MALE_AVATAR : 
                                       e.target.value === 'Female' ? DEFAULT_FEMALE_AVATAR : 
                                       DEFAULT_GENERIC_AVATAR;

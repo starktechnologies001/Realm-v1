@@ -5,7 +5,13 @@ const LocationContext = createContext();
 
 export function LocationProvider({ children }) {
 
-  const [userLocation, setUserLocation] = useState(null);
+  // 🚀 Seed from localStorage for instant avatar rendering on re-open
+  const [userLocation, setUserLocation] = useState(() => {
+    try {
+      const cached = localStorage.getItem('lastKnownLocation');
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  });
 
   // App toggle (your internal switch)
   const [locationEnabled, setLocationEnabled] = useState(false);
@@ -59,6 +65,8 @@ export function LocationProvider({ children }) {
         setLocationEnabled(true);
         setUserLocation(newLoc);
         setLoadingLocation(false);
+        // 🔥 Persist initial GPS fix for instant avatar on next app open
+        try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
         // Start live tracking
         startWatching();
@@ -136,6 +144,8 @@ export function LocationProvider({ children }) {
           lng: pos.coords.longitude,
         };
         setUserLocation(newLoc);
+        // 🔥 Persist for instant restore on next session load
+        try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
         // Throttled DB update
         const now = Date.now();
@@ -188,7 +198,8 @@ export function LocationProvider({ children }) {
     }
 
     setLocationEnabled(false);
-    setUserLocation(null);
+    // Note: We intentionally do NOT clear `userLocation` or 'lastKnownLocation' here.
+    // This ensures the avatar appears instantly on the next map open without waiting for GPS.
 
     // ✅ If the user actively clicked the toggle to turn it off, record that choice
     if (isManualOverride) {

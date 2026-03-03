@@ -2167,9 +2167,9 @@ export default function MapHome() {
                     ${moodHTML}
                 </div>
             `,
-            iconSize: [42, 42],
-            iconAnchor: [21, 21],
-            popupAnchor: [0, -25]
+            iconSize: [45, 45],
+            iconAnchor: [22, 22],
+            popupAnchor: [0, -28]
         });
 
         iconCache.current.set(cacheKey, icon);
@@ -2336,6 +2336,55 @@ export default function MapHome() {
         // 1. Sort for stability
         return [...filteredUsers].sort((a, b) => a.id.localeCompare(b.id));
     }, [filteredUsers]);
+
+    // -------------------------------------------------------
+    // 🔥 SPREAD OFFSET: Fan out co-located avatars so all are visible
+    // Users within ~10m of each other get a small spiral offset applied
+    // to their display lat/lng. The original lat/lng is preserved for clicks.
+    // -------------------------------------------------------
+    const displayUsers = useMemo(() => {
+        if (!sortedFilteredUsers.length) return sortedFilteredUsers;
+
+        // ~0.0001 degrees ≈ 11m at equator — treat as "same spot"
+        const CLUSTER_EPSILON = 0.0001;
+        // How far apart to spread avatars (in degrees). ~0.00004 ≈ 4m per step
+        const SPREAD_RADIUS = 0.00005;
+
+        const processed = new Set();
+        const result = sortedFilteredUsers.map(u => ({ ...u })); // shallow copy
+
+        for (let i = 0; i < result.length; i++) {
+            if (processed.has(result[i].id)) continue;
+
+            const group = [i];
+            for (let j = i + 1; j < result.length; j++) {
+                if (processed.has(result[j].id)) continue;
+                const dlat = Math.abs((result[i].lat ?? 0) - (result[j].lat ?? 0));
+                const dlng = Math.abs((result[i].lng ?? 0) - (result[j].lng ?? 0));
+                if (dlat < CLUSTER_EPSILON && dlng < CLUSTER_EPSILON) {
+                    group.push(j);
+                }
+            }
+
+            if (group.length > 1) {
+                // Fan group out in a circle around their shared position
+                const centerLat = result[i].lat ?? 0;
+                const centerLng = result[i].lng ?? 0;
+                const radius = SPREAD_RADIUS * (1 + (group.length - 2) * 0.3);
+
+                group.forEach((idx, k) => {
+                    const angle = (2 * Math.PI / group.length) * k - Math.PI / 2;
+                    result[idx].lat = centerLat + radius * Math.cos(angle);
+                    result[idx].lng = centerLng + radius * Math.sin(angle);
+                    processed.add(result[idx].id);
+                });
+            } else {
+                processed.add(result[i].id);
+            }
+        }
+
+        return result;
+    }, [sortedFilteredUsers]);
     // -------------------------------------------------
     // 🔄 SYNC LOCATION STATE
     // -------------------------------------------------
@@ -2993,7 +3042,7 @@ export default function MapHome() {
 
                 {/* 🔥 NATIVE MARKERS SYNC (No React Re-Renders for GPS Motion) */}
                 <NativeMarkerSync 
-                    users={sortedFilteredUsers} 
+                    users={displayUsers} 
                     currentUser={currentUser} 
                     userLocation={userLocation} 
                     currentUserIcon={currentUserIcon}
@@ -3794,19 +3843,18 @@ export default function MapHome() {
                     pointer-events: none; 
                 }
                 
-                /* INJECTED AVATAR STYLES (Backup if App.css fails) */
                 .avatar-group {
                     position: relative;
-                    width: 42px; height: 42px;
+                    width: 48px; height: 48px;
                     overflow: visible;
                 }
                 .avatar-marker {
                     width: 100%; height: 100%;
                     background-size: cover; background-position: center;
                     border-radius: 50%;
-                    border: 3px solid #FFFFFF;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-                    background-color: #333;
+                    border: 3.5px solid #FFFFFF;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.35);
+                    background-color: #555;
                     transform: translateZ(0);  /* Force GPU compositing */
                     backface-visibility: hidden;
                 }

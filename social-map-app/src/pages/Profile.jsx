@@ -13,8 +13,10 @@ import { uploadToStorage } from '../utils/fileUpload';
 import './Profile.css';
 
 export default function Profile() {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
+    });
+    const [loading, setLoading] = useState(false); // 🚀 No spinner if cache exists
     const navigate = useNavigate();
     const [toastMsg, setToastMsg] = useState(null);
     // const [blockedUsers, setBlockedUsers] = useState([]); // Moved to BlockedUsers.jsx
@@ -144,59 +146,44 @@ export default function Profile() {
     const fetchProfile = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-            if (!user) {
-                navigate('/login');
-                return;
-            }
+            const authUser = session?.user;
+            if (!authUser) { navigate('/login'); return; }
 
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .maybeSingle();
+            // 🚀 Run profile + stories in PARALLEL
+            const [profileResult, storiesResult] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('id, username, full_name, gender, avatar_url, bio, interests, relationship_status, hide_status, show_last_seen, is_public, is_ghost_mode, is_location_on, birth_date, mood, mood_updated_at, mute_settings, chat_background, institute')
+                    .eq('id', authUser.id)
+                    .maybeSingle(),
+                supabase
+                    .from('stories')
+                    .select('id')
+                    .eq('user_id', authUser.id)
+                    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            ]);
 
-            if (error) throw error;
-
-            // Self-Healing (Legacy check removed for brevity, assuming established users or fresh setup)
-            // Note: Keeping existing self-healing if needed but simplifying for readability in this update
-            
-            // Fetch active stories (last 24h) to determine ring color
-            const { data: stories, error: storiesError } = await supabase
-                .from('stories')
-                .select('id')
-                .eq('user_id', user.id)
-                .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+            if (profileResult.error) throw profileResult.error;
+            const data = profileResult.data;
+            const stories = storiesResult.data;
 
             let hasStory = false;
             let hasUnseenStory = false;
-
             if (stories && stories.length > 0) {
                 hasStory = true;
-                // Check views
                 const { data: views } = await supabase
                     .from('story_views')
                     .select('story_id')
-                    .eq('viewer_id', user.id)
+                    .eq('viewer_id', authUser.id)
                     .in('story_id', stories.map(s => s.id));
-
                 const viewedCount = views ? views.length : 0;
-                // If I have posted 3 stories and viewed 3, then no unseen. 
-                // If I posted 3 and viewed 2, then 1 unseen.
-                // Wait, usually "Your Story" ring is blue if you have a story that *others* haven't seen? 
-                // No, standard UI is:
-                // - Blue ring (around me): I have a story that *I* haven't viewed yet (e.g. just posted and haven't watched it).
-                // - Grey ring (around me): I have viewed all my own stories.
-                // - No ring: I have no active stories.
-                
                 hasUnseenStory = viewedCount < stories.length;
-                console.log(`📸 [Profile] Stories: ${stories.length}, Views: ${viewedCount}, HasUnseen: ${hasUnseenStory}`);
             }
 
-            // Merge with profile data
-            setUser({ ...data, hasStory, hasUnseenStory });
-            
-            // Fetch blocked users - REMOVED (Handled in dedicated page)
+            const merged = { ...data, hasStory, hasUnseenStory };
+            setUser(merged);
+            // Keep localStorage in sync for map and other pages
+            localStorage.setItem('currentUser', JSON.stringify(merged));
         } catch (error) {
             console.error("Error fetching profile:", error);
         } finally {
@@ -378,7 +365,7 @@ export default function Profile() {
         updateProfile({ mute_settings: newSettings }, successMsg);
     };
 
-    if (loading) return <div style={{ color: 'white', padding: '20px' }}>Loading profile...</div>;
+    if (loading && !user) return <div style={{ color: 'white', padding: '20px' }}>Loading profile...</div>;
     if (!user) return null;
 
     const is3DAvatar = user.avatar_url?.includes('.glb');

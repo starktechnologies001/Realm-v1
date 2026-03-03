@@ -7,8 +7,12 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 
 export default function Layout() {
-    const [checkingAuth, setCheckingAuth] = useState(true);
-    const [currentUserId, setCurrentUserId] = useState(null);
+    // 🚀 Instant render: if localStorage has a user, skip the auth gate entirely
+    const hasStoredUser = !!localStorage.getItem('currentUser');
+    const [checkingAuth, setCheckingAuth] = useState(!hasStoredUser);
+    const [currentUserId, setCurrentUserId] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('currentUser') || 'null')?.id || null; } catch { return null; }
+    });
     const [friendRequestCount, setFriendRequestCount] = useState(0);
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
@@ -24,37 +28,22 @@ export default function Layout() {
             
             // Check if we already have the user in local storage to avoid extra fetch
             const userStr = localStorage.getItem('currentUser');
-            // But for OAuth, the local storage might be empty on first login
             if (!userStr) {
                 console.log("Recovering session from Supabase...");
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id, username, full_name, gender, avatar_url, status, interests')
                     .eq('id', session.user.id)
                     .maybeSingle();
                  
                 if (profile) {
-                    // 🚑 Avatar Self-Healing for OAuth/Auto-Login
-                    let finalAvatarUrl = profile.avatar_url;
-                    const metaAvatar = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
-                    
-                    if (metaAvatar && metaAvatar.startsWith('http')) {
-                        const profileAvatar = profile.avatar_url;
-                        // Heal if avatar is missing, default, or dicebear
-                        if (!profileAvatar || profileAvatar.startsWith('/defaults/') || profileAvatar.includes('dicebear')) {
-                            console.log("🚑 [Layout] Healing avatar from Google...", { metaAvatar, profileAvatar });
-                            await supabase.from('profiles').update({ avatar_url: metaAvatar }).eq('id', profile.id);
-                            finalAvatarUrl = metaAvatar;
-                        }
-                    }
-
                     const recoveredUser = {
                         id: profile.id,
                         name: profile.username || profile.full_name,
                         username: profile.username,
                         full_name: profile.full_name,
                         gender: profile.gender,
-                        avatar_url: finalAvatarUrl,
+                        avatar_url: profile.avatar_url,
                         status: profile.status || 'Online',
                         interests: profile.interests
                     };

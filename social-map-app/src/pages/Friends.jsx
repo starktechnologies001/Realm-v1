@@ -7,9 +7,13 @@ import { blockUser } from '../utils/blockUtils';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
-    const [friends, setFriends] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [currentUser, setCurrentUser] = useState(null);
+    const [friends, setFriends] = useState(() => {
+        try { return JSON.parse(sessionStorage.getItem('friends_cache') || '[]'); } catch { return []; }
+    });
+    const [loading, setLoading] = useState(false); // 🚀 No blocking loading screen
+    const [currentUser, setCurrentUser] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
+    });
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [activeTab, setActiveTab] = useState('friends');
     
@@ -28,48 +32,34 @@ export default function Friends() {
         }
         setCurrentUser(user);
 
-        // Fetch Pending Requests (where I am receiver)
-        const { data: pending } = await supabase
-            .from('friendships')
-            .select(`
-                id, 
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)
-            `)
-            .eq('receiver_id', user.id)
-            .eq('status', 'pending');
+        // 🚀 Run both queries in PARALLEL for 2x speed
+        const [pendingResult, myFriendsResult] = await Promise.all([
+            supabase
+                .from('friendships')
+                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)')
+                .eq('receiver_id', user.id)
+                .eq('status', 'pending'),
+            supabase
+                .from('friendships')
+                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)')
+                .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
+                .eq('status', 'accepted')
+        ]);
 
-        if (pending) {
-            setRequests(pending.map(p => ({
-                friendship_id: p.id,
-                ...p.requester
-            })));
+        if (pendingResult.data) {
+            setRequests(pendingResult.data.map(p => ({ friendship_id: p.id, ...p.requester })));
         }
 
-        // Fetch Friends (I am requester OR receiver, status accepted)
-        const { data: myFriends } = await supabase
-            .from('friendships')
-            .select(`
-                id,
-                requester_id,
-                receiver_id,
-                requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen),
-                receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)
-            `)
-            .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
-            .eq('status', 'accepted');
-
-        if (myFriends) {
-            const formatted = myFriends.map(f => {
+        if (myFriendsResult.data) {
+            const formatted = myFriendsResult.data.map(f => {
                 const isRequester = f.requester_id === user.id;
                 const profile = isRequester ? f.receiver : f.requester;
-                return {
-                    friendship_id: f.id,
-                    ...profile
-                };
+                return { friendship_id: f.id, ...profile };
             });
             setFriends(formatted);
+            // 🔥 Cache for instant render next time
+            try { sessionStorage.setItem('friends_cache', JSON.stringify(formatted)); } catch {}
         }
-        setLoading(false);
     };
 
     useEffect(() => {
