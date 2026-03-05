@@ -278,9 +278,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         </div>
                     </div>
 
-                    {canViewDetails && user.thought && (
+                    {canViewDetails && (user.thought || user.status_message) && (
                         <div className="thought-bubble-large">
-                            {user.thought}
+                            {user.thought || user.status_message}
                         </div>
                     )}
 

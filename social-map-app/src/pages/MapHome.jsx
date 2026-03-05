@@ -2340,6 +2340,7 @@ export default function MapHome() {
 
         setSelectedUser({
             ...u,
+            thought: u.thought || u.status_message, // ensure both field names work
             friendshipStatus: data?.status || u.friendshipStatus || null,
             friendshipId: data?.id || u.friendshipId || null,
             requesterId: data?.requester_id || null,
