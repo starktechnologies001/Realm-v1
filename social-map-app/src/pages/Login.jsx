@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { uploadToStorage } from '../utils/fileUpload';
@@ -7,7 +7,8 @@ import {
   DEFAULT_FEMALE_AVATAR, 
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
-import ImageCropper from '../components/ImageCropper';
+// 🚀 ImageCropper is only needed after a user selects a photo — lazy load it
+const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
@@ -1452,11 +1453,13 @@ export default function Login() {
 
       `}</style>
       {cropImage && (
-        <ImageCropper
-            imageSrc={cropImage}
-            onCropComplete={onCropComplete}
-            onCancel={onCropCancel}
-        />
+        <Suspense fallback={null}>
+          <ImageCropper
+              imageSrc={cropImage}
+              onCropComplete={onCropComplete}
+              onCancel={onCropCancel}
+          />
+        </Suspense>
       )}
     </div>
   );

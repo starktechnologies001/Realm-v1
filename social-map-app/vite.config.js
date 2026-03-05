@@ -4,4 +4,46 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  build: {
+    // Target modern browsers — smaller output, no legacy polyfills
+    target: 'es2020',
+
+    // Strip console.* calls in production for performance
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.warn', 'console.info'],
+      },
+    },
+
+    rollupOptions: {
+      output: {
+        // Manual chunk splitting — each vendor is cached independently
+        manualChunks: {
+          // React core — tiny, changes never
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+
+          // Leaflet + react-leaflet — large, changes rarely
+          'vendor-leaflet': ['leaflet', 'react-leaflet'],
+
+          // Supabase — large SDK, changes rarely
+          'vendor-supabase': ['@supabase/supabase-js'],
+
+          // Framer Motion — animation library, changes rarely
+          'vendor-framer': ['framer-motion'],
+        },
+      },
+    },
+
+    // Warn when any single chunk exceeds 600kb
+    chunkSizeWarningLimit: 600,
+  },
+
+  // Optimise deps pre-bundling
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'leaflet', 'react-leaflet', 'framer-motion'],
+  },
 })

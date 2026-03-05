@@ -2,9 +2,11 @@ import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
-import Avatar3D from '../components/Avatar3D';
-import AvatarEditor from '../components/AvatarEditor';
-import ImageCropper from '../components/ImageCropper';
+
+// 🚀 Lazy-loaded heavy components — only download when needed
+const Avatar3D = React.lazy(() => import('../components/Avatar3D'));
+const AvatarEditor = React.lazy(() => import('../components/AvatarEditor'));
+const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
 import { useTheme } from '../context/ThemeContext';
 import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
@@ -374,20 +376,24 @@ export default function Profile() {
         <div className="profile-page">
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
-            {/* Image Cropper Modal */}
+            {/* Image Cropper Modal — load the cropper library only when user picks a photo */}
             {cropImage && (
-                <ImageCropper
-                    imageSrc={cropImage}
-                    onCropComplete={onCropComplete}
-                    onCancel={onCropCancel}
-                />
+                <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}><div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>}>
+                    <ImageCropper
+                        imageSrc={cropImage}
+                        onCropComplete={onCropComplete}
+                        onCancel={onCropCancel}
+                    />
+                </Suspense>
             )}
 
             {showAvatarEditor && (
-                <AvatarEditor 
-                    onSave={handleAvatarSave} 
-                    onClose={() => setShowAvatarEditor(false)} 
-                />
+                <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}><div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>}>
+                    <AvatarEditor 
+                        onSave={handleAvatarSave} 
+                        onClose={() => setShowAvatarEditor(false)} 
+                    />
+                </Suspense>
             )}
 
             {/* Header Card */}
@@ -395,7 +401,13 @@ export default function Profile() {
                 <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
                     {is3DAvatar ? (
                         <div className="avatar-3d-container">
-                             <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
+                            <Suspense fallback={
+                                <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ width: 30, height: 30, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                </div>
+                            }>
+                                <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
+                            </Suspense>
                         </div>
                     ) : (
                         <img src={(() => {

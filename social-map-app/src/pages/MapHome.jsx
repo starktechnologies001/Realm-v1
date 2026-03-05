@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -16,7 +16,8 @@ import LimitedModeScreen from '../components/LimitedModeScreen';
 import StoryViewer from '../components/StoryViewer';
 import { uploadToStorage } from '../utils/fileUpload';
 import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
-import ImageCropper from '../components/ImageCropper';
+// 🚀 Lazy-loaded: only downloads when user picks a photo to crop
+const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
 import BottomNav from '../components/BottomNav';
 
 // Fix icon issues
@@ -465,6 +466,7 @@ export default function MapHome() {
 
     const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
     const blockedIdsRef = useRef(new Set()); // Blocked users cache
+    const blockChannelRef = useRef(null);    // 🚀 Reuse subscribed channel for instant broadcasts
 
     const [nearbyUsers, setNearbyUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -922,8 +924,10 @@ export default function MapHome() {
                 }
             })
             .subscribe((status) => {
-                if(status === 'SUBSCRIBED') {
-                    console.log('⚡ Subscribed to global_map_events');
+                if (status === 'SUBSCRIBED') {
+                    // Store reference so handleUserAction can broadcast directly without
+                    // creating a new throwaway channel that never fires in time
+                    blockChannelRef.current = blockChannel;
                 }
             });
 
@@ -1988,22 +1992,20 @@ export default function MapHome() {
                         await supabase.from('friendships').delete().eq('id', targetUser.friendshipId);
                     }
                     
-                    // Dispatch to other tabs just in case (same device)
-                    if (mapEventChannel && mapEventChannel.postMessage) {
+                    // Dispatch to other tabs on same device via BroadcastChannel
+                    if (mapEventChannel?.postMessage) {
                         mapEventChannel.postMessage({ type: 'USER_BLOCKED', userId: targetUser.id });
                     }
-                    
-                    // Push Cross-Device Broadcast
-                    const broadcastChan = supabase.channel('global_map_events');
-                    broadcastChan.subscribe((status) => {
-                        if (status === 'SUBSCRIBED') {
-                            broadcastChan.send({
-                                type: 'broadcast',
-                                event: 'USER_BLOCKED_CROSS_DEVICE',
-                                payload: { blocker_id: currentUser.id, blocked_id: targetUser.id }
-                            });
-                        }
-                    });
+
+                    // 🚀 Push cross-device broadcast using the ALREADY-SUBSCRIBED channel (instant!)
+                    // Do NOT create a new channel here — it takes too long to establish
+                    if (blockChannelRef.current) {
+                        blockChannelRef.current.send({
+                            type: 'broadcast',
+                            event: 'USER_BLOCKED_CROSS_DEVICE',
+                            payload: { blocker_id: currentUser.id, blocked_id: targetUser.id }
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('Block error:', err);
@@ -2593,17 +2595,19 @@ export default function MapHome() {
 
                 {/* Cropper Modal for Onboarding */}
                 {cropImage && (
-                    <ImageCropper
-                        imageSrc={cropImage}
-                        zIndex={10000000}
-                        onCancel={() => setCropImage(null)}
-                        onCropComplete={(croppedBlob) => {
-                            const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                            setAvatarFile(file);
-                            setAvatarPreview(URL.createObjectURL(file));
-                            setCropImage(null);
-                        }}
-                    />
+                    <Suspense fallback={null}>
+                        <ImageCropper
+                            imageSrc={cropImage}
+                            zIndex={10000000}
+                            onCancel={() => setCropImage(null)}
+                            onCropComplete={(croppedBlob) => {
+                                const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                                setAvatarFile(file);
+                                setAvatarPreview(URL.createObjectURL(file));
+                                setCropImage(null);
+                            }}
+                        />
+                    </Suspense>
                 )}
             </div>
         );
@@ -2950,17 +2954,19 @@ export default function MapHome() {
 
             {/* Cropper Modal */}
             {cropImage && (
-                <ImageCropper
-                    imageSrc={cropImage}
-                    zIndex={10000000}
-                    onCancel={() => setCropImage(null)}
-                    onCropComplete={(croppedBlob) => {
-                        const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                        setAvatarFile(file);
-                        setAvatarPreview(URL.createObjectURL(file));
-                        setCropImage(null);
-                    }}
-                />
+                <Suspense fallback={null}>
+                    <ImageCropper
+                        imageSrc={cropImage}
+                        zIndex={10000000}
+                        onCancel={() => setCropImage(null)}
+                        onCropComplete={(croppedBlob) => {
+                            const file = new File([croppedBlob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                            setAvatarFile(file);
+                            setAvatarPreview(URL.createObjectURL(file));
+                            setCropImage(null);
+                        }}
+                    />
+                </Suspense>
             )}
 
             {/* Loading Overlay while fetching GPS */}
@@ -3002,10 +3008,11 @@ export default function MapHome() {
                 style={{ height: '100dvh', width: '100%', outline: 'none' }} 
                 zoomControl={false}
                 attributionControl={false}
-                scrollWheelZoom={true} // 🔥 Re-enabled per user request
+                scrollWheelZoom={true}
                 doubleClickZoom={true}
                 dragging={true}
                 zoomAnimation={true}
+                preferCanvas={true}
             >
                 {/* Map Layers based on State */}
                 {mapMode === 'street' && (
@@ -3016,6 +3023,9 @@ export default function MapHome() {
                         maxNativeZoom={20}
                         maxZoom={22}
                         keepBuffer={4}
+                        updateWhenIdle={true}
+                        updateWhenZooming={false}
+                        tileSize={256}
                     />
                 )}
                 {mapMode === 'hybrid' && (
@@ -3025,6 +3035,9 @@ export default function MapHome() {
                         maxNativeZoom={20}
                         maxZoom={22}
                         keepBuffer={4}
+                        updateWhenIdle={true}
+                        updateWhenZooming={false}
+                        tileSize={256}
                     />
                 )}
                 {mapMode === 'satellite' && (
@@ -3034,6 +3047,9 @@ export default function MapHome() {
                         maxNativeZoom={20}
                         maxZoom={22}
                         keepBuffer={4}
+                        updateWhenIdle={true}
+                        updateWhenZooming={false}
+                        tileSize={256}
                     />
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />

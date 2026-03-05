@@ -5,9 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="manifest" href="/manifest.json" />
+
+    <!-- 🔥 Resource hints — pre-resolve DNS & open connections before JS runs -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Google Maps tile servers -->
+    <link rel="dns-prefetch" href="https://mt0.google.com">
+    <link rel="dns-prefetch" href="https://mt1.google.com">
+    <link rel="dns-prefetch" href="https://mt2.google.com">
+    <link rel="dns-prefetch" href="https://mt3.google.com">
+
+    <!-- Non-render-blocking font load: loads as print, swaps to all once downloaded -->
+    <link rel="preload" as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+
     <title>Nearo</title>
   </head>
   <body>
