@@ -6,21 +6,12 @@ import { calculateDistance, formatDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 
 
-export default function MapProfileCard({ user, onClose, onAction, currentUser }) {
+export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation }) {
     if (!user) return null;
     const navigate = useNavigate();
 
-    // Debug: Log user data to see what's available
-    console.log('🔵 [MapProfileCard] User data:', user);
-    console.log('🔵 [MapProfileCard] Avatar:', user.avatar);
-    console.log('🔵 [MapProfileCard] Avatar URL:', user.avatar_url);
-
     // Get the avatar URL and convert GLB to PNG if needed
-    // Use unified utility - user.avatar (from MapHome) should already be processed, but double checking doesn't hurt.
     const displayAvatar = getAvatar2D(user.avatar || user.avatar_url);
-    console.log('🔵 [MapProfileCard] Display Avatar:', displayAvatar);
-    console.log('🔵 [MapProfileCard] hide_status:', user.hide_status);
-    console.log('🔵 [MapProfileCard] FULL USER OBJECT:', user);
 
     // Privacy Logic hierarchy
     const isOwner = currentUser?.id === user.id;
@@ -48,30 +39,29 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
         return 'Offline';
     };
 
-    // Calculate Distance
-    const distanceMeters = calculateDistance(
-        currentUser?.latitude, 
-        currentUser?.longitude, 
-        user.lat || user.latitude, 
-        user.lng || user.longitude
-    );
-    const distanceStr = formatDistance(distanceMeters);
+    // Calculate Distance — prefer live GPS coords from userLocation, fall back to DB
+    const myLat = userLocation?.lat ?? currentUser?.latitude;
+    const myLng = userLocation?.lng ?? currentUser?.longitude;
+    const theirLat = user.lat || user.latitude;
+    const theirLng = user.lng || user.longitude;
+    const distanceMeters = calculateDistance(myLat, myLng, theirLat, theirLng);
+
+    const distanceStr = (() => {
+        if (distanceMeters === null || distanceMeters === undefined) return null;
+        if (distanceMeters < 1000) return `${Math.round(distanceMeters)} m away`;
+        return `${(distanceMeters / 1000).toFixed(1)} km away`;
+    })();
 
     // Interaction States
     const [isFullPhoto, setIsFullPhoto] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     
-    // Debug: Log when isFullPhoto changes
-    useEffect(() => {
-        console.log('📸 [MapProfileCard] isFullPhoto changed to:', isFullPhoto);
-    }, [isFullPhoto]);
-    
+
     // Long Press Logic
     const longPressTimer = useRef(null);
     const isLongPress = useRef(false);
 
     const startPress = useCallback((e) => {
-        // e.preventDefault(); // Prevent ghost clicks? Careful with scrolling.
         isLongPress.current = false;
         longPressTimer.current = setTimeout(() => {
             isLongPress.current = true;
@@ -82,8 +72,6 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
     }, []);
 
     const endPress = useCallback((e) => {
-        console.log('👆 [MapProfileCard] endPress called');
-        
         if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
@@ -97,11 +85,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
         }
 
         // Single Tap Logic - Refined based on status availability
-        console.log('👆 [MapProfileCard] Single tap detected');
-        
-        // Determine action based on status visibility
         const tapAction = getAvatarTapAction(user, currentUser);
-        console.log('👆 [MapProfileCard] Tap action:', tapAction);
         
         if (tapAction === 'view-status') {
             // User has status and viewer can see it
@@ -377,13 +361,15 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser })
                             <span className="label">Block</span>
                         </button>
 
-                         <div 
-                            className="action-btn secondary-action"
-                            style={{ cursor: 'default', opacity: 0.8 }}
-                        >
-                            <span className="icon">📍</span>
-                            <span className="label">{distanceStr || 'N/A'}</span>
-                        </div>
+                        {distanceStr && (
+                            <div
+                                className="action-btn"
+                                style={{ cursor: 'default', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.25)' }}
+                            >
+                                <span className="icon">📍</span>
+                                <span className="label" style={{ color: '#FFD700', fontVariantNumeric: 'tabular-nums' }}>{distanceStr}</span>
+                            </div>
+                        )}
                     </div>
 
                 </motion.div>

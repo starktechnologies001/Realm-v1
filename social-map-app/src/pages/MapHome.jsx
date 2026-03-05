@@ -2154,7 +2154,24 @@ export default function MapHome() {
         if (mood && moodUpdatedAt) {
             const isExpired = new Date(moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
             if (!isExpired) {
-                moodHTML = `<div class="mood-badge" style="position: absolute; bottom: -8px; right: -8px; font-size: 1.2rem; line-height: 1; z-index: 10;">${mood}</div>`;
+                moodHTML = `<div class="mood-badge" style="
+                    position: absolute;
+                    top: -10px;
+                    right: -10px;
+                    font-size: 1.05rem;
+                    line-height: 1;
+                    z-index: 20;
+                    background: rgba(28,28,30,0.82);
+                    border: 1.5px solid rgba(255,255,255,0.18);
+                    border-radius: 50%;
+                    width: 22px;
+                    height: 22px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(255,255,255,0.08);
+                    pointer-events: none;
+                ">${mood}</div>`;
             }
         }
 
@@ -3323,6 +3340,7 @@ export default function MapHome() {
             <MapProfileCard
                 user={selectedUser}
                 currentUser={currentUser}
+                userLocation={userLocation}
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
             />
