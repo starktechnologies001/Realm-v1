@@ -110,71 +110,70 @@ export default function Login() {
     setFieldErrors({});
     
     if (signupStep === 1) {
-      // Validate Email Format
+      // Validate Everything for Step 1
+      let errs = {};
+      
       if (!email.trim()) {
-        setFieldErrors({ email: 'Email address is required' });
+        errs.email = 'Email address is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errs.email = 'Please enter a valid email address';
+      }
+      
+      if (!username.trim() || username.length < 3) {
+        errs.username = 'Username must be at least 3 characters';
+      }
+      
+      if (!password.trim()) {
+        errs.password = 'Password is required';
+      } else if (!validatePassword(password)) {
+        errs.password = 'Password must be 8+ chars with Upper, Lower, Number & Symbol';
+      }
+      
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
         return;
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setFieldErrors({ email: 'Please enter a valid email address' });
+
+      if (usernameError) {
+        setFieldErrors({ username: 'Username already exists' });
         return;
       }
       
-      // Check if email already exists
+      setLoading(true);
+      
       try {
-        const { data, error } = await supabase
+        // Check if email already exists
+        const { data: emailData } = await supabase
           .from('profiles')
           .select('email')
           .eq('email', email.toLowerCase())
           .maybeSingle();
         
-        if (data) {
+        if (emailData) {
           showMessage('Email is already registered. Please login.', 'error');
+          setLoading(false);
           return;
         }
-      } catch (err) {
-        console.error('Email check error:', err);
-      }
-      
-      setSignupStep(2);
-    } else if (signupStep === 2) {
-      // Validate Username & Check Availability
-      if (!username.trim() || username.length < 3) {
-        setFieldErrors({ username: 'Username must be at least 3 characters' });
-        return;
-      }
-      if (usernameError) {
-        setFieldErrors({ username: 'Username already exists' });
-        return;
-      }
-      // Double-check availability before proceeding
-      try {
-        const { data } = await supabase
+
+        // Double-check username availability
+        const { data: userData } = await supabase
           .from('profiles')
           .select('username')
           .eq('username', username)
           .maybeSingle();
         
-        if (data) {
+        if (userData) {
           setFieldErrors({ username: 'Username already exists' });
           setUsernameError('Username is already taken');
+          setLoading(false);
           return;
         }
       } catch (err) {
-        // No match found, username is available
+        console.error('Validation check error:', err);
       }
-      setSignupStep(3);
-    } else if (signupStep === 3) {
-      // Validate Password
-      if (!password.trim()) {
-        setFieldErrors({ password: 'Password is required' });
-        return;
-      }
-      if (!validatePassword(password)) {
-        setFieldErrors({ password: 'Password must be 8+ chars with Upper, Lower, Number & Symbol' });
-        return;
-      }
-      setSignupStep(4);
+      
+      setLoading(false);
+      setSignupStep(2);
     }
   };
 
@@ -191,7 +190,7 @@ export default function Login() {
   // Check Username Availability
   React.useEffect(() => {
     const checkUsername = async () => {
-      if (!username || username.length < 3 || !isSignUp || signupStep !== 2) {
+      if (!username || username.length < 3 || !isSignUp || signupStep !== 1) {
         setUsernameError('');
         return;
       }
@@ -570,17 +569,14 @@ export default function Login() {
                 <div className={`step ${signupStep >= 1 ? 'active' : ''}`}>1</div>
                 <div className="step-line"></div>
                 <div className={`step ${signupStep >= 2 ? 'active' : ''}`}>2</div>
-                <div className="step-line"></div>
-                <div className={`step ${signupStep >= 3 ? 'active' : ''}`}>3</div>
-                <div className="step-line"></div>
-                <div className={`step ${signupStep >= 4 ? 'active' : ''}`}>4</div>
               </div>
 
-              {/* Step 1: Email */}
+              {/* Step 1: Account Details */}
               {signupStep === 1 && (
                 <div className="signup-step">
-                  <h3 className="step-title">What's your email?</h3>
-                  <div className="input-group">
+                  <h3 className="step-title">Create your account</h3>
+                  
+                  <div className="input-group" style={{ marginBottom: '16px' }}>
                     <input
                       type="email"
                       className="input-field"
@@ -590,16 +586,10 @@ export default function Login() {
                       style={fieldErrors.email ? { borderColor: '#ff453a' } : {}}
                       autoFocus
                     />
-                    {fieldErrors.email && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.email}</span>}
+                    {fieldErrors.email && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '6px', display: 'block', marginLeft: '4px' }}>{fieldErrors.email}</span>}
                   </div>
-                </div>
-              )}
 
-              {/* Step 2: Username */}
-              {signupStep === 2 && (
-                <div className="signup-step">
-                  <h3 className="step-title">Choose a username</h3>
-                  <div className="input-group">
+                  <div className="input-group" style={{ marginBottom: '16px' }}>
                     <input
                       type="text"
                       className="input-field"
@@ -607,18 +597,11 @@ export default function Login() {
                       value={username}
                       onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
                       style={(usernameError || fieldErrors.username) ? { borderColor: '#ff453a' } : {}}
-                      autoFocus
                     />
-                    {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
-                    {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
+                    {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '16px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
+                    {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '6px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
                   </div>
-                </div>
-              )}
 
-              {/* Step 3: Password */}
-              {signupStep === 3 && (
-                <div className="signup-step">
-                  <h3 className="step-title">Create a secure password</h3>
                   <div className="input-group" style={{ position: 'relative' }}>
                     <input
                       type={showPassword ? "text" : "password"}
@@ -627,12 +610,11 @@ export default function Login() {
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
                       style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
-                      autoFocus
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
+                      style={{ position: 'absolute', right: '14px', top: '24px', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
@@ -655,8 +637,8 @@ export default function Login() {
                 </div>
               )}
 
-              {/* Step 4: Profile Details */}
-              {signupStep === 4 && (
+              {/* Step 2: Profile Details */}
+              {signupStep === 2 && (
                 <div className="signup-step">
                   <h3 className="step-title">Complete your profile</h3>
                   
@@ -814,7 +796,7 @@ export default function Login() {
                     ← Back
                   </button>
                 )}
-                {signupStep < 4 ? (
+                {signupStep < 2 ? (
                   <button type="button" onClick={handleNextStep} className="btn-next">
                     Next →
                   </button>
@@ -975,13 +957,13 @@ export default function Login() {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
         :root {
-          --glass-border: rgba(255, 255, 255, 0.09);
+          --glass-border: rgba(255, 255, 255, 0.05);
           --brand-blue: #0a84ff;
-          --brand-gradient: linear-gradient(135deg, #0055ff 0%, #00b4ff 100%);
-          --brand-glow: 0 4px 24px rgba(0, 140, 255, 0.35);
+          --brand-gradient: linear-gradient(135deg, #0a84ff 0%, #0051ff 100%);
+          --brand-glow: 0 8px 32px rgba(10, 132, 255, 0.25);
           --text-primary: #ffffff;
-          --text-secondary: rgba(255, 255, 255, 0.55);
-          --input-bg: rgba(255, 255, 255, 0.04);
+          --text-secondary: rgba(255, 255, 255, 0.5);
+          --input-bg: rgba(0, 0, 0, 0.3);
         }
 
         .login-container {
@@ -990,13 +972,13 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background-color: #080810;
+          background-color: #030304;
           background-image:
-            radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 100, 255, 0.22) 0%, transparent 70%),
-            radial-gradient(ellipse 60% 40% at 90% 100%, rgba(0, 180, 255, 0.1) 0%, transparent 60%),
-            radial-gradient(ellipse 40% 30% at 10% 80%, rgba(120, 40, 255, 0.08) 0%, transparent 50%);
+            radial-gradient(circle at 50% -20%, rgba(10, 132, 255, 0.12) 0%, transparent 60%),
+            radial-gradient(circle at 100% 100%, rgba(120, 40, 255, 0.06) 0%, transparent 50%),
+            radial-gradient(circle at 0% 100%, rgba(0, 200, 255, 0.03) 0%, transparent 40%);
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          padding: 20px;
+          padding: 16px;
           padding-bottom: env(safe-area-inset-bottom);
           overflow-y: auto;
           box-sizing: border-box;
@@ -1004,28 +986,27 @@ export default function Login() {
 
         .login-card {
           width: 100%;
-          max-width: 400px;
-          background: rgba(18, 18, 28, 0.75);
-          backdrop-filter: blur(32px) saturate(180%);
-          -webkit-backdrop-filter: blur(32px) saturate(180%);
+          max-width: 420px;
+          background: rgba(18, 18, 22, 0.55);
+          backdrop-filter: blur(48px) saturate(180%);
+          -webkit-backdrop-filter: blur(48px) saturate(180%);
           border-radius: 28px;
-          padding: 44px 36px 40px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 24px 24px 20px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
           box-shadow:
-            0 0 0 1px rgba(0, 100, 255, 0.08),
+            0 0 0 1px rgba(255, 255, 255, 0.02),
             0 32px 64px rgba(0, 0, 0, 0.5),
-            0 8px 32px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255,255,255,0.08);
+            inset 0 1px 0 rgba(255,255,255,0.06);
           display: flex;
           flex-direction: column;
           align-items: center;
           position: relative;
           overflow: hidden;
-          animation: cardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
 
         @keyframes cardIn {
-          from { opacity: 0; transform: translateY(24px) scale(0.97); }
+          from { opacity: 0; transform: translateY(24px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
 
@@ -1034,43 +1015,42 @@ export default function Login() {
           content: '';
           position: absolute;
           top: 0; left: 15%; right: 15%; height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(80, 180, 255, 0.6), transparent);
+          background: linear-gradient(90deg, transparent, rgba(10, 132, 255, 0.5), transparent);
           border-radius: 50%;
         }
 
-        /* Ambient glow blob */
+        /* Ambient inner glow */
         .login-card::after {
           content: '';
           position: absolute;
-          top: -80px; left: 50%; transform: translateX(-50%);
+          top: -100px; left: 50%; transform: translateX(-50%);
           width: 300px; height: 200px;
-          background: radial-gradient(ellipse, rgba(0, 100, 255, 0.12) 0%, transparent 70%);
+          background: radial-gradient(ellipse, rgba(10, 132, 255, 0.1) 0%, transparent 60%);
           pointer-events: none;
         }
 
         @media (max-width: 480px) {
-          .login-card { padding: 36px 24px 32px; border-radius: 24px; }
+          .login-card { padding: 20px 16px 16px; border-radius: 24px; }
         }
 
         .app-title {
-          font-size: clamp(4.5rem, 12vw, 6.5rem);
+          font-size: clamp(2rem, 7vw, 2.8rem);
           font-weight: 800;
-          margin: 10px 0 20px 0;
-          background: linear-gradient(135deg, #0052cc 0%, #00c6ff 100%);
+          margin: 0 0 4px 0;
+          background: linear-gradient(135deg, #ffffff 0%, #a5caff 100%);
           -webkit-background-clip: text;
           background-clip: text;
           color: transparent;
-          text-shadow: 0 10px 50px rgba(163, 193, 225, 0.5);
-          letter-spacing: -2px;
-          padding: 0 20px;
-          line-height: 1;
+          text-shadow: 0 10px 40px rgba(10, 132, 255, 0.2);
+          letter-spacing: -1.2px;
+          line-height: 1.1;
           display: inline-block;
         }
 
         .app-subtitle {
           color: var(--text-secondary);
-          font-size: 0.88rem;
-          margin: 0 0 30px 0;
+          font-size: 0.85rem;
+          margin: 0 0 16px 0;
           font-weight: 500;
           letter-spacing: 0.2px;
         }
@@ -1078,39 +1058,39 @@ export default function Login() {
         /* Segmented pill toggle */
         .auth-toggle {
           display: flex;
-          background: rgba(255, 255, 255, 0.05);
+          background: rgba(0, 0, 0, 0.25);
           padding: 4px;
-          border-radius: 16px;
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.04);
           width: 100%;
-          margin-bottom: 28px;
+          margin-bottom: 16px;
         }
 
         .toggle-btn {
           flex: 1;
-          padding: 10px 0;
+          padding: 12px 0;
           background: transparent;
           border: none;
-          color: var(--text-secondary);
+          color: rgba(255, 255, 255, 0.45);
           font-weight: 600;
-          font-size: 0.88rem;
-          letter-spacing: 0.2px;
-          border-radius: 12px;
+          font-size: 0.9rem;
+          letter-spacing: 0.3px;
+          border-radius: 16px;
           cursor: pointer;
-          transition: all 0.25s ease;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .toggle-btn.active {
-          background: rgba(255, 255, 255, 0.11);
+          background: rgba(255, 255, 255, 0.08); /* Sophisticated Dark Pill */
           color: white;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
         }
 
         .login-form {
           width: 100%;
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 10px;
         }
 
         .input-group {
@@ -1121,75 +1101,70 @@ export default function Login() {
         .input-field {
           width: 100%;
           background: var(--input-bg);
-          border: 1px solid rgba(255, 255, 255, 0.09);
-          padding: 16px 48px 16px 16px;
-          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          padding: 12px 36px 12px 14px;
+          border-radius: 12px;
           color: white;
-          font-size: 1rem;
+          font-size: 0.9rem;
           font-family: inherit;
+          font-weight: 500;
           outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
           box-sizing: border-box;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
 
-        .input-field::placeholder { color: rgba(255, 255, 255, 0.3); }
+        .input-field::placeholder { color: rgba(255, 255, 255, 0.25); font-weight: 400; }
 
         .input-field:focus {
-          border-color: rgba(80, 160, 255, 0.6);
-          background: rgba(0, 100, 255, 0.05);
-          box-shadow: 0 0 0 3px rgba(0, 120, 255, 0.12);
+          border-color: rgba(10, 132, 255, 0.4);
+          background: rgba(10, 132, 255, 0.03);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 0 0 4px rgba(10, 132, 255, 0.1);
         }
 
         .btn-primary {
           width: 100%;
-          padding: 15px;
+          padding: 12px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 14px;
+          border-radius: 12px;
           color: white;
-          font-size: 0.95rem;
+          font-size: 0.9rem;
           font-weight: 700;
           font-family: inherit;
-          letter-spacing: 0.2px;
+          letter-spacing: 0.3px;
           cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
-          box-shadow: var(--brand-glow);
-          margin-top: 6px;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: var(--brand-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+          margin-top: 4px;
           position: relative;
-          overflow: hidden;
         }
 
-        .btn-primary::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent);
-          border-radius: inherit;
-          pointer-events: none;
+        .btn-primary:hover { 
+          transform: translateY(-2px); 
+          box-shadow: 0 12px 40px rgba(10, 132, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.2); 
         }
-
-        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
         .btn-primary:active { transform: scale(0.98); filter: brightness(0.95); }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; transform: none; filter: none; }
 
         /* Forgot password */
         .forgot-link {
-          color: rgba(100, 180, 255, 0.8);
-          font-size: 0.82rem;
+          color: rgba(100, 180, 255, 0.85);
+          font-size: 0.85rem;
           cursor: pointer;
           text-align: right;
           font-weight: 500;
           transition: color 0.2s;
-          margin-top: -4px;
+          margin-top: -6px;
         }
-        .forgot-link:hover { color: #60b4ff; }
+        .forgot-link:hover { color: #80c4ff; }
 
         .auth-separator {
           width: 100%;
           display: flex;
           align-items: center;
-          margin: 20px 0;
-          color: var(--text-secondary);
+          margin: 16px 0 16px;
+          color: rgba(255, 255, 255, 0.3);
         }
 
         .auth-separator::before,
@@ -1197,59 +1172,63 @@ export default function Login() {
           content: '';
           flex: 1;
           height: 1px;
-          background: rgba(255, 255, 255, 0.07);
+          background: rgba(255, 255, 255, 0.08);
         }
 
         .auth-separator span {
-          padding: 0 12px;
+          padding: 0 16px;
           text-transform: uppercase;
-          font-size: 0.68rem;
-          letter-spacing: 1px;
-          font-weight: 500;
+          font-size: 0.7rem;
+          letter-spacing: 1.5px;
+          font-weight: 600;
         }
 
         .btn-google {
           width: 100%;
-          background: rgba(255, 255, 255, 0.97);
-          color: #111;
+          background: rgba(255, 255, 255, 0.04);
+          color: white;
           font-weight: 600;
           font-family: inherit;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 10px;
-          padding: 14px;
-          border-radius: 14px;
-          border: none;
+          padding: 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
           cursor: pointer;
-          font-size: 0.9rem;
-          letter-spacing: 0.1px;
-          transition: all 0.2s;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+          font-size: 0.85rem;
+          letter-spacing: 0.2px;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-google:hover { background: #fff; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+        .btn-google:hover { 
+          background: rgba(255, 255, 255, 0.08); 
+          border-color: rgba(255, 255, 255, 0.15);
+          transform: translateY(-1px);
+        }
         .btn-google:active { transform: scale(0.98); }
 
         /* Alert */
         .alert-message {
-          display: flex; align-items: flex-start; gap: 10px;
-          padding: 13px 15px;
-          border-radius: 12px;
+          display: flex; align-items: flex-start; gap: 12px;
+          padding: 16px;
+          border-radius: 14px;
           font-size: 0.875rem;
           line-height: 1.45;
           width: 100%;
-          animation: slideIn 0.25s ease-out;
+          animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           text-align: left;
           box-sizing: border-box;
-          margin-bottom: 16px;
+          margin-bottom: 20px;
+          font-weight: 500;
         }
         @keyframes slideIn {
-          from { opacity: 0; transform: translateY(-6px); }
-          to   { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .alert-error { background: rgba(255, 60, 50, 0.1); border: 1px solid rgba(255, 60, 50, 0.25); color: #ff6259; }
-        .alert-success { background: rgba(52, 199, 89, 0.1); border: 1px solid rgba(52, 199, 89, 0.25); color: #34c759; }
-        .alert-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+        .alert-error { background: rgba(255, 60, 50, 0.12); border: 1px solid rgba(255, 60, 50, 0.25); color: #ff6a62; }
+        .alert-success { background: rgba(52, 199, 89, 0.12); border: 1px solid rgba(52, 199, 89, 0.25); color: #4ade80; }
+        .alert-icon { font-size: 1.1rem; margin-top: 1px; flex-shrink: 0; }
         .alert-content { flex: 1; }
 
         /* Step Indicator */
@@ -1257,199 +1236,209 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 28px;
+          margin-bottom: 16px;
           width: 100%;
           gap: 0;
         }
 
         .step {
-          width: 30px; height: 30px;
+          width: 32px; height: 32px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.07);
+          background: rgba(255, 255, 255, 0.05);
           color: var(--text-secondary);
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 700;
-          font-size: 0.8rem;
-          transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+          font-size: 0.85rem;
+          transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
           border: 1px solid rgba(255,255,255,0.08);
           flex-shrink: 0;
         }
         .step.active {
           background: var(--brand-gradient);
           color: white;
-          box-shadow: 0 0 16px rgba(0, 140, 255, 0.45);
+          box-shadow: 0 0 20px rgba(10, 132, 255, 0.4);
           border-color: transparent;
         }
         .step-line {
           flex: 1;
-          max-width: 44px;
+          max-width: 48px;
           height: 1.5px;
           background: rgba(255, 255, 255, 0.08);
-          margin: 0 4px;
+          margin: 0 8px;
         }
 
         /* Signup Step */
         .signup-step {
           width: 100%;
-          animation: fadeIn 0.3s ease-out;
+          animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
+          from { opacity: 0; transform: translateY(12px); }
           to   { opacity: 1; transform: translateY(0); }
         }
 
         .step-title {
-          font-size: 1.3rem;
+          font-size: 1.2rem;
           font-weight: 700;
           color: white;
-          margin: 0 0 22px 0;
+          margin: 0 0 12px 0;
           text-align: center;
-          letter-spacing: -0.4px;
+          letter-spacing: -0.3px;
         }
 
-        /* Step Navigation */
         .step-navigation {
           display: flex;
-          gap: 10px;
+          gap: 12px;
           width: 100%;
           margin-top: 8px;
         }
         .btn-back {
           flex: 1;
-          padding: 15px;
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.75);
+          padding: 12px;
+          background: rgba(255,255,255,0.05);
+          color: rgba(255,255,255,0.8);
           border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
+          border-radius: 12px;
           cursor: pointer;
           font-size: 0.9rem;
           font-weight: 600;
           font-family: inherit;
-          transition: all 0.2s;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-back:hover { background: rgba(255,255,255,0.1); color: white; }
+        .btn-back:hover { background: rgba(255,255,255,0.09); color: white; }
 
         .btn-next, .btn-submit {
           flex: 1;
-          padding: 15px;
+          padding: 12px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 14px;
+          border-radius: 12px;
           color: white;
           font-size: 0.9rem;
           font-weight: 700;
           font-family: inherit;
           cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: var(--brand-glow);
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: var(--brand-glow), inset 0 1px 0 rgba(255,255,255,0.2);
         }
-        .btn-next:hover, .btn-submit:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-next:hover, .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(10, 132, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.2); }
         .btn-next:active, .btn-submit:active { transform: scale(0.98); }
         .btn-submit:disabled { opacity: 0.55; cursor: not-allowed; transform: none; filter: none; }
 
         /* Field Sections */
-        .field-section { margin-bottom: 18px; }
+        .field-section { margin-bottom: 20px; }
         .field-section label {
           display: block;
           color: var(--text-secondary);
-          font-size: 0.82rem;
-          margin-bottom: 7px;
-          margin-left: 2px;
-          font-weight: 500;
+          font-size: 0.85rem;
+          margin-bottom: 8px;
+          margin-left: 4px;
+          font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
-        .sub-label { font-size: 0.75rem; opacity: 0.6; font-weight: 400; text-transform: none; letter-spacing: 0; }
+        .sub-label { font-size: 0.75rem; opacity: 0.7; font-weight: 500; text-transform: none; letter-spacing: 0; }
 
         .custom-select-wrapper { position: relative; }
         .glass-select {
           width: 100%;
           background: var(--input-bg);
           color: white;
-          border: 1px solid rgba(255,255,255,0.09);
-          padding: 14px 40px 14px 14px;
-          border-radius: 14px;
-          font-size: 0.95rem;
+          border: 1px solid rgba(255,255,255,0.06);
+          padding: 12px 36px 12px 14px;
+          border-radius: 12px;
+          font-size: 0.9rem;
           font-family: inherit;
+          font-weight: 500;
           appearance: none;
           outline: none;
-          transition: all 0.2s;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
-        .glass-select option { background: #1c1c2e; color: white; }
-        .glass-select:focus { border-color: rgba(80,160,255,0.5); background: rgba(0,80,255,0.04); }
+        .glass-select option { background: #1c1c1e; color: white; }
+        .glass-select:focus { border-color: rgba(10,132,255,0.4); background: rgba(10,132,255,0.03); box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 0 0 4px rgba(10, 132, 255, 0.1); }
         .select-arrow {
-          position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+          position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
           color: var(--text-secondary); pointer-events: none; font-size: 0.75rem;
         }
 
         .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
         .chip {
-          padding: 7px 14px; border-radius: 20px;
+          padding: 8px 16px; border-radius: 20px;
           background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.65);
-          border: 1px solid rgba(255,255,255,0.09);
-          cursor: pointer; font-size: 0.85rem; font-family: inherit;
-          transition: all 0.2s;
+          color: rgba(255,255,255,0.7);
+          border: 1px solid rgba(255,255,255,0.08);
+          cursor: pointer; font-size: 0.85rem; font-family: inherit; font-weight: 500;
+          transition: all 0.25s ease;
         }
         .chip:hover { background: rgba(255,255,255,0.1); color: white; }
-        .chip.selected { background: rgba(0,130,255,0.2); border-color: rgba(0,150,255,0.5); color: #7dd3fc; }
+        .chip.selected { background: rgba(10,132,255,0.15); border-color: rgba(10,132,255,0.4); color: #7dd3fc; }
 
         .glass-input-small {
           flex: 1;
           background: var(--input-bg);
-          border: 1px solid rgba(255,255,255,0.09);
+          border: 1px solid rgba(255,255,255,0.06);
           color: white;
-          padding: 12px 13px;
-          border-radius: 12px;
-          font-size: 0.9rem;
+          padding: 14px 16px;
+          border-radius: 14px;
+          font-size: 0.95rem;
           font-family: inherit;
+          font-weight: 500;
           outline: none;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
-        .btn-primary-small { transition: transform 0.1s; }
+        .glass-input-small:focus { border-color: rgba(10,132,255,0.4); }
+        .btn-primary-small { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
         .btn-primary-small:active { transform: scale(0.95); }
 
         /* Modal */
         .modal-backdrop {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,0,0,0.88);
-          backdrop-filter: blur(12px);
+          background: rgba(0,0,0,0.85);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
           z-index: 1000;
           display: flex; align-items: center; justify-content: center;
         }
         .modal-content {
-          background: rgba(20, 20, 32, 0.98);
-          width: 90%; max-width: 380px;
-          padding: 36px 32px; border-radius: 28px;
-          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(20, 20, 24, 0.85);
+          backdrop-filter: blur(40px) saturate(150%);
+          -webkit-backdrop-filter: blur(40px) saturate(150%);
+          width: 90%; max-width: 400px;
+          padding: 40px 32px; border-radius: 32px;
+          border: 1px solid rgba(255,255,255,0.08);
           text-align: center;
           color: white;
-          box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
-          animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+          box-shadow: 0 32px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+          animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         @keyframes popIn {
-          from { transform: scale(0.9) translateY(16px); opacity: 0; }
+          from { transform: scale(0.92) translateY(20px); opacity: 0; }
           to   { transform: scale(1) translateY(0); opacity: 1; }
         }
-        .modal-content h3 { margin: 0 0 10px; color: white; font-weight: 700; font-size: 1.35rem; }
-        .modal-content p { color: #888; font-size: 0.9rem; margin-bottom: 22px; line-height: 1.5; }
+        .modal-content h3 { margin: 0 0 12px; color: white; font-weight: 700; font-size: 1.45rem; letter-spacing: -0.3px; }
+        .modal-content p { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 28px; line-height: 1.5; }
         .modal-content input {
-          width: 100%; padding: 14px; border-radius: 12px; box-sizing: border-box;
-          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-          color: white; font-size: 1.1rem; margin-bottom: 20px;
-          text-align: center; letter-spacing: 2px; font-family: inherit;
+          width: 100%; padding: 14px; border-radius: 14px; box-sizing: border-box;
+          background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06);
+          color: white; font-size: 1.05rem; margin-bottom: 24px;
+          text-align: center; letter-spacing: 2px; font-family: inherit; font-weight: 600;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+          transition: all 0.25s ease;
         }
-        .modal-content input:focus { border-color: #0a84ff; outline: none; }
-        .modal-footer { display: flex; gap: 10px; }
+        .modal-content input:focus { border-color: rgba(10,132,255,0.4); outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 0 0 4px rgba(10, 132, 255, 0.1); }
+        .modal-footer { display: flex; gap: 12px; }
         .btn-sec, .btn-pri {
-          flex: 1; padding: 13px; border-radius: 12px; border: none;
-          font-weight: 600; font-family: inherit; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
+          flex: 1; padding: 16px; border-radius: 16px; border: none;
+          font-weight: 600; font-family: inherit; cursor: pointer; font-size: 0.95rem; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-sec { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); }
-        .btn-sec:hover { background: rgba(255,255,255,0.12); color: white; }
-        .btn-pri { background: var(--brand-gradient); color: white; box-shadow: var(--brand-glow); }
-        .btn-pri:hover { filter: brightness(1.1); }
+        .btn-sec { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.05); }
+        .btn-sec:hover { background: rgba(255,255,255,0.1); color: white; }
+        .btn-pri { background: var(--brand-gradient); color: white; box-shadow: var(--brand-glow), inset 0 1px 0 rgba(255,255,255,0.2); }
+        .btn-pri:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(10,132,255,0.35), inset 0 1px 0 rgba(255,255,255,0.2); }
+        .btn-pri:active { transform: scale(0.98); }
 
       `}</style>
       {cropImage && (
