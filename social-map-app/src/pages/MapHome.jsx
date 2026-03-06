@@ -2663,60 +2663,107 @@ export default function MapHome() {
             <div style={{
                 height:"100dvh", display:"flex", flexDirection:"column",
                 justifyContent:"center", alignItems:"center",
-                background: dark ? "#111113" : "#fafafa",
-                padding:"32px", textAlign:"center"
+                background: dark ? "#111113" : "#Fafbfd",
+                padding:"32px", textAlign:"center",
+                overflow:"hidden", position:"relative"
             }}>
                 <style>{`
+                    @keyframes loc-pulse {
+                        0% { box-shadow: 0 0 0 0 rgba(108, 71, 255, 0.4); }
+                        70% { box-shadow: 0 0 0 20px rgba(108, 71, 255, 0); }
+                        100% { box-shadow: 0 0 0 0 rgba(108, 71, 255, 0); }
+                    }
                     @keyframes loc-float {
-                        0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)}
+                        0%, 100% { transform: translateY(0); }
+                        50% { transform: translateY(-10px); }
+                    }
+                    @keyframes fadeUpIn {
+                        from { opacity: 0; transform: translateY(20px); }
+                        to { opacity: 1; transform: translateY(0); }
                     }
                 `}</style>
 
-                {/* Floating map pin icon */}
+                {/* Background Ambient Glow */}
                 <div style={{
-                    width:"88px", height:"88px", borderRadius:"28px",
-                    background: dark
-                        ? "linear-gradient(145deg,#1e1e24,#2a2a35)"
-                        : "linear-gradient(145deg,#ffffff,#f0eeff)",
-                    boxShadow: dark
-                        ? "0 20px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06)"
-                        : "0 20px 60px rgba(108,71,255,.15), inset 0 1px 0 rgba(255,255,255,.9)",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:"40px", marginBottom:"32px",
-                    animation:"loc-float 3s ease-in-out infinite"
-                }}>📍</div>
+                    position: 'absolute', top: '20%', left: '50%', transform: 'translate(-50%, -50%)',
+                    width: 300, height: 300, borderRadius: '50%',
+                    background: dark ? 'radial-gradient(circle, rgba(108,71,255,0.15) 0%, rgba(17,17,19,0) 70%)' : 'radial-gradient(circle, rgba(108,71,255,0.08) 0%, rgba(250,251,253,0) 70%)',
+                    pointerEvents: 'none', zIndex: 0
+                }} />
+
+                {/* Floating Map Pin */}
+                <div style={{
+                    position: 'relative', zIndex: 1,
+                    width: 96, height: 96, borderRadius: 32,
+                    background: dark 
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)' 
+                        : 'linear-gradient(135deg, #ffffff 0%, #f4f5f8 100%)',
+                    border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
+                    boxShadow: dark 
+                        ? '0 24px 48px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.1)' 
+                        : '0 24px 48px rgba(108,71,255,0.12), inset 0 1px 1px rgba(255,255,255,1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 36,
+                    animation: 'loc-float 4s ease-in-out infinite, fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                }}>
+                    <div style={{
+                        width: 50, height: 50, borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #a88bff 0%, #6c47ff 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white',
+                        boxShadow: '0 8px 24px rgba(108,71,255,0.4)',
+                        animation: 'loc-pulse 2.5s infinite'
+                    }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                    </div>
+                </div>
 
                 {/* Heading */}
                 <h2 style={{
-                    margin:"0 0 10px", fontSize:"24px", fontWeight:700,
-                    color: dark ? "#f0f0f0" : "#1a1a2e",
-                    letterSpacing:"-0.5px"
-                }}>Share Your Location</h2>
+                    position: 'relative', zIndex: 1,
+                    margin: "0 0 12px", fontSize: "28px", fontWeight: 800,
+                    color: dark ? "#ffffff" : "#1a1a2e",
+                    letterSpacing: "-0.8px",
+                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards',
+                    opacity: 0
+                }}>Share Location</h2>
 
                 {/* Subtext */}
                 <p style={{
-                    margin:"0 0 32px", fontSize:"14px", lineHeight:1.7,
-                    color: dark ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.45)",
-                    maxWidth:"270px"
+                    position: 'relative', zIndex: 1,
+                    margin: "0 0 36px", fontSize: "15px", lineHeight: 1.6,
+                    color: dark ? "rgba(255,255,255,.55)" : "rgba(0,0,0,.55)",
+                    maxWidth: "280px",
+                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
+                    opacity: 0
                 }}>
                     See who's around you in real time. Your location is only visible while you're active.
                 </p>
 
-                {/* Feature pills — compact horizontal */}
-                <div style={{ display:"flex", gap:"8px", marginBottom:"32px", flexWrap:"wrap", justifyContent:"center" }}>
+                {/* Feature pills */}
+                <div style={{ 
+                    display: "flex", gap: "10px", marginBottom: "40px", 
+                    flexWrap: "wrap", justifyContent: "center", position: 'relative', zIndex: 1,
+                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards',
+                    opacity: 0
+                }}>
                     {[
-                        ["👥", "Nearby people"],
-                        ["🔒", "Private"],
-                        ["⚡", "Real-time"]
-                    ].map(([icon, label]) => (
+                        { icon: "👥", label: "Nearby", color: "#00C6FF" },
+                        { icon: "🛡️", label: "Private", color: "#30d158" },
+                        { icon: "⚡", label: "Real-time", color: "#FFB020" }
+                    ].map(({icon, label, color}) => (
                         <div key={label} style={{
-                            display:"flex", alignItems:"center", gap:"5px",
-                            padding:"5px 11px", borderRadius:"20px",
-                            background: dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.05)",
-                            border: dark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.07)",
+                            display: "flex", alignItems: "center", gap: "6px",
+                            padding: "8px 14px", borderRadius: "100px",
+                            background: dark ? "rgba(255,255,255,.04)" : "#ffffff",
+                            border: dark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.04)",
+                            boxShadow: dark ? "none" : "0 4px 12px rgba(0,0,0,0.03)"
                         }}>
-                            <span style={{ fontSize:"13px" }}>{icon}</span>
-                            <span style={{ fontSize:"12px", fontWeight:500, color: dark ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.55)" }}>{label}</span>
+                            <span style={{ fontSize: "14px" }}>{icon}</span>
+                            <span style={{ fontSize: "13px", fontWeight: 600, color: dark ? "rgba(255,255,255,.8)" : "#1a1a2e" }}>{label}</span>
                         </div>
                     ))}
                 </div>
@@ -2725,27 +2772,33 @@ export default function MapHome() {
                 <button
                     onClick={startLocation}
                     style={{
-                        width:"100%", maxWidth:"260px",
-                        padding:"15px 0", borderRadius:"16px", border:"none",
+                        position: 'relative', zIndex: 1,
+                        width: "100%", maxWidth: "280px",
+                        padding: "16px 0", borderRadius: "20px", border: "none",
                         background: dark
-                            ? "linear-gradient(135deg,#7c5cfc,#5b3fd4)"
-                            : "linear-gradient(135deg,#6c47ff,#4f2fe8)",
-                        color:"white", fontWeight:700, fontSize:"16px",
-                        cursor:"pointer", letterSpacing:"0.2px",
-                        boxShadow: "0 8px 32px rgba(108,71,255,.35)",
-                        transition:"transform 0.15s, box-shadow 0.15s"
+                            ? "linear-gradient(135deg, #8160fc 0%, #5d3fe2 100%)"
+                            : "linear-gradient(135deg, #6c47ff 0%, #4f2fe8 100%)",
+                        color: "white", fontWeight: 700, fontSize: "16px",
+                        cursor: "pointer", letterSpacing: "0.4px",
+                        boxShadow: dark ? "0 12px 32px rgba(93,63,226,.4), inset 0 1px 1px rgba(255,255,255,0.2)" : "0 12px 32px rgba(108,71,255,.35), inset 0 1px 1px rgba(255,255,255,0.3)",
+                        transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s",
+                        animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards',
+                        opacity: 0
                     }}
-                    onMouseDown={e => { e.currentTarget.style.transform="scale(0.97)"; e.currentTarget.style.boxShadow="0 4px 16px rgba(108,71,255,.25)"; }}
-                    onMouseUp={e => { e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow="0 8px 32px rgba(108,71,255,.35)"; }}
-                    onTouchStart={e => { e.currentTarget.style.transform="scale(0.97)"; }}
+                    onMouseDown={e => { e.currentTarget.style.transform="scale(0.95)"; e.currentTarget.style.boxShadow="0 6px 16px rgba(108,71,255,.3)"; }}
+                    onMouseUp={e => { e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow= dark ? "0 12px 32px rgba(93,63,226,.4)" : "0 12px 32px rgba(108,71,255,.35)"; }}
+                    onTouchStart={e => { e.currentTarget.style.transform="scale(0.95)"; }}
                     onTouchEnd={e => { e.currentTarget.style.transform="scale(1)"; }}
                 >
                     Enable Location
                 </button>
 
                 <p style={{
-                    marginTop:"14px", fontSize:"12px",
-                    color: dark ? "rgba(255,255,255,.2)" : "rgba(0,0,0,.25)"
+                    position: 'relative', zIndex: 1,
+                    marginTop: "20px", fontSize: "13px", fontWeight: 500,
+                    color: dark ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.35)",
+                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards',
+                    opacity: 0
                 }}>You can disable this anytime</p>
             </div>
         );
@@ -3121,48 +3174,63 @@ export default function MapHome() {
                     </div>
                     
                     {/* Action Buttons - Right Side */}
-                    <div className="header-action-buttons">
+                    <div className="header-action-buttons" style={{ display: 'flex', gap: '8px' }}>
                         {/* Status / Thoughts */}
                         <button 
                             className="control-btn" 
-                            style={{ background: 'var(--bg-primary, #ffffff)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                            style={{ 
+                                background: 'rgba(255, 255, 255, 0.95)', 
+                                border: '1px solid rgba(0, 198, 255, 0.4)',
+                                color: '#0072FF',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 16px rgba(0, 114, 255, 0.15)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 0, width: 40, height: 40, borderRadius: '50%',
+                                transition: 'all 0.2s ease'
+                            }}
                             onClick={() => setShowThoughtInput(true)} 
                             title="Set Status"
                         >
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                <path d="M8 10h.01M12 10h.01M16 10h.01"/>
                             </svg>
                         </button>
                         
                         {/* Ghost Mode Toggle */}
                         <button
                             className={`control-btn ${currentUser?.is_ghost_mode ? 'active' : ''}`}
-                            style={{ background: 'var(--bg-primary, #ffffff)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                            style={{ 
+                                background: currentUser?.is_ghost_mode ? '#111113' : 'rgba(255, 255, 255, 0.95)', 
+                                border: currentUser?.is_ghost_mode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                                color: currentUser?.is_ghost_mode ? '#ffffff' : '#111113',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: currentUser?.is_ghost_mode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(0,0,0,0.08)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 0, width: 40, height: 40, borderRadius: '50%',
+                                transition: 'all 0.2s ease'
+                            }}
                             onClick={() => {
                                 if (currentUser?.is_ghost_mode) {
-                                    // Hidden → Visible
-                                    startLocation();
-                                    showToast("👁️ Ghost Mode OFF (Visible)");
+                                    startLocation(); // Hidden → Visible
+                                    showToast("👁️ Visible to Friends");
                                 } else {
-                                    // Visible → Hidden
-                                    stopLocation();
-                                    showToast("👻 Ghost Mode ON (Hidden)");
+                                    stopLocation(); // Visible → Hidden
+                                    showToast("👻 Hidden from Map");
                                 }
                             }}
-
-                            title="Toggle Ghost Mode"
+                            title={currentUser?.is_ghost_mode ? "Go Visible" : "Go Incognito"}
                         >
                             {currentUser?.is_ghost_mode ? (
-                                /* Ghost/Hidden icon */
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6c47ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                /* Hidden (Ghost) Mode */
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                                     <line x1="1" y1="1" x2="23" y2="23"/>
                                 </svg>
                             ) : (
-                                /* Eye/Visible icon */
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                    <circle cx="12" cy="12" r="3"/>
+                                /* Visible Mode */
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                                 </svg>
                             )}
                         </button>
@@ -3177,25 +3245,19 @@ export default function MapHome() {
                             }}
                             title="Toggle Map View"
                             style={{ 
-                                background: 'var(--bg-primary, #ffffff)',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                marginLeft: '6px', 
-                                padding: '0', 
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0, 
-                                aspectRatio: '1/1'
+                                background: 'rgba(255, 255, 255, 0.95)', 
+                                border: '1px solid rgba(48, 209, 88, 0.4)',
+                                color: '#24a046',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 4px 16px rgba(48, 209, 88, 0.15)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 0, width: 40, height: 40, borderRadius: '50%',
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.65 }}>
-                                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                                <polyline points="2 17 12 22 22 17"/>
-                                <polyline points="2 12 12 17 22 12"/>
-                            </svg>
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+                             </svg>
                         </button>
                     </div>
                 </div>

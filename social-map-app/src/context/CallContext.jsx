@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase } from '../supabaseClient';
-import CallOverlay from '../components/CallOverlay';
-import IncomingCallModal from '../components/IncomingCallModal';
-import MinimizedCallWidget from '../components/MinimizedCallWidget';
 import { useNavigate } from 'react-router-dom';
-
+import MinimizedCallWidget from '../components/MinimizedCallWidget';
 import Toast from '../components/Toast';
+
+// Lazy load heavy WebRTC and overlay components
+const CallOverlay = lazy(() => import('../components/CallOverlay'));
+const IncomingCallModal = lazy(() => import('../components/IncomingCallModal'));
+
 
 // Default context value prevents 'Cannot destructure undefined' crashes during lazy-load
 const CallContext = createContext({});
@@ -555,29 +557,30 @@ export const CallProvider = ({ children }) => {
             {children}
             
             {/* Incoming Call Modal */}
-            {incomingCall && !isCalling && (
-                <IncomingCallModal 
-                    incomingCall={incomingCall}
-                    onAnswer={answerCall}
-                    onReject={() => rejectCall()}
-                    onRejectWithMessage={rejectWithMessage}
-                />
-            )}
+            <Suspense fallback={null}>
+                {incomingCall && !isCalling && (
+                    <IncomingCallModal 
+                        incomingCall={incomingCall}
+                        onAnswer={answerCall}
+                        onReject={() => rejectCall()}
+                        onRejectWithMessage={rejectWithMessage}
+                    />
+                )}
 
-            {/* Active Call Overlay */}
-            {/* Active Call Overlay (Handles both Full and Minimized view to keep state alive) */}
-            {isCalling && callData && currentUser && (
-                <CallOverlay
-                    callData={callData}
-                    currentUser={currentUser}
-                    onEnd={endCallSession}
-                    onMinimize={minimizeCall}
-                    onMaximize={maximizeCall}
-                    isMinimized={isMinimized}
-                    callDuration={callDuration}
-                    setCallDuration={setCallDuration}
-                />
-            )}
+                {/* Active Call Overlay */}
+                {isCalling && callData && currentUser && (
+                    <CallOverlay
+                        callData={callData}
+                        currentUser={currentUser}
+                        onEnd={endCallSession}
+                        onMinimize={minimizeCall}
+                        onMaximize={maximizeCall}
+                        isMinimized={isMinimized}
+                        callDuration={callDuration}
+                        setCallDuration={setCallDuration}
+                    />
+                )}
+            </Suspense>
 
             {/* Global Toast for Call System */}
             {toastMessage && (

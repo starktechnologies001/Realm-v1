@@ -158,7 +158,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 bio: profile?.bio || 'No bio set.',
                 birthDate: formatSafeDate(profile?.birth_date),
                 interests: profile?.interests || [],
-                username: profile?.username || user.username || user.name 
+                username: profile?.username || user.username 
             });
         };
 
@@ -264,8 +264,9 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                                 }} 
                             />
                         )}
-                        <h2>{user.name}</h2>
-                        {stats.username && <span className="fp-username">@{stats.username}</span>}
+                        <h2>{user.username || user.name}</h2>
+                        {/* Show @handle only if name differs from username (e.g. old data) */}
+                        {stats.username && stats.username !== (user.username || user.name) && <span className="fp-username">@{stats.username}</span>}
 
                         {/* Poke Pill Button for Non-Friends */}
                         {!isFriend && !isOwner && (
@@ -383,7 +384,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     <div className="full-photo-zoom-overlay" onClick={() => setIsFullPhoto(false)}>
                         <img 
                             src={getAvatar2D(user.avatar || user.avatar_url)} 
-                            alt={user.name}
+                            alt={user.username || user.name}
                             className="full-photo-zoom-image"
                         />
                     </div>

@@ -156,7 +156,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         >
                             <img 
                                 src={displayAvatar} 
-                                alt={user.name} 
+                                alt={user.username || user.name} 
                                 className="avatar-large"
                                 style={{ filter: 'none', pointerEvents: 'none' }} 
                             />
@@ -208,7 +208,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                         <div className="user-info-area">
                             <h2 style={{ cursor: 'default' }}>
-                                {user.name} 
+                                {user.username || user.name} 
                                 {user.email_verified && (
                                     <span className="verified-badge" title="Email Verified">
                                         ✔ Verified
@@ -386,7 +386,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         >
                             <motion.img 
                                 src={displayAvatar} 
-                                alt={user.name}
+                                alt={user.username || user.name}
                                 className="full-screen-image"
                                 initial={{ scale: 0.5, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
