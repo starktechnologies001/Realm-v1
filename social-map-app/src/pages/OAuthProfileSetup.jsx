@@ -208,7 +208,8 @@ export default function OAuthProfileSetup() {
       });
 
       // Update localStorage
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      let currentUser = {};
+      try { currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}'); } catch { /* corrupted */ }
       localStorage.setItem('currentUser', JSON.stringify({
         ...currentUser,
         username,

@@ -7,9 +7,10 @@ import { useNavigate } from 'react-router-dom';
 
 import Toast from '../components/Toast';
 
-const CallContext = createContext();
+// Default context value prevents 'Cannot destructure undefined' crashes during lazy-load
+const CallContext = createContext({});
 
-export const useCall = () => useContext(CallContext);
+export const useCall = () => useContext(CallContext) ?? {};
 
 export const CallProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -242,7 +243,7 @@ export const CallProvider = ({ children }) => {
 
 
         // 2. Channel for OUTGOING calls (I am caller)
-        // This catches UPDATE (receiver answered/rejected)
+        // This catches UPDATE (receiver answered/rejected/missed) AND broadcast (rejection fast-path)
         const outgoingChannel = supabase.channel(`calls:outgoing:${currentUser.id}`)
             .on('postgres_changes', { 
                 event: 'UPDATE', 
@@ -250,19 +251,29 @@ export const CallProvider = ({ children }) => {
                 table: 'calls',
                 filter: `caller_id=eq.${currentUser.id}`
             }, (payload) => {
-                 console.log('🔔 [OutgoingChannel] Update:', payload.new.status);
-                 // We only care if we are currently in a call state
-                 if (isCallingRef.current) {
-                      const newStatus = payload.new.status;
-                      const isTerminal = ['declined', 'rejected', 'busy', 'ended'].includes(newStatus);
-                      
-                      if (isTerminal && endCallSessionRef.current) {
-                          console.log(`📞 [Outgoing] Call terminated remotely: ${newStatus}`);
-                          endCallSessionRef.current(payload.new.duration_seconds || 0, newStatus);
-                      }
+                 console.log('🔔 [OutgoingChannel] Postgres Update:', payload.new.status);
+                 const newStatus = payload.new.status;
+                 // Terminal = call ended by any means (rejection, missed, ended, busy)
+                 const isTerminal = ['declined', 'rejected', 'busy', 'ended', 'missed', 'cancelled'].includes(newStatus);
+                 
+                 if (isTerminal) {
+                     console.log(`📞 [Outgoing] Call terminated remotely via DB: ${newStatus}`);
+                     // Do NOT guard with isCallingRef: it may be false during call setup race
+                     if (endCallSessionRef.current) {
+                         endCallSessionRef.current(payload.new.duration_seconds || 0, newStatus);
+                     }
                  }
             })
+            // Belt-and-suspenders: also listen for direct broadcast from the callee
+            // This fires immediately when callee rejects, before Postgres realtime delivers
+            .on('broadcast', { event: 'call_rejected' }, (payload) => {
+                console.log('📢 [OutgoingChannel] Broadcast rejection received:', payload);
+                if (endCallSessionRef.current) {
+                    endCallSessionRef.current(0, payload.payload?.reason || 'rejected');
+                }
+            })
             .subscribe();
+
 
         return () => {
             supabase.removeChannel(incomingChannel);
@@ -401,6 +412,12 @@ export const CallProvider = ({ children }) => {
                     console.error(`❌ [rejectCall] Error updating call status:`, error);
                 } else {
                     console.log(`✅ [rejectCall] Successfully updated call ${idToReject} to status: ${reason}`);
+                    // Broadcast rejection directly to caller channel as belt-and-suspenders
+                    // (Postgres realtime can miss events if caller's isCallingRef isn't synced yet)
+                    try {
+                        await supabase.channel(`calls:outgoing:${incomingCall?.caller_id}`)
+                            .send({ type: 'broadcast', event: 'call_rejected', payload: { reason, callId: idToReject } });
+                    } catch { /* non-critical */ }
                 }
                 
                 // Log missed call logic removed for Receiver. Caller handles it via Realtime to preventing dupes.

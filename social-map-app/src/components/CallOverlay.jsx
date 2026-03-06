@@ -62,7 +62,8 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
     const callStartTimeRef = useRef(null);
     const durationIntervalRef = useRef(null);
     const ringingTimeoutRef = useRef(null); // Timeout for outgoing calls
-    const outgoingRingtoneRef = useRef(null); // Ringtone for caller while waiting
+    const outgoingRingtoneRef = useRef(null);     // Ringtone for caller while waiting
+    const outgoingPlayPromiseRef = useRef(null);  // Must await before pausing (browser policy)
 
     const hasAnsweredRef = useRef(false);
     const hasEndedRef = useRef(false); // Prevent double-fire of onEnd
@@ -136,16 +137,10 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 }
                 
                 if ((newStatus === 'active' || newStatus === 'accepted') && mounted) {
-                    hasAnsweredRef.current = true; // Mark as answered to prevent timeout start
-                    // Clear timeout if it's already running
+                    hasAnsweredRef.current = true;
                     if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
-                    
                     // Stop outgoing ringtone when call is answered
-                    if (outgoingRingtoneRef.current) {
-                        outgoingRingtoneRef.current.pause();
-                        outgoingRingtoneRef.current = null;
-                    }
-                    
+                    stopOutgoingRingtone();
                     setStatus('Connected');
                     startTimer();
                 }
@@ -280,8 +275,12 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         // Play outgoing ringtone for caller
                         const ringtone = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869.wav');
                         ringtone.loop = true;
-                        ringtone.play().catch(e => console.log('Outgoing ringtone blocked:', e));
                         outgoingRingtoneRef.current = ringtone;
+                        // Store promise so we can await it before pausing (browser race fix)
+                        outgoingPlayPromiseRef.current = ringtone.play().catch(e => {
+                            console.log('Outgoing ringtone blocked:', e);
+                            outgoingPlayPromiseRef.current = null;
+                        });
 
                     } else if (insertError) {
                         console.error("Error creating call row:", insertError);
@@ -382,6 +381,10 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
         const cleanup = async () => {
             if (!mounted) return; // Prevent double cleanup if possible, though refs protect us
             mounted = false;
+
+            // 🔇 Always stop outgoing ringtone on unmount — uses promise-chain so pause()
+            // is never ignored (browser policy: must await play() promise first)
+            stopOutgoingRingtone();
             
             // Stop duration timer
             if (durationIntervalRef.current) {
@@ -459,6 +462,27 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
         }
     }, [remoteUsers]);
 
+    // Safely stop outgoing ringtone — must await play() promise before pausing
+    const stopOutgoingRingtone = () => {
+        const audio = outgoingRingtoneRef.current;
+        if (!audio) return;
+        outgoingRingtoneRef.current = null; // Null immediately to prevent double-stop
+
+        const finish = () => {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch {}
+        };
+
+        if (outgoingPlayPromiseRef.current) {
+            outgoingPlayPromiseRef.current.then(finish).catch(finish);
+            outgoingPlayPromiseRef.current = null;
+        } else {
+            finish();
+        }
+    };
+
     const toggleMute = async () => {
         if (localAudioTrackRef.current) {
             await localAudioTrackRef.current.setEnabled(muted);
@@ -495,11 +519,8 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
         
         isStoppingRef.current = true; // Mark as stopping immediately to catch race conditions
         
-        // Stop outgoing ringtone if playing
-        if (outgoingRingtoneRef.current) {
-            outgoingRingtoneRef.current.pause();
-            outgoingRingtoneRef.current = null;
-        }
+        // Stop outgoing ringtone if playing (awaits play() promise to avoid browser race)
+        stopOutgoingRingtone();
         
         // Explicitly close tracks immediately to turn off camera/mic
         if (localAudioTrackRef.current) {

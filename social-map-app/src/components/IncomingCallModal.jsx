@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D, handleAvatarError } from '../utils/avatarUtils';
 
 export default function IncomingCallModal({ incomingCall, onAnswer, onReject, onRejectWithMessage }) {
-    const [ringtoneAudio, setRingtoneAudio] = useState(null);
+    const ringtoneRef = useRef(null);      // The Audio object
+    const playPromiseRef = useRef(null);    // The play() Promise — must resolve before pause() is safe
     const [showQuickReplies, setShowQuickReplies] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(false); // New State
+    const [isExpanded, setIsExpanded] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const navigate = useNavigate();
 
@@ -17,58 +18,71 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
     ];
 
     useEffect(() => {
-        // Play ringtone
+        // Create and play the ringtone
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359.wav');
         audio.loop = true;
-        audio.play().catch(e => {
+        ringtoneRef.current = audio; // Store in ref immediately — never stale
+
+        // Store the play() promise so stopRingtone() can await it before pausing
+        // (browser ignores pause() if play() promise hasn't resolved yet)
+        playPromiseRef.current = audio.play().catch(e => {
             console.error("Ringtone play error:", e);
-            // Fallback: Use vibration on mobile if audio is blocked
+            playPromiseRef.current = null;
             if (navigator.vibrate) {
-                // Vibrate pattern: [vibrate, pause, vibrate, pause, ...]
                 const vibratePattern = [400, 200, 400, 200, 400];
                 const vibrateInterval = setInterval(() => {
                     navigator.vibrate(vibratePattern);
-                }, 2000); // Repeat every 2 seconds
-                
-                // Store interval to clear on cleanup
+                }, 2000);
                 audio.vibrateInterval = vibrateInterval;
             }
         });
-        setRingtoneAudio(audio);
 
         return () => {
-            if (audio) {
-                audio.pause();
-                audio.currentTime = 0;
-                // Clear vibration interval if it exists
-                if (audio.vibrateInterval) {
-                    clearInterval(audio.vibrateInterval);
-                    navigator.vibrate(0); // Stop vibration
-                }
-            }
+            // Always stop audio on unmount — ref is never stale
+            stopRingtone();
         };
     }, []);
 
-    // Cleanup audio when answering/rejecting
+    // Central stop helper — safely pauses after play() resolves to avoid browser race
+    const stopRingtone = () => {
+        const audio = ringtoneRef.current;
+        if (!audio) return;
+        ringtoneRef.current = null; // Null first to prevent double-stop
+
+        const finish = () => {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch {}
+            if (audio.vibrateInterval) {
+                clearInterval(audio.vibrateInterval);
+                navigator.vibrate?.(0);
+            }
+        };
+
+        // If play() promise is still pending, wait for it first
+        // Otherwise calling pause() immediately causes browsers to ignore it
+        if (playPromiseRef.current) {
+            playPromiseRef.current.then(finish).catch(finish);
+            playPromiseRef.current = null;
+        } else {
+            finish();
+        }
+    };
+
+    // Stop ringtone FIRST, then call the action
     const handleAction = async (action) => {
         if (isProcessing) return;
         setIsProcessing(true);
-        if (ringtoneAudio) {
-            ringtoneAudio.pause();
-            ringtoneAudio.currentTime = 0;
-        }
+        stopRingtone(); // Always stop before anything async
         await action();
-        // Don't setProcessing(false) because component will unmount
+        // Don't setProcessing(false) — component unmounts
     };
 
     const handleQuickReply = async (message) => {
         if (isProcessing) return;
         setIsProcessing(true);
-
-        if (ringtoneAudio) {
-            ringtoneAudio.pause();
-            ringtoneAudio.currentTime = 0;
-        }
+        stopRingtone(); // Stop immediately before any async work
 
         console.log('📱 [QuickReply] Starting quick reply process...');
         

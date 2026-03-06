@@ -1547,10 +1547,10 @@ export default function MapHome() {
 
         // Listen for local updates from Profile page (optimistic updates)
         const handleLocalUpdate = () => {
-            const stored = localStorage.getItem('currentUser');
-            if (stored) {
-                setCurrentUser(JSON.parse(stored));
-            }
+            try {
+                const stored = localStorage.getItem('currentUser');
+                if (stored) setCurrentUser(JSON.parse(stored));
+            } catch { /* corrupted localStorage — silently skip */ }
         };
         window.addEventListener('local-user-update', handleLocalUpdate);
 

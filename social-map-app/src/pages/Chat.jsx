@@ -77,8 +77,13 @@ export default function Chat() {
     const [selectedStoryUser, setSelectedStoryUser] = useState(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0); // For StoryViewer
     const [chats, setChats] = useState(() => {
-        const cached = localStorage.getItem('cached_chats_list');
-        return cached ? JSON.parse(cached) : [];
+        try {
+            const cached = localStorage.getItem('cached_chats_list');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            localStorage.removeItem('cached_chats_list'); // clear corrupted cache
+            return [];
+        }
     });
     const [totalUnreadCount, setTotalUnreadCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
@@ -2427,12 +2432,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     const callLogs = data.filter(m => m.message_type === 'call_log');
                     if (callLogs.length > 0) {
                         const mostRecent = callLogs[callLogs.length - 1];
-                        console.log('🔄 [Polling] Most recent call log:', {
-                            id: mostRecent.id,
-                            content: mostRecent.content,
-                            content_parsed: typeof mostRecent.content === 'string' ? JSON.parse(mostRecent.content) : mostRecent.content,
-                            created_at: mostRecent.created_at
-                        });
+                        try {
+                            const parsed = typeof mostRecent.content === 'string' ? JSON.parse(mostRecent.content) : mostRecent.content;
+                            console.log('🔄 [Polling] Most recent call log:', { id: mostRecent.id, content_parsed: parsed, created_at: mostRecent.created_at });
+                        } catch { /* malformed call log content — skip */ }
                     }
                     
                     // Filter out messages deleted by current user AND blocked user messages
