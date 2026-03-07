@@ -501,7 +501,7 @@ export default function Login() {
             </div>
         )}
 
-        <form onSubmit={handleAuth} className="login-form">
+        <form onSubmit={handleAuth} className="login-form" style={!isSignUp ? { gap: '22px' } : {}}>
           {/* Login Form */}
           {!isSignUp && (
             <>
@@ -512,7 +512,7 @@ export default function Login() {
                   placeholder="Username"
                   value={username}
                   onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
-                  style={fieldErrors.username ? { borderColor: '#ff453a' } : {}}
+                  style={{ padding: '16px 40px 16px 16px', fontSize: '0.95rem', ...(fieldErrors.username ? { borderColor: '#ff453a' } : {})}}
                   required
                 />
                 {fieldErrors.username && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.username}</span>}
@@ -524,7 +524,7 @@ export default function Login() {
                   placeholder="Password"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
-                  style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
+                  style={{ padding: '16px 40px 16px 16px', fontSize: '0.95rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                   required
                 />
                 <button
@@ -555,7 +555,7 @@ export default function Login() {
                   Forgot Password?
                 </span>
               </div>
-              <button type="submit" disabled={loading} className="btn-primary">
+              <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '16px', fontSize: '0.95rem' }}>
                 {loading ? 'Logging In...' : 'Log In'}
               </button>
             </>
@@ -1049,10 +1049,10 @@ export default function Login() {
 
         .app-subtitle {
           color: var(--text-secondary);
-          font-size: 0.85rem;
-          margin: 0 0 16px 0;
+          font-size: 0.75rem;
+          margin: 0 0 10px 0;
           font-weight: 500;
-          letter-spacing: 0.2px;
+          letter-spacing: 0.1px;
         }
 
         /* Segmented pill toggle */
@@ -1063,7 +1063,7 @@ export default function Login() {
           border-radius: 20px;
           border: 1px solid rgba(255, 255, 255, 0.04);
           width: 100%;
-          margin-bottom: 16px;
+          margin-bottom: 24px;
         }
 
         .toggle-btn {
@@ -1090,7 +1090,7 @@ export default function Login() {
           width: 100%;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
         }
 
         .input-group {
