@@ -112,13 +112,15 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng }
         const distance = currentCenter.distanceTo(targetLatLng);
         const currentZoom = map.getZoom();
 
-        if (distance < 5 && currentZoom >= 17) {
-            map.setView(targetLatLng, currentZoom, { animate: false });
+        if (currentZoom >= 18) {
+            // At high zooms, flyTo can act up or feel too slow.
+            // Just snap the view cleanly.
+            map.setView(targetLatLng, currentZoom, { animate: true });
             return;
         }
 
         if (distance < 50) {
-            map.flyTo(targetLatLng, 17, { 
+            map.flyTo(targetLatLng, Math.max(17, currentZoom), { 
                 animate: true, 
                 duration: 0.8,
                 easeLinearity: 0.25
