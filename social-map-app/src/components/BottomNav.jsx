@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Badge from './Badge';
 
-export default function BottomNav({ friendRequestCount = 0, unreadMessageCount = 0 }) {
+const BottomNav = React.memo(function BottomNav({ friendRequestCount = 0, unreadMessageCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -167,4 +167,6 @@ export default function BottomNav({ friendRequestCount = 0, unreadMessageCount =
       `}</style>
     </div>
   );
-}
+});
+
+export default BottomNav;

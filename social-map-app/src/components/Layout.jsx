@@ -53,16 +53,27 @@ export default function Layout() {
         };
 
         const initAuth = async () => {
-             // 1. Get initial session
-             const { data: { session } } = await supabase.auth.getSession();
-             if (mounted) {
-                 if (session) {
-                     await syncProfile(session);
-                     setCurrentUserId(session.user.id);
-                     setCheckingAuth(false);
-                 } else if (!window.location.hash.includes('access_token') && !window.location.hash.includes('type=recovery')) {
-                     // Only stop checking if we are NOT expecting a hash-based login (OAuth or Recovery)
-                     setCheckingAuth(false);
+             try {
+                 // 1. Get initial session safely
+                 const { data: { session }, error } = await supabase.auth.getSession();
+                 if (error) throw error;
+                 
+                 if (mounted) {
+                     if (session) {
+                         await syncProfile(session);
+                         setCurrentUserId(session.user.id);
+                         setCheckingAuth(false);
+                     } else if (!window.location.hash.includes('access_token') && !window.location.hash.includes('type=recovery')) {
+                         // Only stop checking if we are NOT expecting a hash-based login (OAuth or Recovery)
+                         localStorage.removeItem('currentUser'); // Ensure stale memory is cleared
+                         setCheckingAuth(false);
+                     }
+                 }
+             } catch (err) {
+                 console.error("Auth initialization failed safely:", err);
+                 if (mounted) {
+                     localStorage.removeItem('currentUser');
+                     setCheckingAuth(false); // Let router handle redirect to login
                  }
              }
         };
@@ -101,44 +112,52 @@ export default function Layout() {
         if (checkingAuth) return; // Wait for auth check
 
         const updatePresence = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                await supabase.from('profiles')
-                    .update({ last_active: new Date() })
-                    .eq('id', session.user.id);
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user?.id) {
+                    await supabase.from('profiles')
+                        .update({ last_active: new Date() })
+                        .eq('id', session.user.id);
+                }
+            } catch (err) {
+                console.warn("Presence update skipped (network/auth issue):", err);
             }
         };
 
         const fetchNotificationCounts = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session?.user) return;
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session?.user?.id) return;
 
-            // Fetch friend request count
-            const { count: friendCount } = await supabase
-                .from('friendships')
-                .select('id', { count: 'exact', head: true })
-                .eq('receiver_id', session.user.id)
-                .eq('status', 'pending');
-            
-            if (mounted) setFriendRequestCount(friendCount || 0);
-
-            // Fetch unread messages to count unique conversations (senders)
-            const { data: unreadMsgs } = await supabase
-                .from('messages')
-                .select('sender_id, deleted_for')
-                .eq('receiver_id', session.user.id)
-                .eq('is_read', false)
-                .neq('message_type', 'system');
-            
-            if (mounted && unreadMsgs) {
-                // 1. Filter out deleted messages
-                const activeUnread = unreadMsgs.filter(msg => 
-                    !msg.deleted_for || !msg.deleted_for.includes(session.user.id)
-                );
+                // Fetch friend request count
+                const { count: friendCount, error: fErr } = await supabase
+                    .from('friendships')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('receiver_id', session.user.id)
+                    .eq('status', 'pending');
                 
-                // 2. Count unique senders (Conversations)
-                const uniqueSenders = new Set(activeUnread.map(m => m.sender_id));
-                setUnreadMessageCount(uniqueSenders.size);
+                if (mounted && !fErr) setFriendRequestCount(friendCount || 0);
+
+                // Fetch unread messages to count unique conversations (senders)
+                const { data: unreadMsgs, error: mErr } = await supabase
+                    .from('messages')
+                    .select('sender_id, deleted_for')
+                    .eq('receiver_id', session.user.id)
+                    .eq('is_read', false)
+                    .neq('message_type', 'system');
+                
+                if (mounted && !mErr && unreadMsgs) {
+                    // 1. Filter out deleted messages
+                    const activeUnread = unreadMsgs.filter(msg => 
+                        !msg.deleted_for || !msg.deleted_for.includes(session.user.id)
+                    );
+                    
+                    // 2. Count unique senders (Conversations)
+                    const uniqueSenders = new Set(activeUnread.map(m => m.sender_id));
+                    setUnreadMessageCount(uniqueSenders.size);
+                }
+            } catch (err) {
+                console.warn("Notification count fetch skipped:", err);
             }
         };
 

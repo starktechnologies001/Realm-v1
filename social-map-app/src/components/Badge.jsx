@@ -26,22 +26,7 @@ export default function Badge({ count, variant = 'primary', size = 'default' }) 
                     justify-content: center;
                     box-shadow: 0 2px 8px rgba(255, 69, 58, 0.4);
                     border: 2px solid var(--bg-color, #000);
-                    animation: badgePop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
                     z-index: 10;
-                }
-
-                @keyframes badgePop {
-                    0% {
-                        transform: scale(0);
-                        opacity: 0;
-                    }
-                    50% {
-                        transform: scale(1.2);
-                    }
-                    100% {
-                        transform: scale(1);
-                        opacity: 1;
-                    }
                 }
 
                 .badge-primary {
@@ -69,31 +54,6 @@ export default function Badge({ count, variant = 'primary', size = 'default' }) 
                     padding: 0 8px;
                     top: -8px;
                     right: -8px;
-                }
-
-                /* Pulse animation for new notifications */
-                .notification-badge::before {
-                    content: '';
-                    position: absolute;
-                    top: -2px;
-                    left: -2px;
-                    right: -2px;
-                    bottom: -2px;
-                    border-radius: 12px;
-                    background: inherit;
-                    opacity: 0;
-                    animation: badgePulse 2s ease-out infinite;
-                }
-
-                @keyframes badgePulse {
-                    0% {
-                        transform: scale(1);
-                        opacity: 0.8;
-                    }
-                    100% {
-                        transform: scale(1.5);
-                        opacity: 0;
-                    }
                 }
             `}</style>
         </span>

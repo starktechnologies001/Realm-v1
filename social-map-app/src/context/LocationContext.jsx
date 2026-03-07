@@ -73,7 +73,7 @@ export function LocationProvider({ children }) {
 
         // 🔥 PHASE 2: Update actual coordinates now that GPS has fired
         supabase.auth.getSession().then(({ data: { session } }) => {
-          if (session?.user) {
+          if (session?.user?.id) {
             supabase.from("profiles").update({
               latitude: newLoc.lat,
               longitude: newLoc.lng,
@@ -84,7 +84,7 @@ export function LocationProvider({ children }) {
               if (error) console.error("Location sync error:", error);
             });
           }
-        });
+        }).catch(err => console.warn("Session error during location start:", err));
       },
 
       // ERROR
@@ -143,23 +143,29 @@ export function LocationProvider({ children }) {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
+        // 1. Calculate Jitter (approx 3 meters = ~0.00003 deg)
+        const now = Date.now();
+        const localDist = lastSyncLoc.current 
+            ? Math.sqrt(Math.pow(newLoc.lat - lastSyncLoc.current.lat, 2) + Math.pow(newLoc.lng - lastSyncLoc.current.lng, 2))
+            : Infinity;
+
+        // Ignore tiny GPS jitter to prevent heavy React re-renders on MapHome
+        if (localDist < 0.00003 && (now - lastSyncTime.current) < 10000) {
+            return; 
+        }
+
         setUserLocation(newLoc);
         // 🔥 Persist for instant restore on next session load
         try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
-        // Throttled DB update
-        const now = Date.now();
-        const dist = lastSyncLoc.current 
-            ? Math.sqrt(Math.pow(newLoc.lat - lastSyncLoc.current.lat, 2) + Math.pow(newLoc.lng - lastSyncLoc.current.lng, 2))
-            : 1;
-
-        // Sync if: 1. No last sync OR 2. Moved > ~10m (approx 0.0001 deg) OR 3. > 10 seconds passed
-        if (!lastSyncTime.current || dist > 0.0001 || (now - lastSyncTime.current) > 10000) {
+        // 2. Throttled DB update (Max once every 3.5 seconds)
+        // Sync if: 1. No last sync OR 2. Moved > ~10m (approx 0.0001 deg) OR 3. > 3.5 seconds passed
+        if (!lastSyncTime.current || localDist > 0.0001 || (now - lastSyncTime.current) > 3500) {
             lastSyncTime.current = now;
             lastSyncLoc.current = newLoc;
 
             supabase.auth.getSession().then(({ data: { session } }) => {
-                if (session?.user) {
+                if (session?.user?.id) {
                     supabase.from("profiles").update({
                         latitude: newLoc.lat,
                         longitude: newLoc.lng,
@@ -170,7 +176,7 @@ export function LocationProvider({ children }) {
                         if (error) console.error("Location sync error:", error);
                     });
                 }
-            });
+            }).catch(err => console.warn("Session error during location watch sync:", err));
         }
       },
       (err) => {
@@ -182,6 +188,14 @@ export function LocationProvider({ children }) {
         if (err.code === 1) { // 1 = PERMISSION_DENIED
            // This will handle the OS-level revocation edge case
            internalStopLocation(false);
+        } else if (err.code === 2) { // 2 = POSITION_UNAVAILABLE (often happens incorrectly on mobile app wake)
+           internalStopLocation(false);
+           // Try to restart tracking after a 5-second buffer (app wakes, GPS needs time)
+           setTimeout(() => {
+               if (localStorage.getItem("manualLocationDisable") !== "true") {
+                   startLocation();
+               }
+           }, 5000);
         }
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }

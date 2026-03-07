@@ -18,6 +18,13 @@ class ErrorBoundary extends React.Component {
             error,
             errorInfo
         });
+
+        // Auto-recover after crashed state (critical for mobile background wake)
+        if (process.env.NODE_ENV !== 'development') {
+            setTimeout(() => {
+                window.location.reload();
+            }, 4000);
+        }
     }
 
     handleReset = () => {
@@ -53,7 +60,7 @@ class ErrorBoundary extends React.Component {
                             Oops! Something went wrong
                         </h1>
                         <p style={{ fontSize: '0.95rem', opacity: 0.8, marginBottom: '24px', lineHeight: '1.5' }}>
-                            Don't worry, we've logged the error. Click below to return to the app.
+                            We've logged the error. <b>Refreshing automatically in a few seconds...</b>
                         </p>
 
                         {/* Developer Debug Info - Only shown if an error object exists */}
