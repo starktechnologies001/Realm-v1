@@ -52,10 +52,44 @@ class ErrorBoundary extends React.Component {
                         <h1 style={{ margin: '0 0 16px 0', fontSize: '24px', fontWeight: 600 }}>
                             Oops! Something went wrong
                         </h1>
-                        <p style={{ margin: '0 0 24px 0', opacity: 0.9, fontSize: '16px' }}>
+                        <p style={{ fontSize: '0.95rem', opacity: 0.8, marginBottom: '24px', lineHeight: '1.5' }}>
                             Don't worry, we've logged the error. Click below to return to the app.
                         </p>
-                        <button
+
+                        {/* Developer Debug Info - Only shown if an error object exists */}
+                        {this.state.error && (
+                            <div style={{
+                                width: '100%',
+                                background: 'rgba(0,0,0,0.3)',
+                                borderRadius: '8px',
+                                padding: '12px',
+                                marginBottom: '24px',
+                                textAlign: 'left',
+                                overflowX: 'auto',
+                                border: '1px solid rgba(255,107,107,0.3)'
+                            }}>
+                                <p style={{ fontSize: '0.75rem', color: '#ff6b6b', fontFamily: 'monospace', margin: 0, fontWeight: 'bold' }}>
+                                    {this.state.error.toString()}
+                                </p>
+                                {this.state.errorInfo && this.state.errorInfo.componentStack && (
+                                    <pre style={{ 
+                                        fontSize: '0.65rem', 
+                                        color: 'rgba(255,255,255,0.6)', 
+                                        fontFamily: 'monospace', 
+                                        marginTop: '8px',
+                                        marginBottom: 0,
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                        maxHeight: '100px',
+                                        overflowY: 'auto'
+                                    }}>
+                                        {this.state.errorInfo.componentStack}
+                                    </pre>
+                                )}
+                            </div>
+                        )}
+
+                        <button 
                             onClick={this.handleReset}
                             style={{
                                 background: 'white',
