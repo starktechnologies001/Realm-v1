@@ -572,14 +572,40 @@ export default function MapHome() {
         const startLat = currentLatLng.lat;
         const startLng = currentLatLng.lng;
 
-        // Ignore micro GPS jitter (do not animate if movement < ~3 meters)
-        // This prevents the CSS transition from stuttering on tiny GPS corrections
+        // Ignore micro GPS jitter (do not animate if movement < 3 meters)
         const dist = getDistance(startLat, startLng, newLat, newLng);
         if (dist < 3) return;
 
-        // Hardware-accelerated CSS `transition` (defined in MapHome styles) 
-        // will handle this seamlessly over 0.6 seconds without blocking the JS thread!
-        marker.setLatLng([newLat, newLng]);
+        // Cancel previous animation to prevent stacking/flickering
+        if (animationRefs.current.has(id)) {
+            cancelAnimationFrame(animationRefs.current.get(id));
+        }
+
+        let startTime = null;
+        const duration = 1000; // 1 second smooth glide
+
+        const animate = (timestamp) => {
+            if (!startTime) startTime = timestamp;
+            const progress = timestamp - startTime;
+
+            // EaseOutCubic interpolation
+            let t = Math.min(progress / duration, 1);
+            t = 1 - Math.pow(1 - t, 3);
+
+            const lat = startLat + (newLat - startLat) * t;
+            const lng = startLng + (newLng - startLng) * t;
+
+            marker.setLatLng([lat, lng]);
+
+            if (progress < duration) {
+                animationRefs.current.set(id, requestAnimationFrame(animate));
+            } else {
+                marker.setLatLng([newLat, newLng]); // Snap exactly to target at end
+                animationRefs.current.delete(id);
+            }
+        };
+
+        animationRefs.current.set(id, requestAnimationFrame(animate));
     }, []);
 
     // 🔥 Keep userLocationRef in sync with context without causing downstream re-renders
@@ -3004,10 +3030,6 @@ export default function MapHome() {
 
             {/* 🚀 Global Map Smoothness Styles */}
             <style>{`
-                .leaflet-marker-icon {
-                    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1) !important;
-                    will-change: transform;
-                }
                 .leaflet-pane > svg path.leaflet-interactive {
                     transition: stroke-dashoffset 0.6s ease;
                 }
