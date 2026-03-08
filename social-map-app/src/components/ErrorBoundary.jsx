@@ -14,6 +14,20 @@ class ErrorBoundary extends React.Component {
         // Log error to console for debugging
         console.error('ErrorBoundary caught an error:', error, errorInfo);
         
+        // --- 🚀 NEW VITE LAZY LOAD CHUNK FIX 🚀 ---
+        // If the error is a Vite dynamic import failure (failed to fetch a React chunk because
+        // it was deployed recently or the mobile wake lost connection), just auto-refresh!
+        const isChunkLoadFailed = error?.message?.includes('Failed to fetch dynamically imported module') || 
+                                  error?.message?.includes('Importing a module script failed') ||
+                                  error?.name === 'ChunkLoadError';
+        
+        if (isChunkLoadFailed) {
+            console.log('🔄 ChunkLoadError detected. Forcing a hard page reload to fetch fresh assets...');
+            // In a real mobile app/PWA, refreshing the context is the cleanest recovery
+            window.location.reload(true); 
+            return; // don't even bother rendering the crash screen
+        }
+
         this.setState({
             error,
             errorInfo
