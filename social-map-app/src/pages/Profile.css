@@ -105,18 +105,47 @@ html[data-theme="dark"] {
 }
 
 .profile-bio {
-    font-size: 0.95rem; color: var(--text-primary);
+    font-size: 1.05rem; 
+    color: var(--text-primary);
     font-weight: 500;
     max-width: 100%;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* Single line — ellipsis if very long */
-    cursor: pointer; padding: 4px 10px; border-radius: 10px;
-    transition: background 0.2s;
-    margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; 
+    transition: opacity 0.2s ease;
+    margin-top: 2px;
     text-align: center;
     letter-spacing: 0.01em;
+    display: inline-block;
 }
-.profile-bio:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
-.profile-bio.empty { font-style: italic; opacity: 0.6; }
+.profile-bio:hover { 
+    opacity: 0.7;
+}
+.profile-bio.empty { 
+    font-style: italic; 
+    opacity: 0.5; 
+}
+
+.bio-action-btn-circle {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #e5e5ea;
+    color: #8e8e93;
+    border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    padding: 0;
+}
+.bio-action-btn-circle svg { width: 14px; height: 14px; stroke-width: 2; }
+.bio-action-btn-circle:hover { background: #d1d1d6; color: #3a3a3c; }
+
+html[data-theme="dark"] .bio-action-btn-circle {
+    background: #3a3a3c; color: #8e8e93;
+}
+html[data-theme="dark"] .bio-action-btn-circle:hover {
+    background: #48484a; color: #aeaeb2;
+}
 
 .edit-btn {
     position: absolute; top: 0; right: 0;

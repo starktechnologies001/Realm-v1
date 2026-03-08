@@ -531,39 +531,10 @@ export default function Profile() {
                     </div>
 
                     {/* Bio Section */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '100%' }}>
-                        <div className={`profile-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')} title={user.bio || ''} style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', marginTop: '8px', gap: '8px' }}>
+                        <div className={`profile-bio ${!user.bio ? 'empty':''}`} onClick={() => setActiveModal('edit-bio')} title={user.bio || ''} style={{ flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {user.bio || "Add a bio"}
                         </div>
-                        {user.bio && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (window.confirm('Delete your bio?')) {
-                                        updateProfile({ bio: '' });
-                                    }
-                                }}
-                                title="Delete bio"
-                                style={{
-                                    flexShrink: 0,
-                                    width: '22px', height: '22px',
-                                    borderRadius: '50%',
-                                    border: 'none',
-                                    background: 'rgba(0,0,0,0.12)',
-                                    color: 'var(--text-secondary)',
-                                    fontSize: '0.75rem',
-                                    cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    lineHeight: 1,
-                                    transition: 'all 0.2s',
-                                    padding: 0,
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,69,58,0.15)'; e.currentTarget.style.color = '#ff453a'; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.12)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                            >
-                                ✕
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>
