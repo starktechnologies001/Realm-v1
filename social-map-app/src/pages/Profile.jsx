@@ -705,7 +705,7 @@ export default function Profile() {
                         <div className="menu-content">
                             <span className="menu-label">Ghost Mode</span>
                             <span className="menu-hint" style={{ fontSize: '0.75rem', color: user.is_ghost_mode ? '#805AD5' : 'var(--text-secondary)', marginTop: '2px' }}>
-                                {user.is_ghost_mode ? 'No one can see you' : 'Visible to others'}
+                                {user.is_ghost_mode ? 'No one can see you' : 'Hide your avatar from others'}
                             </span>
                         </div>
                         <label className="toggle-switch">
