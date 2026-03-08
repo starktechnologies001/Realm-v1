@@ -882,7 +882,7 @@ export default function Profile() {
                                     const formData = new FormData(e.target);
                                     const newUsername = formData.get('username');
                                     if (newUsername && newUsername.trim()) {
-                                        updateProfile({ username: newUsername.trim().toLowerCase().replace(/\s/g, '') });
+                                        updateProfile({ username: newUsername.trim().replace(/\s/g, '') });
                                         setActiveModal(null);
                                     }
                                 }} className="modal-form">
@@ -892,11 +892,11 @@ export default function Profile() {
                                             type="text" 
                                             name="username"
                                             placeholder="username"
-                                            defaultValue={user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}
+                                            defaultValue={user.username || user.full_name?.replace(/\s/g, '')}
                                             autoFocus
                                             required
-                                            pattern="[a-z0-9_]+"
-                                            title="Only lowercase letters, numbers, and underscores allowed"
+                                            pattern="[a-zA-Z0-9_]+"
+                                            title="Only letters, numbers, and underscores allowed"
                                         />
                                     </div>
                                     <div className="modal-footer">
