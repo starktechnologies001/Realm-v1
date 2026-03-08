@@ -19,12 +19,12 @@ class ErrorBoundary extends React.Component {
             errorInfo
         });
 
-        // Auto-recover after crashed state (critical for mobile background wake)
-        if (process.env.NODE_ENV !== 'development') {
-            setTimeout(() => {
-                window.location.reload();
-            }, 4000);
-        }
+        // Halted auto-recover so the user can capture the crash stack trace
+        // if (process.env.NODE_ENV !== 'development') {
+        //     setTimeout(() => {
+        //         window.location.reload();
+        //     }, 4000);
+        // }
     }
 
     handleReset = () => {
@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component {
                             Oops! Something went wrong
                         </h1>
                         <p style={{ fontSize: '0.95rem', opacity: 0.8, marginBottom: '24px', lineHeight: '1.5' }}>
-                            We've logged the error. <b>Refreshing automatically in a few seconds...</b>
+                            We caught an unexpected background crash. Before restarting, please click <b>Copy Error Details</b> below and paste it to your developer.
                         </p>
 
                         {/* Developer Debug Info - Only shown if an error object exists */}
@@ -96,50 +96,46 @@ class ErrorBoundary extends React.Component {
                             </div>
                         )}
 
-                        <button 
-                            onClick={this.handleReset}
-                            style={{
-                                background: 'white',
-                                color: '#667eea',
-                                border: 'none',
-                                borderRadius: '12px',
-                                padding: '12px 32px',
-                                fontSize: '16px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'transform 0.2s',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
-                            }}
-                            onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-                            onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
-                        >
-                            Return to Home
-                        </button>
-                        
-                        {process.env.NODE_ENV === 'development' && this.state.error && (
-                            <details style={{ 
-                                marginTop: '24px', 
-                                textAlign: 'left',
-                                background: 'rgba(0, 0, 0, 0.2)',
-                                padding: '16px',
-                                borderRadius: '8px',
-                                fontSize: '12px'
-                            }}>
-                                <summary style={{ cursor: 'pointer', marginBottom: '8px', fontWeight: 600 }}>
-                                    Error Details (Dev Only)
-                                </summary>
-                                <pre style={{ 
-                                    whiteSpace: 'pre-wrap', 
-                                    wordBreak: 'break-word',
-                                    margin: 0,
-                                    opacity: 0.8
-                                }}>
-                                    {this.state.error.toString()}
-                                    {'\n\n'}
-                                    {this.state.errorInfo?.componentStack}
-                                </pre>
-                            </details>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px' }}>
+                            <button 
+                                onClick={() => {
+                                    const stack = `${this.state.error?.toString()}\n\n${this.state.errorInfo?.componentStack}`;
+                                    navigator.clipboard.writeText(stack);
+                                    alert('✅ Crash details copied to clipboard. Please paste them your developer!');
+                                }}
+                                style={{
+                                    background: 'rgba(255, 107, 107, 0.2)',
+                                    color: '#ff6b6b',
+                                    border: '1px solid rgba(255, 107, 107, 0.5)',
+                                    borderRadius: '12px',
+                                    padding: '12px 32px',
+                                    fontSize: '15px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                📋 Copy Technical Error
+                            </button>
+                            
+                            <button 
+                                onClick={this.handleReset}
+                                style={{
+                                    background: 'white',
+                                    color: '#667eea',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    padding: '12px 32px',
+                                    fontSize: '16px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s',
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
+                                }}
+                            >
+                                Restart Application
+                            </button>
+                        </div>
                     </div>
                 </div>
             );

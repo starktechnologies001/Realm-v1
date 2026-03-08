@@ -628,32 +628,46 @@ export default function MapHome() {
         }
 
         let lastDbUpdate = 0;
-        const watchId = navigator.geolocation.watchPosition(
-            (pos) => {
-                const newLat = pos.coords.latitude;
-                const newLng = pos.coords.longitude;
+        let watchId = null;
+        
+        try {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const newLat = pos.coords.latitude;
+                    const newLng = pos.coords.longitude;
 
-                // Animate local marker natively IMMEDIATELY (no React state wait)
-                animateNativeMarker(currentUser.id, newLat, newLng);
+                    // Animate local marker natively IMMEDIATELY (no React state wait)
+                    animateNativeMarker(currentUser.id, newLat, newLng);
 
-                // Update Supabase throttled (every 2-3 seconds)
-                const now = Date.now();
-                if (now - lastDbUpdate >= 2500) {
-                    lastDbUpdate = now;
-                    supabase.from("profiles").update({
-                        latitude: newLat,
-                        longitude: newLng,
-                        last_location: `POINT(${newLng} ${newLat})`,
-                        is_location_on: true,
-                        is_ghost_mode: false
-                    }).eq("id", currentUser.id).then();
-                }
-            },
-            (err) => { if (err.code !== 3) console.error('Map watch error:', err); },
-            { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
-        );
+                    // Update Supabase throttled (every 2-3 seconds)
+                    const now = Date.now();
+                    if (now - lastDbUpdate >= 2500) {
+                        lastDbUpdate = now;
+                        supabase.from("profiles").update({
+                            latitude: newLat,
+                            longitude: newLng,
+                            last_location: `POINT(${newLng} ${newLat})`,
+                            is_location_on: true,
+                            is_ghost_mode: false
+                        }).eq("id", currentUser.id).then();
+                    }
+                },
+                (err) => { if (err.code !== 3) console.log('Map watch error:', err); },
+                { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+            );
+        } catch (e) {
+            console.warn("Geolocation hardware locked during background wake", e);
+        }
 
-        return () => navigator.geolocation.clearWatch(watchId);
+        return () => {
+             if (watchId !== null) {
+                 try {
+                     navigator.geolocation.clearWatch(watchId);
+                 } catch (e) {
+                     console.warn("Geolocation clearWatch failed during suspend", e);
+                 }
+             }
+        };
     }, [locationEnabled, currentUser, animateNativeMarker]);
 
     // Check Profile Completeness
