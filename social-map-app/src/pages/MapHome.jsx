@@ -705,7 +705,7 @@ export default function MapHome() {
 
 
     // Global Unread Count Logic
-    const [unreadCount, setUnreadCount] = useState(0);
+    const [unreadCount, setUnreadCount] = [0, () => {}];
 
     useEffect(() => {
         if (!currentUser?.id) return;
@@ -3242,12 +3242,6 @@ export default function MapHome() {
                 </div>
             </div>
 
-
-            {/* Bottom Navigation */}
-            <BottomNav 
-                friendRequestCount={friendRequests.length} 
-                unreadMessageCount={unreadCount} 
-            />
 
             <style>{`
                 .map-header-controls {

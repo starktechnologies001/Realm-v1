@@ -525,7 +525,9 @@ export default function Chat() {
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
                  // Check if it's a read status update for a message sent TO me
                  if (String(payload.new.receiver_id) === String(currentUser.id)) {
-                     if (payload.new.is_read && !payload.old.is_read) {
+                     // Since payload.old is empty by default unless REPLICA IDENTITY FULL is enabled on postgres,
+                     // we cannot check !payload.old.is_read. We just check if it's newly marked as read.
+                     if (payload.new.is_read) {
                          setChats(prev => prev.map(chat => {
                              if (String(chat.id) === String(payload.new.sender_id)) {
                                  return { ...chat, unread: Math.max(0, chat.unread - 1) };
