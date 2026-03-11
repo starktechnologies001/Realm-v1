@@ -712,12 +712,20 @@ export default function Chat() {
     }
 
     // Mark messages as read when opening a chat
-    // Mark messages as read when opening a chat
     const markMessagesAsRead = async (senderId, receiverId) => {
         // Optimistic Update: Update local UI immediately
-        setChats(prev => prev.map(chat => 
-            chat.id === senderId ? { ...chat, unread: 0 } : chat
-        ));
+        setChats(prev => {
+            const newChats = prev.map(chat => 
+                chat.id === senderId ? { ...chat, unread: 0 } : chat
+            );
+            // Sync to local cache to prevent unread state bounce on refresh/navigation
+            localStorage.setItem('cached_chats_list', JSON.stringify(newChats));
+            
+            // Update total badge count
+            const total = newChats.reduce((sum, c) => sum + (c.unread || 0), 0);
+            setTotalUnreadCount(total);
+            return newChats;
+        });
 
         // Update Database in background
         const now = new Date().toISOString();
@@ -1696,6 +1704,17 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         const selectedIds = Array.from(selectedMessages);
         if (selectedIds.length === 0) return;
         
+        // Final security check: Ensure all selected messages were sent by the current user
+        const allMine = selectedIds.every(id => {
+            const msg = messages.find(m => m.id === id);
+            return msg && String(msg.sender_id) === String(currentUser.id);
+        });
+        
+        if (!allMine) {
+            showToast('You can only delete your own messages for everyone.');
+            return;
+        }
+        
         // Optimistic Update
         setMessages(prev => prev.map(m => {
             if (selectedMessages.has(m.id)) {
@@ -2316,12 +2335,23 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     const newMessage = { ...payload.new, reply_to: replyToData };
 
                     setMessages(prev => {
-                        // Replace optimistic message if exists
-                        const withoutOptimistic = prev.filter(m => !m.tempId);
                         // Check if already applied (duplicate event protection)
-                        if (withoutOptimistic.some(m => m.id === newMessage.id)) return prev;
+                        if (prev.some(m => m.id === newMessage.id)) return prev;
                         
-                        return [...withoutOptimistic, newMessage];
+                        // Check if this is the database version of the optimistic message we just sent
+                        // If it is, replace it (identified by matching sender, content, and recent creation time)
+                        // If it's a completely new incoming message, leave other optimistic messages alone.
+                        const isSentByMe = String(newMessage.sender_id) === String(currentUser.id);
+                        
+                        // If I sent it, the `sendMessage` function already provides instant UI updates.
+                        // We preserve optimistic ones until the promise resolves.
+                        if (isSentByMe) {
+                             // We don't append Postgres duplicates of our own messages here since 
+                             // `sendMessage` inserts the returned DB row into state, avoiding `tempId` bugs.
+                             return prev;
+                        }
+                        
+                        return [...prev, newMessage];
                     });
                     
                     // Don't mark as read here - let the polling mechanism handle it
@@ -5107,12 +5137,10 @@ function ForwardModal({ chats, onClose, onSend, loading }) {
 }
 
 function MessageDeleteModal({ selectedMessages, currentUser, onDeleteForMe, onDeleteForEveryone, onCancel }) {
-    // Check eligibility: All messages must be sent by Me AND be less than 5 minutes old
+    // Check eligibility: All messages must be sent by Me
     const canDeleteForEveryone = selectedMessages.every(msg => {
-        const isMine = msg.sender_id === currentUser.id;
-        const diff = Date.now() - new Date(msg.created_at).getTime();
-        const isRecent = diff < 5 * 60 * 1000; // 5 minutes
-        return isMine && isRecent;
+        const isMine = String(msg.sender_id) === String(currentUser.id);
+        return isMine;
     });
 
     return (

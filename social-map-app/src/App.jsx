@@ -13,18 +13,43 @@ import { LocationProvider } from './context/LocationContext';
 
 import { supabase } from './supabaseClient';
 
+// Wrapper for React.lazy to handle Vite dynamic import failures
+const lazyWithRetry = (componentImport) =>
+  lazy(async () => {
+    const pageHasAlreadyBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page-has-been-force-refreshed') || 'false'
+    );
+
+    try {
+      const component = await componentImport();
+      window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
+      return component;
+    } catch (error) {
+      if (!pageHasAlreadyBeenForceRefreshed) {
+        // Assume that the error was because of a stale cache 
+        // (TypeError: Failed to fetch dynamically imported module)
+        console.warn('Dynamic import failed, reloading page to fetch latest chunks...', error);
+        window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
+        return window.location.reload();
+      }
+      
+      // The page has already been reloaded, so assuming this is an actual error
+      throw error;
+    }
+  });
+
 // Lazy loaded page components
-const Login = lazy(() => import('./pages/Login'));
-const MapHome = lazy(() => import('./pages/MapHome'));
-const Friends = lazy(() => import('./pages/Friends'));
-const Chat = lazy(() => import('./pages/Chat'));
-const Profile = lazy(() => import('./pages/Profile'));
-const ConfirmEmail = lazy(() => import('./pages/ConfirmEmail'));
-const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
-const OAuthProfileSetup = lazy(() => import('./pages/OAuthProfileSetup'));
-const BlockedUsers = lazy(() => import('./pages/BlockedUsers'));
-const LegalPage = lazy(() => import('./pages/LegalPage'));
-const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const MapHome = lazyWithRetry(() => import('./pages/MapHome'));
+const Friends = lazyWithRetry(() => import('./pages/Friends'));
+const Chat = lazyWithRetry(() => import('./pages/Chat'));
+const Profile = lazyWithRetry(() => import('./pages/Profile'));
+const ConfirmEmail = lazyWithRetry(() => import('./pages/ConfirmEmail'));
+const UpdatePassword = lazyWithRetry(() => import('./pages/UpdatePassword'));
+const OAuthProfileSetup = lazyWithRetry(() => import('./pages/OAuthProfileSetup'));
+const BlockedUsers = lazyWithRetry(() => import('./pages/BlockedUsers'));
+const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'));
+const UserProfilePage = lazyWithRetry(() => import('./pages/UserProfilePage'));
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
