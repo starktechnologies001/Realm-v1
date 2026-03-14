@@ -103,7 +103,12 @@ const MapSkeleton = () => (
     </div>
 );
 
+import { useVersionCheck } from './hooks/useVersionCheck';
+
 function App() {
+  // Setup background version polling
+  useVersionCheck();
+
   // Logic moved to usePushNotifications hook in Layout
   // Keeping App simple
 

@@ -1,9 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
+
+// Custom plugin to generate version.json on build
+const generateVersionJSON = () => {
+  return {
+    name: 'generate-version-json',
+    writeBundle(options, bundle) {
+      const versionData = {
+        version: new Date().getTime().toString(),
+        timestamp: new Date().toISOString()
+      };
+      // output destination inside the defined outDir (usually 'dist')
+      fs.writeFileSync(`${options.dir}/version.json`, JSON.stringify(versionData, null, 2));
+      console.log('✅ Generated version.json');
+    }
+  };
+};
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), generateVersionJSON()],
 
   build: {
     // Target modern browsers — smaller output, no legacy polyfills

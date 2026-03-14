@@ -32,3 +32,29 @@ if ('serviceWorker' in navigator) {
       });
   });
 }
+
+// =========================================================================
+// GLOBAL VITE ERROR HANDLER (Production-Grade Dynamic Import Recovery)
+// =========================================================================
+
+// Catch specific Vite preload errors (when a chunk fails to load)
+window.addEventListener('vite:preloadError', (event) => {
+  console.warn('⚡ Vite chunk preload error detected! Forcing page hard reload...', event);
+  
+  // Prevent the error from crashing the app before we can reload
+  event.preventDefault();
+
+  // Cache bust check to avoid infinite reload loops
+  const hasRefreshed = sessionStorage.getItem('vite-preload-error-hard-reload');
+  if (!hasRefreshed) {
+    sessionStorage.setItem('vite-preload-error-hard-reload', 'true');
+    // Hard refresh bypassing cache
+    window.location.reload(true);
+  } else {
+    console.error('Repeated chunk loading failures. Awaiting manual refresh.');
+    // Clear the flag so they can try again later
+    setTimeout(() => {
+      sessionStorage.removeItem('vite-preload-error-hard-reload');
+    }, 10000); 
+  }
+});
