@@ -13,6 +13,7 @@ import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
 import LimitedModeScreen from '../components/LimitedModeScreen';
+import LocationOnboarding from '../components/LocationOnboarding';
 import StoryViewer from '../components/StoryViewer';
 import { uploadToStorage } from '../utils/fileUpload';
 import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
@@ -2674,149 +2675,11 @@ export default function MapHome() {
 
     // 2️⃣ Location disabled — permission screen
     if (!locationEnabled) {
-        const dark = isDarkMode;
         return (
-            <div style={{
-                height:"100dvh", display:"flex", flexDirection:"column",
-                justifyContent:"center", alignItems:"center",
-                background: dark ? "#111113" : "#Fafbfd",
-                padding:"32px", textAlign:"center",
-                overflow:"hidden", position:"relative"
-            }}>
-                <style>{`
-                    @keyframes loc-pulse {
-                        0% { box-shadow: 0 0 0 0 rgba(108, 71, 255, 0.4); }
-                        70% { box-shadow: 0 0 0 20px rgba(108, 71, 255, 0); }
-                        100% { box-shadow: 0 0 0 0 rgba(108, 71, 255, 0); }
-                    }
-                    @keyframes loc-float {
-                        0%, 100% { transform: translateY(0); }
-                        50% { transform: translateY(-10px); }
-                    }
-                    @keyframes fadeUpIn {
-                        from { opacity: 0; transform: translateY(20px); }
-                        to { opacity: 1; transform: translateY(0); }
-                    }
-                `}</style>
-
-                {/* Background Ambient Glow */}
-                <div style={{
-                    position: 'absolute', top: '20%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: 300, height: 300, borderRadius: '50%',
-                    background: dark ? 'radial-gradient(circle, rgba(108,71,255,0.15) 0%, rgba(17,17,19,0) 70%)' : 'radial-gradient(circle, rgba(108,71,255,0.08) 0%, rgba(250,251,253,0) 70%)',
-                    pointerEvents: 'none', zIndex: 0
-                }} />
-
-                {/* Floating Map Pin */}
-                <div style={{
-                    position: 'relative', zIndex: 1,
-                    width: 96, height: 96, borderRadius: 32,
-                    background: dark 
-                        ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)' 
-                        : 'linear-gradient(135deg, #ffffff 0%, #f4f5f8 100%)',
-                    border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
-                    boxShadow: dark 
-                        ? '0 24px 48px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.1)' 
-                        : '0 24px 48px rgba(108,71,255,0.12), inset 0 1px 1px rgba(255,255,255,1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 36,
-                    animation: 'loc-float 4s ease-in-out infinite, fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards'
-                }}>
-                    <div style={{
-                        width: 50, height: 50, borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #a88bff 0%, #6c47ff 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'white',
-                        boxShadow: '0 8px 24px rgba(108,71,255,0.4)',
-                        animation: 'loc-pulse 2.5s infinite'
-                    }}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                    </div>
-                </div>
-
-                {/* Heading */}
-                <h2 style={{
-                    position: 'relative', zIndex: 1,
-                    margin: "0 0 12px", fontSize: "28px", fontWeight: 800,
-                    color: dark ? "#ffffff" : "#1a1a2e",
-                    letterSpacing: "-0.8px",
-                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards',
-                    opacity: 0
-                }}>Share Location</h2>
-
-                {/* Subtext */}
-                <p style={{
-                    position: 'relative', zIndex: 1,
-                    margin: "0 0 36px", fontSize: "15px", lineHeight: 1.6,
-                    color: dark ? "rgba(255,255,255,.55)" : "rgba(0,0,0,.55)",
-                    maxWidth: "280px",
-                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards',
-                    opacity: 0
-                }}>
-                    See who's around you in real time. Your location is only visible while you're active.
-                </p>
-
-                {/* Feature pills */}
-                <div style={{ 
-                    display: "flex", gap: "10px", marginBottom: "40px", 
-                    flexWrap: "wrap", justifyContent: "center", position: 'relative', zIndex: 1,
-                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards',
-                    opacity: 0
-                }}>
-                    {[
-                        { icon: "👥", label: "Nearby", color: "#00C6FF" },
-                        { icon: "🛡️", label: "Private", color: "#30d158" },
-                        { icon: "⚡", label: "Real-time", color: "#FFB020" }
-                    ].map(({icon, label, color}) => (
-                        <div key={label} style={{
-                            display: "flex", alignItems: "center", gap: "6px",
-                            padding: "8px 14px", borderRadius: "100px",
-                            background: dark ? "rgba(255,255,255,.04)" : "#ffffff",
-                            border: dark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(0,0,0,.04)",
-                            boxShadow: dark ? "none" : "0 4px 12px rgba(0,0,0,0.03)"
-                        }}>
-                            <span style={{ fontSize: "14px" }}>{icon}</span>
-                            <span style={{ fontSize: "13px", fontWeight: 600, color: dark ? "rgba(255,255,255,.8)" : "#1a1a2e" }}>{label}</span>
-                        </div>
-                    ))}
-                </div>
-
-                {/* CTA Button */}
-                <button
-                    onClick={startLocation}
-                    style={{
-                        position: 'relative', zIndex: 1,
-                        width: "100%", maxWidth: "280px",
-                        padding: "16px 0", borderRadius: "20px", border: "none",
-                        background: dark
-                            ? "linear-gradient(135deg, #8160fc 0%, #5d3fe2 100%)"
-                            : "linear-gradient(135deg, #6c47ff 0%, #4f2fe8 100%)",
-                        color: "white", fontWeight: 700, fontSize: "16px",
-                        cursor: "pointer", letterSpacing: "0.4px",
-                        boxShadow: dark ? "0 12px 32px rgba(93,63,226,.4), inset 0 1px 1px rgba(255,255,255,0.2)" : "0 12px 32px rgba(108,71,255,.35), inset 0 1px 1px rgba(255,255,255,0.3)",
-                        transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s",
-                        animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards',
-                        opacity: 0
-                    }}
-                    onMouseDown={e => { e.currentTarget.style.transform="scale(0.95)"; e.currentTarget.style.boxShadow="0 6px 16px rgba(108,71,255,.3)"; }}
-                    onMouseUp={e => { e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow= dark ? "0 12px 32px rgba(93,63,226,.4)" : "0 12px 32px rgba(108,71,255,.35)"; }}
-                    onTouchStart={e => { e.currentTarget.style.transform="scale(0.95)"; }}
-                    onTouchEnd={e => { e.currentTarget.style.transform="scale(1)"; }}
-                >
-                    Enable Location
-                </button>
-
-                <p style={{
-                    position: 'relative', zIndex: 1,
-                    marginTop: "20px", fontSize: "13px", fontWeight: 500,
-                    color: dark ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.35)",
-                    animation: 'fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards',
-                    opacity: 0
-                }}>You can disable this anytime</p>
-            </div>
+            <LocationOnboarding 
+                onEnable={startLocation} 
+                isDarkMode={isDarkMode} 
+            />
         );
     }
 

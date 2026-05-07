@@ -50,6 +50,7 @@ const OAuthProfileSetup = lazyWithRetry(() => import('./pages/OAuthProfileSetup'
 const BlockedUsers = lazyWithRetry(() => import('./pages/BlockedUsers'));
 const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'));
 const UserProfilePage = lazyWithRetry(() => import('./pages/UserProfilePage'));
+const Landing = lazyWithRetry(() => import('./pages/Landing'));
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (

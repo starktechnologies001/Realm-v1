@@ -566,6 +566,13 @@ export default function Profile() {
                         onClick={() => setActiveModal('edit-bio')}
                     />
                     <MenuItem
+                        icon={<span style={{fontSize: '1rem'}}>💕</span>}
+                        label="Relationship Status" 
+                        value={user.relationship_status || 'Add Status'} 
+                        iconClass="icon-personal"
+                        onClick={() => setActiveModal('edit-relationship')}
+                    />
+                    <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 10a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v11H9V10z"/></svg>}
                         label="Institute / Work"
                         value={user.institute || 'Add Institute / Work'} 
@@ -1034,6 +1041,58 @@ export default function Profile() {
                                         )}
                                     </div>
                                 </div>
+                            </>
+                        )}
+
+                        {activeModal === 'edit-relationship' && (
+                            <>
+                                <div className="modal-header">
+                                    <div className="icon-wrapper icon-personal" style={{ fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        💕
+                                    </div>
+                                    <h3>Relationship Status</h3>
+                                </div>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const formData = new FormData(e.target);
+                                    const newStatus = formData.get('relationship');
+                                    if (newStatus) {
+                                        updateProfile({ relationship_status: newStatus });
+                                        setActiveModal(null);
+                                    }
+                                }} className="modal-form">
+                                    <div className="input-group" style={{ position: 'relative' }}>
+                                        <select 
+                                            name="relationship"
+                                            defaultValue={user.relationship_status || ''}
+                                            style={{
+                                                width: '100%',
+                                                padding: '14px 40px 14px 14px',
+                                                borderRadius: '12px',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                background: 'rgba(0,0,0,0.3)',
+                                                color: 'white',
+                                                fontSize: '1rem',
+                                                appearance: 'none',
+                                                outline: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="" disabled style={{ color: 'rgba(255,255,255,0.5)' }}>Select Status</option>
+                                            <option value="Single" style={{ background: '#1c1c1e', color: 'white' }}>Single</option>
+                                            <option value="Committed" style={{ background: '#1c1c1e', color: 'white' }}>Committed</option>
+                                            <option value="Open to Date" style={{ background: '#1c1c1e', color: 'white' }}>Open to Date</option>
+                                            <option value="Married" style={{ background: '#1c1c1e', color: 'white' }}>Married</option>
+                                        </select>
+                                        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
+                                            ▼
+                                        </div>
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                        <button type="submit" className="btn-pri">Save</button>
+                                    </div>
+                                </form>
                             </>
                         )}
 

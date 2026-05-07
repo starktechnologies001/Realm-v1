@@ -2,20 +2,18 @@ import React from 'react';
 import './LocationOnboarding.css';
 import locationIllustration from '../assets/location_onboarding.png';
 
+import nearoLogo from '../assets/logo.png';
+
 export default function LocationOnboarding({ onEnable, isDarkMode }) {
     return (
         <div className={`premium-onboarding-container ${isDarkMode ? 'dark' : 'light'}`}>
-            {/* Ambient Background Gradient blobs */}
-            <div className="ambient-blob top-left"></div>
-            <div className="ambient-blob bottom-right"></div>
-            
             <div className="premium-onboarding-content">
                 
                 {/* Top Section */}
                 <div className="premium-onboarding-top">
-                    <img src="/nearo-logo.png" alt="Nearo Logo" className="official-nearo-logo" />
-                    <p className="premium-tagline">Make your map come alive.</p>
-                    <p className="premium-subtagline">Discover friends, trending events, and hangouts happening around you right now.</p>
+                    <img src={nearoLogo} alt="Nearo Logo" className="premium-logo-image" />
+                    <h1 className="premium-logo-text">Nearo</h1>
+                    <p className="premium-tagline">Meet people nearby</p>
                 </div>
 
                 {/* Middle Section: Illustration */}
@@ -23,7 +21,6 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                     <div className="premium-illustration-wrapper">
                         {/* Interactive dynamic glows */}
                         <div className="premium-illustration-glow base-glow"></div>
-                        <div className="premium-illustration-glow accent-glow"></div>
                         
                         <img 
                             src={locationIllustration} 
@@ -40,7 +37,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                         <div className="premium-btn-shine"></div>
                     </button>
                     <p className="premium-microcopy">
-                        <span className="premium-lock-icon">🔒</span> Your location is never shared exactly
+                        We use your location to show nearby people
                     </p>
                 </div>
                 
