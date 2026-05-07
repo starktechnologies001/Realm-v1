@@ -51,6 +51,7 @@ const BlockedUsers = lazyWithRetry(() => import('./pages/BlockedUsers'));
 const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'));
 const UserProfilePage = lazyWithRetry(() => import('./pages/UserProfilePage'));
 const Landing = lazyWithRetry(() => import('./pages/Landing'));
+const Welcome = lazyWithRetry(() => import('./pages/Welcome'));
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
@@ -157,7 +158,7 @@ function App() {
                 <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />
                 <Route path="/blocked-users" element={<BlockedUsers />} />
                 <Route path="/legal/:section" element={<LegalPage />} />
-                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/" element={<Welcome />} />
               </Routes>
             </Suspense>
           </CallProvider>

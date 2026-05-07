@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
+import { fuzzyLocationForDB } from "../utils/locationPrivacy";
 
 const LocationContext = createContext();
 
@@ -72,13 +73,11 @@ export function LocationProvider({ children }) {
             // Start live tracking
             startWatching();
 
-            // 🔥 PHASE 2: Update actual coordinates now that GPS has fired
+            // 🔥 PHASE 2: Update fuzzied coordinates (50–100m offset) so exact GPS is never stored
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").update({
-                  latitude: newLoc.lat,
-                  longitude: newLoc.lng,
-                  last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                  ...fuzzyLocationForDB(newLoc.lat, newLoc.lng),
                   is_location_on: true,
                   is_ghost_mode: false
                 }).eq("id", session.user.id).then(({ error }) => {
@@ -173,9 +172,8 @@ export function LocationProvider({ children }) {
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
                         supabase.from("profiles").update({
-                            latitude: newLoc.lat,
-                            longitude: newLoc.lng,
-                            last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                            // Apply 50–100m privacy offset before storing
+                            ...fuzzyLocationForDB(newLoc.lat, newLoc.lng),
                             is_location_on: true,
                             is_ghost_mode: false
                         }).eq("id", session.user.id).then(({ error }) => {

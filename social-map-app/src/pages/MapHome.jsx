@@ -12,6 +12,7 @@ import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
+import { fuzzyLocationForDB } from '../utils/locationPrivacy';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import LocationOnboarding from '../components/LocationOnboarding';
 import StoryViewer from '../components/StoryViewer';
@@ -645,9 +646,8 @@ export default function MapHome() {
                     if (now - lastDbUpdate >= 2500) {
                         lastDbUpdate = now;
                         supabase.from("profiles").update({
-                            latitude: newLat,
-                            longitude: newLng,
-                            last_location: `POINT(${newLng} ${newLat})`,
+                            // Apply 50–100m privacy offset — exact GPS never reaches the DB
+                            ...fuzzyLocationForDB(newLat, newLng),
                             is_location_on: true,
                             is_ghost_mode: false
                         }).eq("id", currentUser.id).then();

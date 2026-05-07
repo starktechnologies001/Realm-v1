@@ -2,8 +2,9 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
-import { calculateDistance, formatDistance } from '../utils/distanceUtils';
+import { calculateDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
+import { nearbyLabel } from '../utils/locationPrivacy';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation }) {
@@ -46,11 +47,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const theirLng = user.lng || user.longitude;
     const distanceMeters = calculateDistance(myLat, myLng, theirLat, theirLng);
 
-    const distanceStr = (() => {
-        if (distanceMeters === null || distanceMeters === undefined) return null;
-        if (distanceMeters < 1000) return `${Math.round(distanceMeters)} m away`;
-        return `${(distanceMeters / 1000).toFixed(1)} km away`;
-    })();
+    // Show a fuzzy "nearby" label — never an exact distance
+    const distanceStr = distanceMeters != null ? nearbyLabel(distanceMeters) : null;
 
     // Interaction States
     const [isFullPhoto, setIsFullPhoto] = useState(false);
