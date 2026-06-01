@@ -3075,6 +3075,19 @@ export default function MapHome() {
                     Your exact location is never shared
                 </div>
                 <div className="header-top-row">
+                    {/* Profile Button - Left Side */}
+                    <button 
+                        className="top-profile-btn glass-panel"
+                        onClick={() => navigate('/profile')}
+                        title="View Profile"
+                    >
+                        <img 
+                            src={currentUser ? (getAvatar2D(currentUser.avatar_url) || (currentUser.gender === 'Male' ? DEFAULT_MALE_AVATAR : currentUser.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR)) : DEFAULT_GENERIC_AVATAR} 
+                            alt="Profile" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        />
+                    </button>
+
                     <div className="search-bar-container glass-panel">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.4, flexShrink:0 }}>
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -3103,25 +3116,14 @@ export default function MapHome() {
                     </div>
                     
                     {/* Action Buttons - Right Side */}
-                    <div className="header-action-buttons" style={{ display: 'flex', gap: '8px' }}>
+                    <div className="header-action-buttons">
                         {/* Status / Thoughts */}
                         <button 
-                            className="control-btn" 
-                            style={{ 
-                                background: 'rgba(255, 255, 255, 0.95)', 
-                                border: '1px solid rgba(0, 198, 255, 0.4)',
-                                color: '#0072FF',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: '0 4px 16px rgba(0, 114, 255, 0.15)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, width: 28, height: 28, borderRadius: '50%',
-                                transition: 'all 0.2s ease',
-                                flexShrink: 0
-                            }}
+                            className="control-btn status-trigger-btn" 
                             onClick={() => setShowThoughtInput(true)} 
                             title="Set Status"
                         >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                                 <path d="M8 10h.01M12 10h.01M16 10h.01"/>
                             </svg>
@@ -3130,35 +3132,24 @@ export default function MapHome() {
                         {/* Visibility Mode Toggle */}
                         <div style={{ position: 'relative' }}>
                             <button
-                                className={`control-btn ${currentUser?.visibility_mode === 'ghost' ? 'active' : ''}`}
-                                style={{ 
-                                    background: currentUser?.visibility_mode === 'ghost' ? '#111113' : 'rgba(255, 255, 255, 0.95)', 
-                                    border: currentUser?.visibility_mode === 'ghost' ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                                    color: currentUser?.visibility_mode === 'ghost' ? '#ffffff' : '#111113',
-                                    backdropFilter: 'blur(10px)',
-                                    boxShadow: currentUser?.visibility_mode === 'ghost' ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(0,0,0,0.08)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    padding: 0, width: 28, height: 28, borderRadius: '50%',
-                                    transition: 'all 0.2s ease',
-                                    flexShrink: 0
-                                }}
+                                className={`control-btn visibility-toggle-btn ${currentUser?.visibility_mode === 'ghost' ? 'ghost-active' : ''}`}
                                 onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
                                 title="Visibility Settings"
                             >
                                 {currentUser?.visibility_mode === 'ghost' ? (
                                     /* Ghost Mode */
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                                         <line x1="1" y1="1" x2="23" y2="23"/>
                                     </svg>
                                 ) : currentUser?.visibility_mode === 'friends' ? (
                                     /* Friends Mode */
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                                     </svg>
                                 ) : (
                                     /* Public Mode */
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                                     </svg>
                                 )}
@@ -3168,7 +3159,7 @@ export default function MapHome() {
                             {showVisibilityMenu && (
                                 <div style={{
                                     position: 'absolute',
-                                    top: '36px',
+                                    top: '46px',
                                     right: 0,
                                     background: 'rgba(28, 28, 30, 0.95)',
                                     backdropFilter: 'blur(16px)',
@@ -3236,26 +3227,15 @@ export default function MapHome() {
 
                         {/* Map View Toggle */}
                         <button 
-                            className="control-btn"
+                            className="control-btn map-mode-btn"
                             onClick={() => {
                                 const modes = ['street', 'satellite', 'hybrid'];
                                 const nextIndex = (modes.indexOf(mapMode) + 1) % modes.length;
                                 setMapMode(modes[nextIndex]);
                             }}
                             title="Toggle Map View"
-                            style={{ 
-                                background: 'rgba(255, 255, 255, 0.95)', 
-                                border: '1px solid rgba(48, 209, 88, 0.4)',
-                                color: '#24a046',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: '0 4px 16px rgba(48, 209, 88, 0.15)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, width: 28, height: 28, borderRadius: '50%',
-                                transition: 'all 0.2s ease',
-                                flexShrink: 0
-                            }}
                         >
-                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                              </svg>
                         </button>
@@ -3282,7 +3262,7 @@ export default function MapHome() {
             <style>{`
                 .map-header-controls {
                     position: absolute;
-                    top: 0; /* Use padding for safe area instead of top */
+                    top: 0;
                     padding-top: max(16px, env(safe-area-inset-top));
                     left: 0; right: 0;
                     z-index: 1000;
@@ -3299,115 +3279,198 @@ export default function MapHome() {
                     align-items: center;
                     gap: 8px;
                     pointer-events: auto;
+                    width: 100%;
+                }
+
+                .top-profile-btn {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 50%;
+                    overflow: hidden;
+                    border: 1.5px solid var(--glass-border);
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    padding: 0;
+                    flex-shrink: 0;
+                }
+                .top-profile-btn:hover {
+                    transform: scale(1.08);
+                    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+                }
+                .top-profile-btn:active {
+                    transform: scale(0.95);
                 }
 
                 .search-bar-container {
                     flex: 1;
                     display: flex;
                     align-items: center;
-                    padding: 6px 12px;
-                    border-radius: 16px;
+                    padding: 8px 14px;
+                    border-radius: 24px;
                     gap: 8px;
-                    transition: all 0.3s ease;
-                    max-width: 400px;
-                }
-
-                .header-action-buttons {
-                    display: flex;
-                    gap: 6px;
+                    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    border: 1px solid var(--glass-border);
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+                    position: relative;
+                    min-width: 120px;
                 }
 
                 .search-bar-container:focus-within {
-                    transform: scale(1.02);
-                    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+                    transform: translateY(-1px);
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                    border-color: rgba(0, 132, 255, 0.35);
                 }
-
-                .search-icon { font-size: 1.2rem; opacity: 0.6; }
 
                 .search-bar-container input {
                     border: none;
                     background: transparent;
                     font-size: 13px;
+                    font-weight: 500;
                     width: 100%;
-                    color: inherit;
+                    color: var(--text-primary);
                     outline: none;
+                }
+                .search-bar-container input::placeholder {
+                    color: var(--text-secondary);
+                    opacity: 0.75;
+                }
+
+                .header-action-buttons {
+                    display: flex;
+                    gap: 6px;
+                    flex-shrink: 0;
+                }
+
+                .header-action-buttons .control-btn {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    border: 1px solid var(--glass-border);
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    color: var(--text-primary);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                    padding: 0;
+                }
+
+                .header-action-buttons .control-btn:hover {
+                    transform: scale(1.08);
+                    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+                }
+
+                .header-action-buttons .control-btn:active {
+                    transform: scale(0.95);
+                }
+
+                /* Accent borders for specific buttons to look neat */
+                .status-trigger-btn {
+                    color: #0084ff !important;
+                    border-color: rgba(0, 132, 255, 0.2) !important;
+                }
+                .visibility-toggle-btn.ghost-active {
+                    background: #111113 !important;
+                    color: #ffffff !important;
+                    border-color: rgba(255,255,255,0.1) !important;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
+                }
+                .map-mode-btn {
+                    color: #34C759 !important;
+                    border-color: rgba(52, 199, 89, 0.2) !important;
                 }
 
                 .filter-scroll {
                     pointer-events: auto;
                     display: flex;
-                    gap: 10px;
+                    gap: 8px;
                     overflow-x: auto;
                     padding-bottom: 4px;
+                    margin-top: 2px;
                     -webkit-overflow-scrolling: touch;
-                    scrollbar-width: none; /* Firefox */
+                    scrollbar-width: none;
                 }
                 .filter-scroll::-webkit-scrollbar { display: none; }
 
                 .filter-chip {
-                    padding: 6px 12px;
+                    padding: 6px 14px;
                     white-space: nowrap;
-                    font-size: 12px;
-                    font-weight: 500;
-                    color: inherit;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--text-secondary);
                     cursor: pointer;
-                    transition: all 0.2s;
+                    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    border: 1px solid var(--glass-border);
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(15px);
+                    -webkit-backdrop-filter: blur(15px);
+                    border-radius: 20px;
                 }
 
                 .filter-chip.active {
-                    background: #6c47ff;
+                    background: #0084ff;
                     color: white;
-                    border-color: #6c47ff;
+                    border-color: #0084ff;
+                    box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
                 }
 
                 .search-results-dropdown {
                     position: absolute;
-                    top: 100%;
+                    top: calc(100% + 8px);
                     left: 0;
                     right: 0;
-                    background: rgba(255, 255, 255, 0.95);
-                    backdrop-filter: blur(12px);
-                    border-radius: 12px;
-                    margin-top: 8px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                    background: var(--glass-bg);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid var(--glass-border);
+                    border-radius: 16px;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.12);
                     overflow: hidden;
-                    max-height: 200px;
+                    max-height: 220px;
                     overflow-y: auto;
                     z-index: 2000;
                 }
+
                 .search-result-item {
-                    padding: 10px 16px;
+                    padding: 10px 14px;
                     display: flex;
                     align-items: center;
                     gap: 10px;
                     cursor: pointer;
-                    transition: background 0.2s;
-                    color: #000;
+                    transition: background 0.18s ease;
+                    color: var(--text-primary);
+                    font-weight: 500;
+                    font-size: 13px;
                 }
+
                 .search-result-item:hover {
-                    background: rgba(0,0,0,0.05);
+                    background: rgba(0, 0, 0, 0.04);
                 }
+                html[data-theme="dark"] .search-result-item:hover {
+                    background: rgba(255, 255, 255, 0.08);
+                }
+
                 .search-result-avatar {
-                    width: 32px; height: 32px;
+                    width: 28px;
+                    height: 28px;
                     border-radius: 50%;
                     object-fit: cover;
+                    border: 1px solid var(--glass-border);
                 }
-                
-                @media (prefers-color-scheme: dark) {
-                    .search-results-dropdown {
-                        background: rgba(28, 28, 30, 0.95);
-                        color: white !important;
-                    }
-                    .search-result-item {
-                        color: white !important;
-                    }
-                    .search-result-item:hover {
-                        background: rgba(255,255,255,0.1);
-                    }
-                }
-
-
-
             `}</style>
 
             <MapProfileCard

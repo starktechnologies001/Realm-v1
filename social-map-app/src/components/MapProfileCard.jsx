@@ -398,29 +398,29 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                 <style>{`
                     .user-profile-overlay {
                         position: fixed;
-                        top: 0; left: 0; right: 0; bottom: 80px;
-                        background: rgba(0,0,0,0.6);
-                        backdrop-filter: blur(8px);
-                        -webkit-backdrop-filter: blur(8px);
-                        z-index: 2000;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background: rgba(0,0,0,0.4);
+                        backdrop-filter: blur(10px);
+                        -webkit-backdrop-filter: blur(10px);
+                        z-index: 2500;
                         display: flex;
                         justify-content: center;
                         align-items: flex-end;
                     }
                     
-                    /* New Styles for Interaction */
                     .avatar-context-menu {
                         position: absolute;
                         top: -60px; /* Moves up */
                         left: 50%;
                         transform: translateX(-50%);
-                        background: white;
-                        border-radius: 12px;
+                        background: var(--bg-color);
+                        border: 1px solid var(--glass-border);
+                        border-radius: 16px;
                         padding: 6px;
-                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.25);
                         display: flex;
                         flex-direction: column;
-                        min-width: 140px;
+                        min-width: 150px;
                         z-index: 3000;
                     }
                     .avatar-context-menu button {
@@ -431,16 +431,17 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         width: 100%;
                         cursor: pointer;
                         font-weight: 600;
-                        color: #1c1c1e;
+                        color: var(--text-primary);
                         font-size: 0.9rem;
-                        border-radius: 8px;
+                        border-radius: 10px;
+                        transition: background 0.15s;
                     }
-                    .avatar-context-menu button:hover { background: #f2f2f7; }
-                    .menu-divider { height: 1px; background: #e5e5ea; margin: 4px 0; }
+                    .avatar-context-menu button:hover { background: var(--bg-secondary); }
+                    .menu-divider { height: 1px; background: var(--glass-border); margin: 4px 0; }
                     .menu-status-text {
                         padding: 8px 14px;
                         font-size: 0.8rem;
-                        color: #666;
+                        color: var(--text-secondary);
                         font-style: italic;
                         text-align: center;
                     }
@@ -452,8 +453,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                     .full-photo-overlay {
                         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                        background: rgba(0,0,0,0.95);
-                        backdrop-filter: blur(15px);
+                        background: rgba(0,0,0,0.92);
+                        backdrop-filter: blur(20px);
                         z-index: 5000;
                         display: flex; flex-direction: column;
                         justify-content: center; align-items: center;
@@ -462,62 +463,62 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         width: 80vw; height: 80vw; max-width: 400px; max-height: 400px;
                         border-radius: 50%;
                         object-fit: cover;
-                        box-shadow: 0 20px 80px rgba(0,0,0,0.8);
-                        border: 2px solid rgba(255,255,255,0.1);
+                        box-shadow: 0 20px 80px rgba(0,0,0,0.7);
+                        border: 3.5px solid rgba(255,255,255,0.2);
                     }
                     .full-photo-status {
                         margin-top: 30px;
-                        background: rgba(255,255,255,0.1);
-                        color: white;
+                        background: var(--glass-bg);
+                        color: var(--text-primary);
                         padding: 10px 24px;
                         border-radius: 30px;
                         font-size: 1.1rem;
                         font-weight: 500;
-                        border: 1px solid rgba(255,255,255,0.2);
-                    }
-
-                    /* ... Existing Styles ... */
-                    .glass-panel {
-                        background: #1c1c1e;
-                        border-top: 1px solid rgba(255, 255, 255, 0.15);
-                        box-shadow: 0 -20px 60px rgba(0,0,0,0.6);
+                        border: 1px solid var(--glass-border);
+                        backdrop-filter: blur(10px);
                     }
 
                     .user-profile-card {
                         width: 100%;
                         max-width: 500px;
                         border-radius: 32px 32px 0 0;
-                        padding: 32px 24px 40px;
+                        padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
                         display: flex;
                         flex-direction: column;
                         align-items: center;
-                        gap: 24px;
-                        position: relative; /* Keep relative for z-index containment if needed */
+                        gap: 20px;
+                        position: relative;
+                        background: var(--glass-bg);
+                        backdrop-filter: blur(30px);
+                        -webkit-backdrop-filter: blur(30px);
+                        border: 1px solid var(--glass-border);
+                        border-bottom: none;
+                        box-shadow: 0 -12px 40px rgba(0,0,0,0.12);
                     }
 
                     .card-drag-handle {
-                        width: 40px; height: 5px;
-                        background: rgba(255,255,255,0.2);
+                        width: 36px; height: 5px;
+                        background: var(--text-secondary);
+                        opacity: 0.3;
                         border-radius: 100px;
-                        margin-bottom: 8px;
+                        margin-bottom: 4px;
                     }
 
                     .card-header {
-                        display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%;
+                        display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%;
                     }
 
                     .avatar-large-container {
                         position: relative;
-                        width: 100px; height: 100px;
-                        padding: 0; /* Remove padding as using ::after */
-                        background: none; /* Let ::after handle bg */
+                        width: 96px; height: 96px;
+                        padding: 0;
+                        background: none;
                         border-radius: 50%;
                         cursor: pointer;
                         display: flex; justify-content: center; align-items: center;
                         -webkit-user-select: none;
                         user-select: none;
                         -webkit-touch-callout: none;
-                        /* Ensure no border on container itself */
                         border: none !important; 
                         box-shadow: none !important;
                     }
@@ -526,28 +527,28 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .avatar-large-container::after {
                         content: '';
                         position: absolute;
-                        inset: -6px; /* Sits outside by 6px */
+                        inset: -6px;
                         border-radius: 50%;
-                        border: 3px solid transparent; /* Default */
+                        border: 3px solid transparent;
                         pointer-events: none;
                         box-sizing: border-box;
                         z-index: 1;
                     }
 
                     .avatar-large-container.status-ring-active::after {
-                        border-color: #4285F4;
-                        box-shadow: 0 0 15px rgba(66, 133, 244, 0.5);
+                        border-color: #0084ff;
+                        box-shadow: 0 0 15px rgba(0, 132, 255, 0.4);
                         animation: pulse-ring 2s infinite;
                     }
                     
                     .avatar-large-container.status-ring-viewed::after {
-                        border-color: #8e8e93;
-                        box-shadow: 0 0 8px rgba(255,255,255,0.1);
+                        border-color: var(--text-secondary);
+                        opacity: 0.5;
+                        box-shadow: 0 0 8px rgba(0,0,0,0.05);
                     }
 
                     .avatar-large-container.status-ring-default::after {
                         border-color: transparent;
-                        /* Subtle default */
                     }
                     
                     /* Image Styling - Inner Ring */
@@ -555,122 +556,125 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         width: 100%; height: 100%; 
                         border-radius: 50%; 
                         object-fit: cover;
-                        border: 3px solid #1c1c1e; /* Separation from outer ring */
+                        border: 3.5px solid var(--bg-color); /* Separation from outer ring */
                         position: relative;
-                        z-index: 2; /* Image above ring */
+                        z-index: 2;
                     }
 
                     .status-dot {
-                        position: absolute; bottom: 6px; right: 6px;
-                        width: 22px; height: 22px;
-                        border-radius: 50%; border: 4px solid #1c1c1e;
+                        position: absolute; bottom: 4px; right: 4px;
+                        width: 20px; height: 20px;
+                        border-radius: 50%; border: 3.5px solid var(--bg-color);
                         z-index: 2;
                     }
-                    .status-dot.online { background: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.6); }
-                    .status-dot.offline { background: #666; }
+                    .status-dot.online { background: #34C759; box-shadow: 0 0 8px rgba(52,199,89,0.5); }
+                    .status-dot.offline { background: #8e8e93; }
 
                     .user-info-area h2 {
-                        margin: 0; font-size: 1.6rem; color: white; font-weight: 700;
+                        margin: 0; font-size: 1.5rem; color: var(--text-primary); font-weight: 700;
                         display: flex; align-items: center; justify-content: center; gap: 6px;
                     }
-                    .user-info-area h2 span { color: #666; font-size: 1.4rem; }
+                    .user-info-area h2 span { color: var(--text-secondary); font-size: 1.2rem; }
 
                     .badges-row {
-                        display: flex; justify-content: center; gap: 8px; margin-top: 12px;
+                        display: flex; justify-content: center; gap: 8px; margin-top: 8px;
                     }
 
                     .badge-pill {
-                        font-size: 0.8rem; padding: 6px 16px; border-radius: 100px;
-                        font-weight: 600; background: rgba(255,255,255,0.1); color: #aaa;
+                        font-size: 0.78rem; padding: 6px 14px; border-radius: 100px;
+                        font-weight: 600; background: var(--bg-secondary); color: var(--text-secondary);
+                        border: 1px solid var(--glass-border);
                     }
                     .badge-pill.status { 
-                        background: rgba(0, 212, 255, 0.15); color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.2); 
+                        background: rgba(0, 132, 255, 0.08); color: #0084ff; border: 1px solid rgba(0, 132, 255, 0.15); 
                     }
 
                     .thought-bubble-large {
-                        background: white; color: black; padding: 12px 20px; border-radius: 20px;
+                        background: var(--text-primary); color: var(--bg-color); padding: 12px 18px; border-radius: 18px;
                         font-weight: 600; position: relative; max-width: 90%; text-align: center;
+                        font-size: 0.92rem;
+                        box-shadow: 0 6px 16px rgba(0,0,0,0.1);
                     }
                     .thought-bubble-large::after {
                         content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
-                        border-width: 0 8px 8px; border-style: solid; border-color: transparent transparent white;
+                        border-width: 0 8px 8px; border-style: solid; border-color: transparent transparent var(--text-primary);
                     }
 
-                    /* 5-Column Grid for Buttons */
+                    /* 4-Column Grid for Buttons */
                     .action-grid {
                         display: grid;
                         grid-template-columns: repeat(4, 1fr);
                         gap: 10px;
                         width: 100%;
-                        margin-top: 12px;
+                        margin-top: 8px;
                     }
 
                     .action-btn {
                         display: flex; flex-direction: column; align-items: center; justify-content: center;
-                        aspect-ratio: 1; /* Square shape */
-                        border-radius: 16px;
-                        border: 1px solid rgba(255,255,255,0.08);
-                        background: rgba(255,255,255,0.08); /* Neutral dark default */
-                        color: #ccc;
+                        aspect-ratio: 1;
+                        border-radius: 20px;
+                        border: 1px solid var(--glass-border);
+                        background: var(--bg-secondary);
+                        color: var(--text-primary);
                         cursor: pointer;
-                        transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
                         padding: 0;
-                        gap: 8px;
+                        gap: 6px;
                     }
 
                     .action-btn:hover {
-                        transform: translateY(-3px);
-                        filter: brightness(1.2);
+                        transform: translateY(-2px);
+                        background: var(--glass-border);
                     }
                     .action-btn:active { transform: scale(0.95); }
 
-                    .action-btn .icon { font-size: 28px; line-height: 1; margin-bottom: 2px; }
-                    .action-btn .label { font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: #aaa; }
+                    .action-btn .icon { font-size: 24px; line-height: 1; }
+                    .action-btn .label { font-size: 11px; font-weight: 700; letter-spacing: 0.1px; color: var(--text-secondary); }
 
                     /* Button Specific Styles */
                     
-                    /* Primary (Message) - Blue Glow */
+                    /* Primary (Message) - Brand Gradient */
                     .primary-action {
-                        background: #0084ff;
+                        background: linear-gradient(135deg, #0084ff 0%, #00d4ff 100%);
                         border: none;
-                        box-shadow: 0 4px 20px rgba(0, 132, 255, 0.4);
+                        box-shadow: 0 6px 18px rgba(0, 132, 255, 0.25);
                         color: white !important;
                     }
-                    .primary-action .label { color: rgba(255,255,255,0.95) !important; }
+                    .primary-action .label { color: rgba(255,255,255,0.9) !important; }
                     .primary-action .icon { color: white; }
 
                     /* Danger (Block/Report) - Red tint */
                     .danger {
-                        background: rgba(255, 59, 48, 0.15);
-                        border-color: rgba(255, 59, 48, 0.3);
-                        color: #ff453a;
+                        background: rgba(255, 59, 48, 0.08);
+                        border-color: rgba(255, 59, 48, 0.2);
+                        color: #ff3b30;
                     }
-                    .danger .label { color: #ff453a; }
-                    .danger .icon { color: #ff453a; }
+                    .danger .label { color: #ff3b30; }
+                    .danger .icon { color: #ff3b30; }
 
                     /* Mobile: shrink card to fit screen */
                     @media (max-width: 480px) {
                         .user-profile-card {
-                            padding: 20px 16px 28px;
+                            padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
                             gap: 16px;
                         }
                         .avatar-large-container {
-                            width: 76px; height: 76px;
+                            width: 80px; height: 80px;
                         }
                         .user-info-area h2 {
-                            font-size: 1.2rem;
+                            font-size: 1.3rem;
                         }
                         .user-info-area h2 span {
-                            font-size: 1rem;
+                            font-size: 1.1rem;
                         }
                         .action-grid {
                             gap: 8px;
-                            margin-top: 8px;
+                            margin-top: 4px;
                         }
-                        .action-btn .icon { font-size: 22px; }
-                        .action-btn .label { font-size: 11px; }
-                        .badge-pill { font-size: 0.75rem; padding: 4px 12px; }
-                        .thought-bubble-large { padding: 8px 14px; font-size: 0.9rem; }
+                        .action-btn .icon { font-size: 20px; }
+                        .action-btn .label { font-size: 10px; }
+                        .badge-pill { font-size: 0.72rem; padding: 4px 12px; }
+                        .thought-bubble-large { padding: 10px 14px; font-size: 0.88rem; }
                     }
                     
                 `}</style>

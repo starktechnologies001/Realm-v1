@@ -27,10 +27,31 @@ export default function PokeNotifications({ currentUser }) {
 
             if (!error && data) {
                 setPendingPokes(data);
-                // Only auto-open if user hasn't dismissed the panel this session
-                const wasDismissed = sessionStorage.getItem(dismissedKey) === 'true';
-                if (data.length > 0 && !wasDismissed) {
+                
+                // Get list of seen/dismissed poke IDs from localStorage
+                let seenIds = [];
+                try {
+                    seenIds = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                } catch (e) {
+                    seenIds = [];
+                }
+
+                // Check if there is any poke that hasn't been seen/dismissed yet
+                const hasUnseen = data.some(poke => !seenIds.includes(poke.id));
+
+                if (hasUnseen) {
                     setShowNotifications(true);
+                } else {
+                    setShowNotifications(false);
+                }
+
+                // Self-clean localStorage seen_poke_ids to keep only active pending IDs
+                try {
+                    const activeIds = data.map(p => p.id);
+                    const updatedSeen = seenIds.filter(id => activeIds.includes(id));
+                    localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
+                } catch (e) {
+                    console.error('Error cleaning up seen pokes', e);
                 }
             }
         };
@@ -203,8 +224,14 @@ export default function PokeNotifications({ currentUser }) {
                     <div className="panel-header">
                         <h3>👋 Poke Requests</h3>
                         <button onClick={() => {
-                            // Mark as manually dismissed — won't auto-reopen this session
-                            sessionStorage.setItem(dismissedKey, 'true');
+                            // Mark all current pending pokes as seen/dismissed in localStorage
+                            try {
+                                const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                                const newSeen = Array.from(new Set([...currentSeen, ...pendingPokes.map(p => p.id)]));
+                                localStorage.setItem('seen_poke_ids', JSON.stringify(newSeen));
+                            } catch (e) {
+                                console.error('Error saving seen pokes', e);
+                            }
                             setShowNotifications(false);
                         }}>✕</button>
                     </div>
