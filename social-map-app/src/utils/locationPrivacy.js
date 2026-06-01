@@ -15,20 +15,25 @@
  *    then convert to Δlat / Δlng.
  */
 
-const MIN_OFFSET_M = 50;   // minimum jitter in metres
-const MAX_OFFSET_M = 100;  // maximum jitter in metres
+export function fuzzyLocation(lat, lng, activityStatus = 'live') {
+  let minOffset = 50;
+  let maxOffset = 100;
 
-/**
- * Returns a new { lat, lng } with a random 50–100 m offset applied.
- * The offset direction is uniformly random so it cannot be predicted.
- *
- * @param {number} lat - Real latitude
- * @param {number} lng - Real longitude
- * @returns {{ lat: number, lng: number }}
- */
-export function fuzzyLocation(lat, lng) {
+  // Stationary Protection
+  if (activityStatus === 'recently_active') {
+    minOffset = 100;
+    maxOffset = 200;
+  }
+
+  // Night Mode Protection (10 PM to 6 AM)
+  const hour = new Date().getHours();
+  if (hour >= 22 || hour < 6) {
+    minOffset = 200;
+    maxOffset = 300;
+  }
+
   // Random distance between MIN and MAX metres
-  const distM = MIN_OFFSET_M + Math.random() * (MAX_OFFSET_M - MIN_OFFSET_M);
+  const distM = minOffset + Math.random() * (maxOffset - minOffset);
 
   // Random bearing in radians (0 – 2π)
   const bearing = Math.random() * 2 * Math.PI;
@@ -85,18 +90,8 @@ export function distanceMetres(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Returns a human-readable "nearby" distance label.
- * Never returns an exact distance — always a rounded band.
- *
- * @param {number} metres
- * @returns {string}  e.g. "Nearby", "~200m away", "~1km away"
- */
 export function nearbyLabel(metres) {
-  if (metres < 200)        return 'Nearby';
-  if (metres < 500)        return '~200m away';
-  if (metres < 1000)       return '~500m away';
-  if (metres < 2000)       return '~1km away';
-  if (metres < 5000)       return `~${Math.round(metres / 1000)}km away`;
-  return                          `~${Math.round(metres / 1000)}km away`;
+  if (metres < 500)        return 'Nearby';
+  if (metres < 2000)       return 'Close';
+  return 'In your area';
 }

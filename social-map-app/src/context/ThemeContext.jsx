@@ -77,6 +77,22 @@ export const ThemeProvider = ({ children }) => {
         loadTheme();
     }, []);
 
+    // Listen for auth state changes to reset theme on logout
+    useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_OUT') {
+                console.log('🚪 Auth event: SIGNED_OUT, resetting theme to light');
+                setTheme('light');
+                applyTheme('light');
+                localStorage.removeItem('app_theme');
+            }
+        });
+
+        return () => {
+            subscription?.unsubscribe();
+        };
+    }, []);
+
     // Update theme
     const updateTheme = async (newTheme) => {
         console.log('🎨 Updating theme to:', newTheme);

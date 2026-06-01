@@ -1077,11 +1077,24 @@ export default function Login() {
           box-sizing: border-box;
         }
 
-        .input-field::placeholder { color: #9CA3AF; font-weight: 400; }
+        /* Explicitly force light-theme styling on all inputs/selects on Login & Signup pages */
+        .login-container input:not([type="file"]),
+        .login-container select {
+          background-color: #ffffff !important;
+          background: #ffffff !important;
+          color: #111827 !important;
+          border: 1.5px solid #F3F4F6 !important;
+        }
 
-        .input-field:focus {
-          border-color: #00C6FF;
-          box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15);
+        .login-container input::placeholder {
+          color: #9CA3AF !important;
+          opacity: 1 !important;
+        }
+
+        .login-container input:focus,
+        .login-container select:focus {
+          border-color: #00C6FF !important;
+          box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15) !important;
         }
 
         .btn-primary {

@@ -12,7 +12,7 @@ import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
-import { fuzzyLocationForDB } from '../utils/locationPrivacy';
+import { fuzzyLocation, distanceMetres } from '../utils/locationPrivacy';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import LocationOnboarding from '../components/LocationOnboarding';
 import StoryViewer from '../components/StoryViewer';
@@ -269,7 +269,8 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 u.status, 
                 u.mood, 
                 moodUpdatedAt,
-                0 // no stagger delay needed natively
+                0, // no stagger delay needed natively
+                u.activity_status // PASS ACTIVITY STATUS
             );
 
             if (!marker) {
@@ -471,11 +472,12 @@ export default function MapHome() {
     const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
     const blockedIdsRef = useRef(new Set()); // Blocked users cache
     const blockChannelRef = useRef(null);    // 🚀 Reuse subscribed channel for instant broadcasts
+    const fuzzyLocationCache = useRef(new Map()); // Caches fuzzied lat/lng per user so avatars don't jump around
 
     const [nearbyUsers, setNearbyUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    // const [isGhostMode, setGhostMode] = useState(false); // 🔥 REMOVED local state
+    const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
     const navigate = useNavigate();
     const routeLocation = useLocation();
 
@@ -646,10 +648,14 @@ export default function MapHome() {
                     if (now - lastDbUpdate >= 2500) {
                         lastDbUpdate = now;
                         supabase.from("profiles").update({
-                            // Apply 50–100m privacy offset — exact GPS never reaches the DB
-                            ...fuzzyLocationForDB(newLat, newLng),
+                            latitude: newLat,
+                            longitude: newLng,
+                            last_location: `POINT(${newLng} ${newLat})`,
                             is_location_on: true,
-                            is_ghost_mode: false
+                            is_ghost_mode: false,
+                            visibility_mode: 'public',
+                            activity_status: 'live',
+                            last_seen: new Date().toISOString()
                         }).eq("id", currentUser.id).then();
                     }
                 },
@@ -1008,9 +1014,9 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen')
                         .neq('id', currentUser.id)
-                        .or('is_ghost_mode.eq.false,is_ghost_mode.is.null') // Allow NULL as false (visible)
+                        .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
                         .not('latitude', 'is', null)
                         .not('longitude', 'is', null),
 
@@ -1105,16 +1111,36 @@ export default function MapHome() {
                     console.error('❌ [MapHome] Fetch Error:', profilesData.error);
                 }
 
-                // Filter and map users (exclude blocked users, those with location off, AND current user)
+                // Filter and map users (exclude blocked users, offline users, AND current user)
                 const validUsers = (profilesData.data || [])
                     .filter(u => {
                         const isBlocked = allBlockedIds.has(u.id);
                         const isMe = u.id === currentUser.id;
-                        const isLocationOff = u.is_location_on !== true; // strictly require location to be on
                         
-                        if (isBlocked || isMe || isLocationOff) {
-                            return false;
+                        if (isBlocked || isMe) return false;
+
+                        // Step 9: Offline system
+                        if (u.activity_status === 'offline') return false;
+
+                        if (u.last_seen) {
+                            const lastSeenDate = new Date(u.last_seen);
+                            const now = new Date();
+                            const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                            if (diffMinutes > 60) return false;
                         }
+
+                        // Filter if they have visibility_mode = 'ghost'
+                        if (u.visibility_mode === 'ghost') return false;
+
+                        // Filter if they have visibility_mode = 'friends' and are not accepted friends
+                        if (u.visibility_mode === 'friends') {
+                            const isFriend = myFriendships.has(u.id) && myFriendships.get(u.id).status === 'accepted';
+                            if (!isFriend) return false;
+                        }
+
+                        // Backward compat: if old fields say location is off and they have no last_seen
+                        if (u.is_location_on === false && !u.last_seen) return false;
+
                         return true;
                     })
                     .map(u => {
@@ -1130,8 +1156,17 @@ export default function MapHome() {
                         // Ensure we work with Numbers
                         const lat = parseFloat(u.latitude);
                         const lng = parseFloat(u.longitude);
-                        const renderLat = lat + (Math.random() - 0.5) * 0.0002;
-                        const renderLng = lng + (Math.random() - 0.5) * 0.0002;
+
+                        // Fetch or create fuzzy location cache
+                        let fCache = fuzzyLocationCache.current.get(u.id);
+                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, lat, lng) > 50) {
+                            const fLoc = fuzzyLocation(lat, lng, u.activity_status);
+                            fCache = { realLat: lat, realLng: lng, fuzzyLat: fLoc.lat, fuzzyLng: fLoc.lng };
+                            fuzzyLocationCache.current.set(u.id, fCache);
+                        }
+
+                        const renderLat = fCache.fuzzyLat;
+                        const renderLng = fCache.fuzzyLng;
 
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
@@ -1165,7 +1200,8 @@ export default function MapHome() {
                             thought: statusMessage,
                             mood: u.mood,
                             moodUpdatedAt: u.mood_updated_at,
-                            lastActive: u.last_active,
+                            activity_status: u.activity_status,
+                            lastActive: u.last_active || u.last_seen,
                             isLocationOn: u.is_location_on,
                             isLocationShared: true,
                             friendshipStatus: fData?.status || null,
@@ -2130,20 +2166,18 @@ export default function MapHome() {
 
     const iconCache = useRef(new Map());
 
-    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0) => {
+    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live') => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
-        // v2 prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v5_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}`;
+        // Prefix invalidates old cached icons when HTML template changes
+        const cacheKey = `v6_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
         }
 
         let className = 'avatar-marker';
-        // Ensure url is safely wrapped and background is configured
-        // Use double quotes for style attribute, single for url
-        let style = `background-image: url('${url}'); background-size: cover; background-position: center;`;
+        let style = `background-image: url('${url}'); background-size: cover; background-position: center; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border-radius: 50%;`;
 
         if (isSelf) {
             className += ' self';
@@ -2151,6 +2185,8 @@ export default function MapHome() {
                 // Ghost mode: fade to indicate invisible — no grayscale filter (CSS handles protection)
                 style += ' opacity: 0.45;';
             }
+        } else if (activityStatus === 'recently_active') {
+            style += ' opacity: 0.6;'; // Fade recently active users
         }
         
         // Add staggered pop animation if not self and delay is set
@@ -2194,6 +2230,13 @@ export default function MapHome() {
             }
         }
 
+        let statusDotHTML = '';
+        if (activityStatus === 'live') {
+            statusDotHTML = `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #34C759; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 21;"></div>`;
+        } else if (activityStatus === 'recently_active') {
+            statusDotHTML = `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #FFCC00; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 21;"></div>`;
+        }
+
         const icon = L.divIcon({
             className: 'custom-avatar-icon',
             html: `
@@ -2201,6 +2244,7 @@ export default function MapHome() {
                     ${thoughtHTML}
                     <div class="${className}" style="${style}"></div>
                     ${moodHTML}
+                    ${statusDotHTML}
                 </div>
             `,
             iconSize: [45, 45],
@@ -2234,8 +2278,8 @@ export default function MapHome() {
             }
         }
 
-        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at);
-    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, createAvatarIcon]);
+        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live');
+    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, createAvatarIcon]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -3004,7 +3048,32 @@ export default function MapHome() {
 
 
             {/* Top Search Bar & Action Buttons */}
-            <div className="map-header-controls">
+            <div className="map-header-controls" style={{ position: 'relative' }}>
+                <div className="privacy-trust-badge" style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(28, 28, 30, 0.85)',
+                    backdropFilter: 'blur(10px)',
+                    color: '#00d4ff',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    border: '1px solid rgba(0, 212, 255, 0.2)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    pointerEvents: 'none',
+                    animation: 'fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+                    whiteSpace: 'nowrap',
+                    zIndex: 100
+                }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Your exact location is never shared
+                </div>
                 <div className="header-top-row">
                     <div className="search-bar-container glass-panel">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.4, flexShrink:0 }}>
@@ -3058,44 +3127,112 @@ export default function MapHome() {
                             </svg>
                         </button>
                         
-                        {/* Ghost Mode Toggle */}
-                        <button
-                            className={`control-btn ${currentUser?.is_ghost_mode ? 'active' : ''}`}
-                            style={{ 
-                                background: currentUser?.is_ghost_mode ? '#111113' : 'rgba(255, 255, 255, 0.95)', 
-                                border: currentUser?.is_ghost_mode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                                color: currentUser?.is_ghost_mode ? '#ffffff' : '#111113',
-                                backdropFilter: 'blur(10px)',
-                                boxShadow: currentUser?.is_ghost_mode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(0,0,0,0.08)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, width: 28, height: 28, borderRadius: '50%',
-                                transition: 'all 0.2s ease',
-                                flexShrink: 0
-                            }}
-                            onClick={() => {
-                                if (currentUser?.is_ghost_mode) {
-                                    startLocation(); // Hidden → Visible
-                                    showToast("👁️ Visible to Friends");
-                                } else {
-                                    stopLocation(); // Visible → Hidden
-                                    showToast("👻 Hidden from Map");
-                                }
-                            }}
-                            title={currentUser?.is_ghost_mode ? "Go Visible" : "Go Incognito"}
-                        >
-                            {currentUser?.is_ghost_mode ? (
-                                /* Hidden (Ghost) Mode */
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                                    <line x1="1" y1="1" x2="23" y2="23"/>
-                                </svg>
-                            ) : (
-                                /* Visible Mode */
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                                </svg>
+                        {/* Visibility Mode Toggle */}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                className={`control-btn ${currentUser?.visibility_mode === 'ghost' ? 'active' : ''}`}
+                                style={{ 
+                                    background: currentUser?.visibility_mode === 'ghost' ? '#111113' : 'rgba(255, 255, 255, 0.95)', 
+                                    border: currentUser?.visibility_mode === 'ghost' ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                                    color: currentUser?.visibility_mode === 'ghost' ? '#ffffff' : '#111113',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: currentUser?.visibility_mode === 'ghost' ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(0,0,0,0.08)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: 0, width: 28, height: 28, borderRadius: '50%',
+                                    transition: 'all 0.2s ease',
+                                    flexShrink: 0
+                                }}
+                                onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
+                                title="Visibility Settings"
+                            >
+                                {currentUser?.visibility_mode === 'ghost' ? (
+                                    /* Ghost Mode */
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                        <line x1="1" y1="1" x2="23" y2="23"/>
+                                    </svg>
+                                ) : currentUser?.visibility_mode === 'friends' ? (
+                                    /* Friends Mode */
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                    </svg>
+                                ) : (
+                                    /* Public Mode */
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                )}
+                            </button>
+
+                            {/* Visibility Dropdown Menu */}
+                            {showVisibilityMenu && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '36px',
+                                    right: 0,
+                                    background: 'rgba(28, 28, 30, 0.95)',
+                                    backdropFilter: 'blur(16px)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    borderRadius: '16px',
+                                    padding: '8px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                    minWidth: '140px',
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                                    zIndex: 1000
+                                }}>
+                                    <button 
+                                        onClick={async () => {
+                                            setShowVisibilityMenu(false);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'public' }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'public' }).eq('id', currentUser.id);
+                                            showToast("🌍 Public Mode On");
+                                            startLocation();
+                                        }}
+                                        style={{
+                                            background: currentUser?.visibility_mode === 'public' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
+                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '1rem' }}>🌍</span> Public
+                                    </button>
+                                    <button 
+                                        onClick={async () => {
+                                            setShowVisibilityMenu(false);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'friends' }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'friends' }).eq('id', currentUser.id);
+                                            showToast("👥 Friends Only");
+                                            startLocation();
+                                        }}
+                                        style={{
+                                            background: currentUser?.visibility_mode === 'friends' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
+                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '1rem' }}>👥</span> Friends
+                                    </button>
+                                    <button 
+                                        onClick={async () => {
+                                            setShowVisibilityMenu(false);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'ghost' }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'ghost' }).eq('id', currentUser.id);
+                                            showToast("👻 Ghost Mode On");
+                                            stopLocation();
+                                        }}
+                                        style={{
+                                            background: currentUser?.visibility_mode === 'ghost' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
+                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '1rem' }}>👻</span> Ghost
+                                    </button>
+                                </div>
                             )}
-                        </button>
+                        </div>
 
                         {/* Map View Toggle */}
                         <button 

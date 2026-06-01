@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { fuzzyLocationForDB } from "../utils/locationPrivacy";
+import { distanceMetres } from "../utils/locationPrivacy";
 
 const LocationContext = createContext();
 
@@ -42,14 +42,15 @@ export function LocationProvider({ children }) {
     // ✅ Clear manual disable flag since the user explicitly wants to turn it ON
     localStorage.removeItem("manualLocationDisable");
 
-    // 🔥 PHASE 1: Immediately broadcast "online" to DB — no GPS fix needed yet.
-    // This fires a realtime event so OTHER users see this user appear on their map
-    // at their last known position right away, instead of waiting 10-60s for GPS cold start.
+    // 🔥 PHASE 1: Immediately broadcast "live" to DB — no GPS fix needed yet.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         supabase.from("profiles").update({
           is_location_on: true,
-          is_ghost_mode: false
+          is_ghost_mode: false,
+          visibility_mode: 'public',
+          activity_status: 'live',
+          last_seen: new Date().toISOString()
         }).eq("id", session.user.id).then();
       }
     });
@@ -73,13 +74,18 @@ export function LocationProvider({ children }) {
             // Start live tracking
             startWatching();
 
-            // 🔥 PHASE 2: Update fuzzied coordinates (50–100m offset) so exact GPS is never stored
+            // 🔥 PHASE 2: Store REAL exact coordinates in DB, frontend handles blurring
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").update({
-                  ...fuzzyLocationForDB(newLoc.lat, newLoc.lng),
+                  latitude: newLoc.lat,
+                  longitude: newLoc.lng,
+                  last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
                   is_location_on: true,
-                  is_ghost_mode: false
+                  is_ghost_mode: false,
+                  visibility_mode: 'public',
+                  activity_status: 'live',
+                  last_seen: new Date().toISOString()
                 }).eq("id", session.user.id).then(({ error }) => {
                   if (error) console.error("Location sync error:", error);
                 });
@@ -96,12 +102,13 @@ export function LocationProvider({ children }) {
             setUserLocation(null);
 
             // Revert the Phase 1 "online" signal since GPS actually failed.
-            // Keep coordinates intact — same rule as stopLocation.
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user) {
                 supabase.from("profiles").update({
                   is_location_on: false,
-                  is_ghost_mode: true
+                  is_ghost_mode: true,
+                  visibility_mode: 'ghost',
+                  activity_status: 'offline'
                 }).eq("id", session.user.id).then(({ error }) => {
                   if (error) console.error("Location sync error:", error);
                 });
@@ -148,34 +155,39 @@ export function LocationProvider({ children }) {
               lat: pos.coords.latitude,
               lng: pos.coords.longitude,
             };
-            // 1. Calculate Jitter (approx 3 meters = ~0.00003 deg)
+            // 1. Calculate Jitter (in meters)
             const now = Date.now();
-            const localDist = lastSyncLoc.current 
-                ? Math.sqrt(Math.pow(newLoc.lat - lastSyncLoc.current.lat, 2) + Math.pow(newLoc.lng - lastSyncLoc.current.lng, 2))
+            const localDistMeters = lastSyncLoc.current 
+                ? distanceMetres(lastSyncLoc.current.lat, lastSyncLoc.current.lng, newLoc.lat, newLoc.lng)
                 : Infinity;
 
-            // Ignore tiny GPS jitter to prevent heavy React re-renders on MapHome
-            if (localDist < 0.00003 && (now - lastSyncTime.current) < 10000) {
-                return; 
-            }
+            // 2. Throttled DB update (Update every 10-15s ONLY IF moved 10-20m)
+            const timeSinceSync = now - lastSyncTime.current;
+            
+            // Check threshold: 10s AND 10 meters, OR forced after 30s to keep 'live' status fresh
+            const shouldSync = !lastSyncTime.current || 
+                (timeSinceSync > 10000 && localDistMeters > 10) || 
+                (timeSinceSync > 30000);
 
             setUserLocation(newLoc);
             // 🔥 Persist for instant restore on next session load
             try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
-            // 2. Throttled DB update (Max once every 3.5 seconds)
-            // Sync if: 1. No last sync OR 2. Moved > ~10m (approx 0.0001 deg) OR 3. > 3.5 seconds passed
-            if (!lastSyncTime.current || localDist > 0.0001 || (now - lastSyncTime.current) > 3500) {
+            if (shouldSync) {
                 lastSyncTime.current = now;
                 lastSyncLoc.current = newLoc;
 
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
                         supabase.from("profiles").update({
-                            // Apply 50–100m privacy offset before storing
-                            ...fuzzyLocationForDB(newLoc.lat, newLoc.lng),
+                            latitude: newLoc.lat,
+                            longitude: newLoc.lng,
+                            last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
                             is_location_on: true,
-                            is_ghost_mode: false
+                            is_ghost_mode: false,
+                            visibility_mode: 'public',
+                            activity_status: 'live',
+                            last_seen: new Date().toISOString()
                         }).eq("id", session.user.id).then(({ error }) => {
                             if (error) console.error("Location sync error:", error);
                         });
@@ -233,13 +245,13 @@ export function LocationProvider({ children }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        // ⚡ Keep lat/lng in DB as "last known position".
-        // They are hidden by is_location_on=false, but when the user re-enables
-        // location, Phase 1 (is_location_on: true) will immediately make
-        // isVisible=true using these saved coords — avatar appears in < 1 second.
+        // They are hidden from live tracking but remain as 'recently_active' for up to 60 mins.
         supabase.from("profiles").update({
-          is_location_on: false,
-          is_ghost_mode: true
+          is_location_on: false, // Legacy flag
+          is_ghost_mode: false, // Stay visible!
+          visibility_mode: 'public',
+          activity_status: 'recently_active',
+          last_seen: new Date().toISOString()
         }).eq("id", session.user.id).then(({ error }) => {
           if (error) console.error("Location sync error:", error);
         });
@@ -264,6 +276,29 @@ export function LocationProvider({ children }) {
       stopLocation();
     }
   };
+
+  // ----------------------------------------
+  // 🔹 APP VISIBILITY MANAGER (Optimization)
+  // ----------------------------------------
+  useEffect(() => {
+      const handleVisibilityChange = () => {
+          if (document.hidden) {
+              // App backgrounded: Stop hardware GPS tracking to save battery
+              if (watchIdRef.current) {
+                  navigator.geolocation.clearWatch(watchIdRef.current);
+                  watchIdRef.current = null;
+              }
+          } else {
+              // App foregrounded: Resume tracking if location is enabled
+              if (locationEnabled && !watchIdRef.current) {
+                  startWatching();
+              }
+          }
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [locationEnabled]);
 
   // ----------------------------------------
   // 🔹 PERMISSIONS API LISTENER (Auto Handlers)

@@ -52,6 +52,7 @@ const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'));
 const UserProfilePage = lazyWithRetry(() => import('./pages/UserProfilePage'));
 const Landing = lazyWithRetry(() => import('./pages/Landing'));
 const Welcome = lazyWithRetry(() => import('./pages/Welcome'));
+const VisibilitySettings = lazyWithRetry(() => import('./pages/VisibilitySettings'));
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
@@ -157,6 +158,7 @@ function App() {
                 <Route path="/update-password" element={<UpdatePassword />} />
                 <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />
                 <Route path="/blocked-users" element={<BlockedUsers />} />
+                <Route path="/visibility-settings" element={<VisibilitySettings />} />
                 <Route path="/legal/:section" element={<LegalPage />} />
                 <Route path="/" element={<Welcome />} />
               </Routes>
