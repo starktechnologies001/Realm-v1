@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { distanceMetres } from "../utils/locationPrivacy";
+import { distanceMetres, fuzzyLocationForDB } from "../utils/locationPrivacy";
 
 const LocationContext = createContext();
 
@@ -74,16 +74,15 @@ export function LocationProvider({ children }) {
             // Start live tracking
             startWatching();
 
-            // 🔥 PHASE 2: Store REAL exact coordinates in DB, frontend handles blurring
+            // Store FUZZY randomized coordinates in DB to protect user privacy (Never show exact GPS)
+            const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng);
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").update({
-                  latitude: newLoc.lat,
-                  longitude: newLoc.lng,
-                  last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                  latitude: fLoc.latitude,
+                  longitude: fLoc.longitude,
+                  last_location: fLoc.last_location,
                   is_location_on: true,
-                  is_ghost_mode: false,
-                  visibility_mode: 'public',
                   activity_status: 'live',
                   last_seen: new Date().toISOString()
                 }).eq("id", session.user.id).then(({ error }) => {
@@ -177,15 +176,14 @@ export function LocationProvider({ children }) {
                 lastSyncTime.current = now;
                 lastSyncLoc.current = newLoc;
 
+                const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng);
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
                         supabase.from("profiles").update({
-                            latitude: newLoc.lat,
-                            longitude: newLoc.lng,
-                            last_location: `POINT(${newLoc.lng} ${newLoc.lat})`,
+                            latitude: fLoc.latitude,
+                            longitude: fLoc.longitude,
+                            last_location: fLoc.last_location,
                             is_location_on: true,
-                            is_ghost_mode: false,
-                            visibility_mode: 'public',
                             activity_status: 'live',
                             last_seen: new Date().toISOString()
                         }).eq("id", session.user.id).then(({ error }) => {
@@ -245,15 +243,17 @@ export function LocationProvider({ children }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        // They are hidden from live tracking but remain as 'recently_active' for up to 60 mins.
-        supabase.from("profiles").update({
-          is_location_on: false, // Legacy flag
-          is_ghost_mode: false, // Stay visible!
-          visibility_mode: 'public',
-          activity_status: 'recently_active',
-          last_seen: new Date().toISOString()
-        }).eq("id", session.user.id).then(({ error }) => {
-          if (error) console.error("Location sync error:", error);
+        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+            const isGhost = data?.visibility_mode === 'ghost' || data?.is_ghost_mode;
+            supabase.from("profiles").update({
+              is_location_on: false,
+              is_ghost_mode: isGhost,
+              visibility_mode: isGhost ? 'ghost' : (data?.visibility_mode || 'public'),
+              activity_status: isGhost ? 'offline' : 'recently_active',
+              last_seen: new Date().toISOString()
+            }).eq("id", session.user.id).then(({ error }) => {
+              if (error) console.error("Location sync error:", error);
+            });
         });
       }
     });

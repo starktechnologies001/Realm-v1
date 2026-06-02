@@ -12,7 +12,7 @@ import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
-import { fuzzyLocation, distanceMetres } from '../utils/locationPrivacy';
+import { fuzzyLocation, distanceMetres, fuzzyLocationForDB } from '../utils/locationPrivacy';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import LocationOnboarding from '../components/LocationOnboarding';
 import StoryViewer from '../components/StoryViewer';
@@ -647,13 +647,12 @@ export default function MapHome() {
                     const now = Date.now();
                     if (now - lastDbUpdate >= 2500) {
                         lastDbUpdate = now;
+                        const fLoc = fuzzyLocationForDB(newLat, newLng);
                         supabase.from("profiles").update({
-                            latitude: newLat,
-                            longitude: newLng,
-                            last_location: `POINT(${newLng} ${newLat})`,
+                            latitude: fLoc.latitude,
+                            longitude: fLoc.longitude,
+                            last_location: fLoc.last_location,
                             is_location_on: true,
-                            is_ghost_mode: false,
-                            visibility_mode: 'public',
                             activity_status: 'live',
                             last_seen: new Date().toISOString()
                         }).eq("id", currentUser.id).then();
