@@ -399,6 +399,7 @@ export default function MapHome() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [showFilters, setShowFilters] = useState(false);
     const [mapMode, setMapMode] = useState('street'); // 'street', 'hybrid', 'satellite'
+    const [showMapViewMenu, setShowMapViewMenu] = useState(false);
 
     // Theme & Location Context (Moved to top)
     const { theme } = useTheme();
@@ -3126,6 +3127,143 @@ export default function MapHome() {
             </MapContainer>
             ) : null}
 
+            {/* ── Floating Top-Right Quick Actions (horizontal pill row) ── */}
+            {userLocation?.lat && (
+                <div style={{
+                    position: 'fixed',
+                    top: 'max(14px, calc(env(safe-area-inset-top) + 10px))',
+                    right: 14,
+                    zIndex: 1200,
+                    display: 'flex',
+                    flexDirection: 'row',
+                    gap: 6,
+                    pointerEvents: 'auto',
+                    background: isDarkMode ? 'rgba(22,22,30,0.82)' : 'rgba(255,255,255,0.82)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    borderRadius: 14,
+                    padding: '5px 6px',
+                    boxShadow: isDarkMode
+                        ? '0 4px 18px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)'
+                        : '0 4px 18px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9)',
+                    border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
+                }}>
+                    {/* ── Floating Thought Button ── */}
+                    <button
+                        onClick={() => setShowThoughtInput(true)}
+                        title="Set Floating Thought"
+                        style={{
+                            width: 32, height: 32,
+                            borderRadius: 9,
+                            border: 'none',
+                            background: 'rgba(139, 92, 246, 0.12)',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), background 0.15s ease',
+                            color: '#8b5cf6',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.background = 'rgba(139,92,246,0.22)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'rgba(139,92,246,0.12)'; }}
+                        onTouchStart={e => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                        onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            <path d="M8 10h.01M12 10h.01M16 10h.01"/>
+                        </svg>
+                    </button>
+
+                    {/* Divider */}
+                    <div style={{
+                        width: 1,
+                        height: 20,
+                        alignSelf: 'center',
+                        background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                    }} />
+
+                    {/* ── Map View Picker Button ── */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={() => setShowMapViewMenu(prev => !prev)}
+                            title="Change Map View"
+                            style={{
+                                width: 32, height: 32,
+                                borderRadius: 9,
+                                border: 'none',
+                                background: showMapViewMenu ? 'rgba(255,106,0,0.22)' : 'rgba(255,106,0,0.12)',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), background 0.15s ease',
+                                color: '#FF6A00',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.background = 'rgba(255,106,0,0.22)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = showMapViewMenu ? 'rgba(255,106,0,0.22)' : 'rgba(255,106,0,0.12)'; }}
+                            onTouchStart={e => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                            onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FF6A00" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                                <polyline points="2 17 12 22 22 17"/>
+                                <polyline points="2 12 12 17 22 12"/>
+                            </svg>
+                        </button>
+
+                        {/* Map View Dropdown */}
+                        {showMapViewMenu && (
+                            <div style={{
+                                position: 'absolute',
+                                top: 'calc(100% + 8px)',
+                                right: 0,
+                                background: isDarkMode ? 'rgba(22,22,30,0.96)' : 'rgba(255,255,255,0.96)',
+                                backdropFilter: 'blur(20px)',
+                                WebkitBackdropFilter: 'blur(20px)',
+                                borderRadius: 14,
+                                border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)',
+                                boxShadow: isDarkMode ? '0 8px 32px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.12)',
+                                padding: '5px',
+                                display: 'flex', flexDirection: 'column', gap: 2,
+                                minWidth: 145,
+                            }}>
+                                {[
+                                    { key: 'street',    label: 'Street',    icon: '🗺️', color: '#3b82f6' },
+                                    { key: 'satellite', label: 'Satellite', icon: '🛰️', color: '#10b981' },
+                                    { key: 'hybrid',    label: 'Hybrid',    icon: '🌍', color: '#f59e0b' },
+                                ].map(({ key, label, icon, color }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => { setMapMode(key); setShowMapViewMenu(false); }}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10,
+                                            padding: '9px 12px',
+                                            borderRadius: 10,
+                                            border: 'none',
+                                            background: mapMode === key
+                                                ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)')
+                                                : 'transparent',
+                                            color: mapMode === key ? color : (isDarkMode ? '#aaa' : '#555'),
+                                            cursor: 'pointer',
+                                            fontSize: 13,
+                                            fontWeight: mapMode === key ? 700 : 500,
+                                            fontFamily: 'inherit',
+                                            textAlign: 'left',
+                                            transition: 'background 0.15s ease',
+                                            width: '100%',
+                                        }}
+                                    >
+                                        <span style={{ fontSize: 16 }}>{icon}</span>
+                                        {label}
+                                        {mapMode === key && (
+                                            <svg style={{ marginLeft: 'auto', color }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Top Search Bar & Action Buttons */}
             <div className="map-header-controls" style={{ position: 'relative' }}>

@@ -203,7 +203,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             <div style={{
                 width: '100%', maxWidth: 400,
                 padding: '12px 20px',
-                paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+                paddingBottom: 'max(48px, calc(env(safe-area-inset-bottom) + 24px))',
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 zIndex: 2,
             }}>
