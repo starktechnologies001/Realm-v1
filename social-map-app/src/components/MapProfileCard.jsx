@@ -20,24 +20,21 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const isPublic = user.is_public !== false; // Default to public if undefined
     const canViewDetails = isOwner || isFriend || isPublic;
 
+    // Check if the thought has expired (3 hours)
+    const thoughtText = user.thought || user.status_message;
+    const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
+    const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
+    const displayThought = isThoughtExpired ? null : thoughtText;
+
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
     const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
 
     const getLastActive = (dateStr) => {
-        if (!dateStr) return 'Offline';
+        if (!dateStr) return null;
         const diff = Date.now() - new Date(dateStr).getTime();
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return 'Online';
-        
-        // If privacy is disabled, don't show "last seen" times
-        if (!canShowLastSeen) {
-            return null; // Hide status completely
-        }
-        
-        if (mins < 60) return `${mins}m ago`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h ago`;
-        return 'Offline';
+        if (diff < 5 * 60 * 1000) return 'Active now';
+        if (diff < 60 * 60 * 1000 && canShowLastSeen) return 'Recently active';
+        return null;
     };
 
     // Calculate Distance — prefer live GPS coords from userLocation, fall back to DB
@@ -253,19 +250,18 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                             if (isOnline) {
                                                 return (
                                                     <span className="badge-pill active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
-                                                        🟢 Online
+                                                        🟢 Active now
                                                     </span>
                                                 );
                                             }
 
-                                            if (canShowLastSeen) {
-                                                const mins = Math.floor(diffMs / 60000);
-                                                const timeStr = mins < 60
-                                                    ? `${mins}m ago`
-                                                    : mins < 1440
-                                                        ? `${Math.floor(mins / 60)}h ago`
-                                                        : 'Offline';
-                                                return <span className="badge-pill active-time">⏱ {timeStr}</span>;
+                                            const isRecentlyActive = diffMs < 60 * 60 * 1000; // recently active if in last 60 min
+                                            if (isRecentlyActive && canShowLastSeen) {
+                                                return (
+                                                    <span className="badge-pill active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
+                                                        ⏱ Recently active
+                                                    </span>
+                                                );
                                             }
 
                                             return null;
@@ -276,9 +272,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         </div>
                     </div>
 
-                    {canViewDetails && (user.thought || user.status_message) && (
+                    {canViewDetails && displayThought && (
                         <div className="thought-bubble-large">
-                            {user.thought || user.status_message}
+                            {displayThought}
                         </div>
                     )}
 

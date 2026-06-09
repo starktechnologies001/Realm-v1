@@ -133,6 +133,13 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const isFriend = user.friendshipStatus === 'accepted';
     const canSeeFullProfile = isFriend || isPublic;
 
+    // Check if the thought has expired (3 hours)
+    const thoughtText = user.thought || user.status_message;
+    const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
+    const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
+    const displayThought = isThoughtExpired ? null : thoughtText;
+
+
     return (
         <AnimatePresence>
             {/* Lightbox */}
@@ -222,9 +229,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         </div>
 
                         {/* Uploaded Status / Thought */}
-                        {(isPublic || isFriend) && user.thought && (
+                        {(isPublic || isFriend) && displayThought && (
                             <div className="thought-bubble-container">
-                                <span className="thought-bubble">{user.thought}</span>
+                                <span className="thought-bubble">{displayThought}</span>
                             </div>
                         )}
                     </div>

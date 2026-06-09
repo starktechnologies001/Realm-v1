@@ -564,6 +564,7 @@ export default function MapHome() {
     const canvasRef = React.useRef(null);
     const markerRefs = React.useRef(new Map());
     const animationRefs = React.useRef(new Map());
+    const viewCountsRef = React.useRef({});
     // 🔥 Ref-based location for non-reactive reads (prevents GPS updates causing full re-renders)
     const userLocationRef = React.useRef(userLocation);
 
@@ -586,7 +587,7 @@ export default function MapHome() {
         }
 
         let startTime = null;
-        const duration = 1000; // 1 second smooth glide
+        const duration = 1500; // 1.5 seconds smooth glide lag-follow
 
         const animate = (timestamp) => {
             if (!startTime) startTime = timestamp;
@@ -1013,7 +1014,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since')
                         .neq('id', currentUser.id)
                         .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
                         .not('latitude', 'is', null)
@@ -1118,6 +1119,10 @@ export default function MapHome() {
                         
                         if (isBlocked || isMe) return false;
 
+                        // Anti-stalking: Hide users checked more than 10 times in a session
+                        const checkCount = viewCountsRef.current[u.id] || 0;
+                        if (checkCount > 10) return false;
+
                         // Step 9: Offline system
                         if (u.activity_status === 'offline') return false;
 
@@ -1131,10 +1136,23 @@ export default function MapHome() {
                         // Filter if they have visibility_mode = 'ghost'
                         if (u.visibility_mode === 'ghost') return false;
 
+                        const isFriend = myFriendships.has(u.id) && myFriendships.get(u.id).status === 'accepted';
+
                         // Filter if they have visibility_mode = 'friends' and are not accepted friends
                         if (u.visibility_mode === 'friends') {
-                            const isFriend = myFriendships.has(u.id) && myFriendships.get(u.id).status === 'accepted';
                             if (!isFriend) return false;
+                        }
+
+                        // Anti-stalking: Hide strangers (!isFriend) who are physically too close (< 80m) for safety
+                        if (!isFriend) {
+                            const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+                            const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+                            const strangerLat = u.latitude;
+                            const strangerLng = u.longitude;
+                            if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
+                                const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
+                                if (physDist < 80) return false;
+                            }
                         }
 
                         // Backward compat: if old fields say location is off and they have no last_seen
@@ -1157,10 +1175,31 @@ export default function MapHome() {
                         const lng = parseFloat(u.longitude);
 
                         // Fetch or create fuzzy location cache
+                        const viewCount = viewCountsRef.current[u.id] || 0;
+                        const isStalked = viewCount >= 5;
                         let fCache = fuzzyLocationCache.current.get(u.id);
-                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, lat, lng) > 50) {
-                            const fLoc = fuzzyLocation(lat, lng, u.activity_status);
-                            fCache = { realLat: lat, realLng: lng, fuzzyLat: fLoc.lat, fuzzyLng: fLoc.lng };
+                        const wasStalkedInCache = fCache?.isStalked;
+
+                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, lat, lng) > 50 || isStalked !== wasStalkedInCache) {
+                            let fLoc = fuzzyLocation(lat, lng, u.activity_status, u.is_stationary, u.stationary_since);
+                            
+                            // If repeatedly clicked, shift coordinate dynamically by 200m–300m in a random direction
+                            if (viewCount >= 5) {
+                                const extraOffset = 200 + Math.random() * 100;
+                                const bearing = Math.random() * 2 * Math.PI;
+                                const METRES_PER_DEG_LAT = 111_000;
+                                const METRES_PER_DEG_LNG = 111_000 * Math.cos((lat * Math.PI) / 180);
+                                fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                                fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                            }
+
+                            fCache = { 
+                                realLat: lat, 
+                                realLng: lng, 
+                                fuzzyLat: fLoc.lat, 
+                                fuzzyLng: fLoc.lng,
+                                isStalked: isStalked
+                            };
                             fuzzyLocationCache.current.set(u.id, fCache);
                         }
 
@@ -1200,6 +1239,8 @@ export default function MapHome() {
                             mood: u.mood,
                             moodUpdatedAt: u.mood_updated_at,
                             activity_status: u.activity_status,
+                            is_stationary: u.is_stationary,
+                            stationary_since: u.stationary_since,
                             lastActive: u.last_active || u.last_seen,
                             isLocationOn: u.is_location_on,
                             isLocationShared: true,
@@ -1321,6 +1362,18 @@ export default function MapHome() {
                          return prev;
                     }
 
+                    let statusMessage = updatedUser.status_message;
+                    let statusEmoji = updatedUser.status;
+                    if (updatedUser.status_updated_at) {
+                        const statusDate = new Date(updatedUser.status_updated_at);
+                        const now = new Date();
+                        const diffHours = (now - statusDate) / (1000 * 60 * 60);
+                        if (diffHours > 3) {
+                            statusMessage = null;
+                            statusEmoji = null;
+                        }
+                    }
+
                     const newUserObj = {
                         id: updatedUser.id,
                         name: updatedUser.username || 'User',
@@ -1328,8 +1381,8 @@ export default function MapHome() {
                         lng: renderLng,
                         avatar: updatedUser.avatar_url || DEFAULT_GENERIC_AVATAR,
                         originalAvatar: updatedUser.avatar_url,
-                        status: updatedUser.status,
-                        thought: updatedUser.status_message,
+                        status: statusEmoji,
+                        thought: statusMessage,
                         lastActive: updatedUser.last_active,
                         isLocationShared: true,
                         isLocationOn: updatedUser.is_location_on,
@@ -1414,6 +1467,18 @@ export default function MapHome() {
                         // Avoid duplicates
                         if (prev.some(u => u.id === newUser.id)) return prev;
 
+                        let statusMessage = newUser.status_message;
+                        let statusEmoji = newUser.status;
+                        if (newUser.status_updated_at) {
+                            const statusDate = new Date(newUser.status_updated_at);
+                            const now = new Date();
+                            const diffHours = (now - statusDate) / (1000 * 60 * 60);
+                            if (diffHours > 3) {
+                                statusMessage = null;
+                                statusEmoji = null;
+                            }
+                        }
+
                         // Add new user
                         return [...prev, {
                             id: newUser.id,
@@ -1422,8 +1487,8 @@ export default function MapHome() {
                             lng: parseFloat(newUser.longitude),
                             avatar: mapAvatar,
                             originalAvatar: newUser.avatar_url,
-                            status: newUser.status,
-                            thought: newUser.status_message,
+                            status: statusEmoji,
+                            thought: statusMessage,
                             lastActive: newUser.last_active,
 
                             isLocationOn: true,
@@ -2374,6 +2439,15 @@ export default function MapHome() {
 
     // Use a memoized click handler to prevent UserMarker from re-rendering
     const handleMarkerClick = React.useCallback(async (u) => {
+        if (u && u.id) {
+            viewCountsRef.current[u.id] = (viewCountsRef.current[u.id] || 0) + 1;
+            console.log(`👁️ [MapHome] Click count for ${u.name}:`, viewCountsRef.current[u.id]);
+            // Force coordinates shift or hide update immediately if count crosses 5 or 10
+            if (viewCountsRef.current[u.id] === 5 || viewCountsRef.current[u.id] === 11) {
+                setNearbyUsers(prev => [...prev]);
+            }
+        }
+
         if (!currentUser) {
             setSelectedUser(u);
             return;
@@ -2398,9 +2472,16 @@ export default function MapHome() {
             }
         }
 
+        let displayThought = u.thought || u.status_message;
+        const thoughtUpdatedAt = u.status_updated_at || u.statusUpdatedAt;
+        if (thoughtUpdatedAt) {
+            const diffHours = (new Date() - new Date(thoughtUpdatedAt)) / (1000 * 60 * 60);
+            if (diffHours > 3) displayThought = null;
+        }
+
         setSelectedUser({
             ...u,
-            thought: u.thought || u.status_message, // ensure both field names work
+            thought: displayThought,
             friendshipStatus: data?.status || u.friendshipStatus || null,
             friendshipId: data?.id || u.friendshipId || null,
             requesterId: data?.requester_id || null,

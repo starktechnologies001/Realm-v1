@@ -25,6 +25,8 @@ export function LocationProvider({ children }) {
   const watchIdRef = useRef(null);
   const lastSyncTime = useRef(0);
   const lastSyncLoc = useRef(null);
+  const isStationaryRef = useRef(false);
+  const stationarySinceRef = useRef(null);
 
   // ----------------------------------------
   // 🔹 START LOCATION
@@ -64,6 +66,10 @@ export function LocationProvider({ children }) {
               lng: position.coords.longitude,
             };
 
+            // Reset stationary refs on initial GPS success
+            isStationaryRef.current = false;
+            stationarySinceRef.current = null;
+
             setDevicePermissionGranted(true);
             setLocationEnabled(true);
             setUserLocation(newLoc);
@@ -75,7 +81,7 @@ export function LocationProvider({ children }) {
             startWatching();
 
             // Store FUZZY randomized coordinates in DB to protect user privacy (Never show exact GPS)
-            const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng);
+            const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, false, null);
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").update({
@@ -84,7 +90,9 @@ export function LocationProvider({ children }) {
                   last_location: fLoc.last_location,
                   is_location_on: true,
                   activity_status: 'live',
-                  last_seen: new Date().toISOString()
+                  last_seen: new Date().toISOString(),
+                  is_stationary: false,
+                  stationary_since: null
                 }).eq("id", session.user.id).then(({ error }) => {
                   if (error) console.error("Location sync error:", error);
                 });
@@ -176,7 +184,18 @@ export function LocationProvider({ children }) {
                 lastSyncTime.current = now;
                 lastSyncLoc.current = newLoc;
 
-                const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng);
+                // Stationary logic: if movement is <= 10m since last sync, we are stationary
+                if (localDistMeters <= 10) {
+                    if (!isStationaryRef.current) {
+                        isStationaryRef.current = true;
+                        stationarySinceRef.current = new Date().toISOString();
+                    }
+                } else {
+                    isStationaryRef.current = false;
+                    stationarySinceRef.current = null;
+                }
+
+                const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, isStationaryRef.current, stationarySinceRef.current);
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
                         supabase.from("profiles").update({
@@ -185,7 +204,9 @@ export function LocationProvider({ children }) {
                             last_location: fLoc.last_location,
                             is_location_on: true,
                             activity_status: 'live',
-                            last_seen: new Date().toISOString()
+                            last_seen: new Date().toISOString(),
+                            is_stationary: isStationaryRef.current,
+                            stationary_since: stationarySinceRef.current
                         }).eq("id", session.user.id).then(({ error }) => {
                             if (error) console.error("Location sync error:", error);
                         });
@@ -245,12 +266,19 @@ export function LocationProvider({ children }) {
       if (session?.user) {
         supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
             const isGhost = data?.visibility_mode === 'ghost' || data?.is_ghost_mode;
+            
+            // Clear stationary refs when stopped
+            isStationaryRef.current = false;
+            stationarySinceRef.current = null;
+
             supabase.from("profiles").update({
               is_location_on: false,
               is_ghost_mode: isGhost,
               visibility_mode: isGhost ? 'ghost' : (data?.visibility_mode || 'public'),
               activity_status: isGhost ? 'offline' : 'recently_active',
-              last_seen: new Date().toISOString()
+              last_seen: new Date().toISOString(),
+              is_stationary: false,
+              stationary_since: null
             }).eq("id", session.user.id).then(({ error }) => {
               if (error) console.error("Location sync error:", error);
             });

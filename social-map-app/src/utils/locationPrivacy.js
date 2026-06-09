@@ -15,21 +15,39 @@
  *    then convert to Δlat / Δlng.
  */
 
-export function fuzzyLocation(lat, lng, activityStatus = 'live') {
+export function fuzzyLocation(lat, lng, activityStatus = 'live', isStationary = false, stationarySince = null) {
   let minOffset = 50;
   let maxOffset = 100;
 
-  // Stationary Protection
-  if (activityStatus === 'recently_active') {
-    minOffset = 100;
-    maxOffset = 200;
+  // 1. Stationary Protection
+  if (isStationary) {
+    if (stationarySince) {
+      const timeStationaryMs = Date.now() - new Date(stationarySince).getTime();
+      // Long time stationary: 30 minutes (30 * 60 * 1000 = 1,800,000 ms)
+      if (timeStationaryMs >= 30 * 60 * 1000) {
+        minOffset = 200;
+        maxOffset = 300;
+      } else {
+        minOffset = 100;
+        maxOffset = 200;
+      }
+    } else {
+      minOffset = 100;
+      maxOffset = 200;
+    }
   }
 
-  // Night Mode Protection (10 PM to 6 AM)
+  // 2. Activity Status fallback if not stationary (recently active has 100-200m blur)
+  if (!isStationary && activityStatus === 'recently_active') {
+    minOffset = Math.max(minOffset, 100);
+    maxOffset = Math.max(maxOffset, 200);
+  }
+
+  // 3. Night Mode Protection (10 PM to 6 AM)
   const hour = new Date().getHours();
   if (hour >= 22 || hour < 6) {
-    minOffset = 200;
-    maxOffset = 300;
+    minOffset = Math.max(minOffset, 200);
+    maxOffset = Math.max(maxOffset, 300);
   }
 
   // Random distance between MIN and MAX metres
@@ -57,10 +75,12 @@ export function fuzzyLocation(lat, lng, activityStatus = 'live') {
  *
  * @param {number} lat - Real latitude
  * @param {number} lng - Real longitude
+ * @param {boolean} isStationary - Stationary status
+ * @param {string} stationarySince - Timestamp
  * @returns {{ latitude: number, longitude: number, last_location: string }}
  */
-export function fuzzyLocationForDB(lat, lng) {
-  const { lat: fLat, lng: fLng } = fuzzyLocation(lat, lng);
+export function fuzzyLocationForDB(lat, lng, isStationary = false, stationarySince = null) {
+  const { lat: fLat, lng: fLng } = fuzzyLocation(lat, lng, 'live', isStationary, stationarySince);
   return {
     latitude: fLat,
     longitude: fLng,
@@ -91,7 +111,7 @@ export function distanceMetres(lat1, lng1, lat2, lng2) {
 }
 
 export function nearbyLabel(metres) {
-  if (metres < 500)        return 'Nearby';
-  if (metres < 2000)       return 'Close';
-  return 'In your area';
+  if (metres < 100) return 'Within 100m';
+  if (metres < 500) return 'Close to you';
+  return 'Nearby';
 }
