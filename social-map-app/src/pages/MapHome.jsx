@@ -471,6 +471,7 @@ export default function MapHome() {
     }, [theme]);
 
     const friendshipsRef = useRef(new Map()); // Map<friendship_id, partner_id>
+    const friendshipsMapRef = useRef(new Map()); // Map<partner_id, { status, id, requesterId }>
     const blockedIdsRef = useRef(new Set()); // Blocked users cache
     const blockChannelRef = useRef(null);    // 🚀 Reuse subscribed channel for instant broadcasts
     const fuzzyLocationCache = useRef(new Map()); // Caches fuzzied lat/lng per user so avatars don't jump around
@@ -621,7 +622,7 @@ export default function MapHome() {
 
     // 🚀 LOCAL USER HIGH-FREQUENCY GPS TRACKING (Overrides Context internally for map smoothness)
     useEffect(() => {
-        if (!locationEnabled || !currentUser?.id || currentUser.is_ghost_mode) {
+        if (!locationEnabled || !currentUser?.id) {
             // If location turned OFF, visually remove marker & update DB
             if (currentUser?.id) {
                 const marker = markerRefs.current.get(currentUser.id);
@@ -649,13 +650,16 @@ export default function MapHome() {
                     const now = Date.now();
                     if (now - lastDbUpdate >= 2500) {
                         lastDbUpdate = now;
+                        const isGhost = currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode;
                         const fLoc = fuzzyLocationForDB(newLat, newLng);
                         supabase.from("profiles").update({
                             latitude: fLoc.latitude,
                             longitude: fLoc.longitude,
                             last_location: fLoc.last_location,
-                            is_location_on: true,
-                            activity_status: 'live',
+                            is_location_on: !isGhost,
+                            is_ghost_mode: isGhost,
+                            visibility_mode: isGhost ? 'ghost' : (currentUser?.visibility_mode || 'public'),
+                            activity_status: isGhost ? 'offline' : 'live',
                             last_seen: new Date().toISOString()
                         }).eq("id", currentUser.id).then();
                     }
@@ -813,6 +817,7 @@ export default function MapHome() {
 
                     if (partnerId) {
                         friendshipsRef.current.delete(deletedId);
+                        friendshipsMapRef.current.delete(partnerId);
                         // Reset status in UI
                         setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null } : prev);
                         setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null } : u));
@@ -834,6 +839,7 @@ export default function MapHome() {
                 if (newRec?.status === 'blocked') {
                     // Update blockedIds ref instantly
                     blockedIdsRef.current.add(relevantId);
+                    friendshipsMapRef.current.delete(relevantId);
                     
                     // Remove from nearbyUsers instantly
                     setNearbyUsers(prev => prev.filter(u => u.id !== relevantId));
@@ -848,6 +854,7 @@ export default function MapHome() {
                 // CASE 3: ACCEPTED
                 if (newRec?.status === 'accepted') {
                     friendshipsRef.current.set(newRec.id, relevantId); // Cache it
+                    friendshipsMapRef.current.set(relevantId, { status: 'accepted', id: newRec.id });
                     showToast(`Friend request accepted! 🎉`);
                     setSelectedUser(prev => prev && prev.id === relevantId ? { ...prev, friendshipStatus: 'accepted' } : prev);
                     setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
@@ -858,6 +865,7 @@ export default function MapHome() {
                 // CASE 4: PENDING (New Poke)
                 if (newRec?.status === 'pending') {
                     friendshipsRef.current.set(newRec.id, relevantId); // Cache it
+                    friendshipsMapRef.current.set(relevantId, { status: 'pending', id: newRec.id, requesterId: newRec.requester_id });
 
                     const isIncoming = newRec.receiver_id === currentUser.id;
                     if (isIncoming) {
@@ -1079,6 +1087,7 @@ export default function MapHome() {
                         }
                     });
                 }
+                friendshipsMapRef.current = myFriendships;
 
                 // Process Stories & Views
                 const usersWithStories = new Set();
@@ -1310,20 +1319,34 @@ export default function MapHome() {
                 }
 
                 // Check visibility criteria
-                const hasLocation =
-                    updatedUser.latitude != null &&
-                    updatedUser.longitude != null;
+                const isFriend = friendshipsMapRef.current.get(updatedUser.id)?.status === 'accepted';
 
-                const isVisible =
-                    updatedUser.is_location_on !== false &&
-                    updatedUser.is_ghost_mode !== true;
+                let isVisible = true;
+                if (updatedUser.activity_status === 'offline') isVisible = false;
+                if (updatedUser.visibility_mode === 'ghost') isVisible = false;
+                if (updatedUser.visibility_mode === 'friends' && !isFriend) isVisible = false;
 
-                // Only fail visibility entirely if they have NEVER had a location AND it's not cached
-                const hasValidCoords = updatedUser.latitude != null && updatedUser.longitude != null;
-                if (isVisible && !hasValidCoords) {
-                    // We allow them to stay "visible" in logic to prevent deletion, but we won't render unless they have fallback coords
-                    // We handle this below when parsing coordinates.
+                // Anti-stalking: Hide strangers who are physically too close (< 80m) for safety
+                if (isVisible && !isFriend) {
+                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+                    const strangerLat = updatedUser.latitude;
+                    const strangerLng = updatedUser.longitude;
+                    if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
+                        const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
+                        if (physDist < 80) isVisible = false;
+                    }
                 }
+
+                if (updatedUser.last_seen) {
+                    const lastSeenDate = new Date(updatedUser.last_seen);
+                    const now = new Date();
+                    const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                    if (diffMinutes > 60) isVisible = false;
+                }
+
+                // Backward compat: if old fields say location is off and they have no last_seen
+                if (updatedUser.is_location_on === false && !updatedUser.last_seen) isVisible = false;
 
 
 
@@ -1362,6 +1385,39 @@ export default function MapHome() {
                     if (isNaN(renderLat) || isNaN(renderLng)) {
                          return prev;
                     }
+
+                    // Apply fuzzy location caching so coordinates remain stable/consistent
+                    const latVal = renderLat;
+                    const lngVal = renderLng;
+                    const viewCount = viewCountsRef.current[updatedUser.id] || 0;
+                    const isStalked = viewCount >= 5;
+                    let fCache = fuzzyLocationCache.current.get(updatedUser.id);
+                    const wasStalkedInCache = fCache?.isStalked;
+
+                    if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, latVal, lngVal) > 50 || isStalked !== wasStalkedInCache) {
+                        let fLoc = fuzzyLocation(latVal, lngVal, updatedUser.activity_status, updatedUser.is_stationary, updatedUser.stationary_since);
+                        
+                        if (viewCount >= 5) {
+                            const extraOffset = 200 + Math.random() * 100;
+                            const bearing = Math.random() * 2 * Math.PI;
+                            const METRES_PER_DEG_LAT = 111_000;
+                            const METRES_PER_DEG_LNG = 111_000 * Math.cos((latVal * Math.PI) / 180);
+                            fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                            fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                        }
+
+                        fCache = {
+                            realLat: latVal,
+                            realLng: lngVal,
+                            fuzzyLat: fLoc.lat,
+                            fuzzyLng: fLoc.lng,
+                            isStalked: isStalked
+                        };
+                        fuzzyLocationCache.current.set(updatedUser.id, fCache);
+                    }
+
+                    renderLat = fCache.fuzzyLat;
+                    renderLng = fCache.fuzzyLng;
 
                     let statusMessage = updatedUser.status_message;
                     let statusEmoji = updatedUser.status;
@@ -1449,13 +1505,37 @@ export default function MapHome() {
                 // FILTER BLOCKED USERS
                 if (blockedIdsRef.current.has(newUser.id)) return;
 
-                // Show new user if not in ghost mode and location is on
-                if (
-                    newUser.is_location_on === true &&
-                    newUser.is_ghost_mode === false &&
-                    newUser.latitude != null &&
-                    newUser.longitude != null
-                ) {
+                // Check visibility criteria
+                const isFriend = friendshipsMapRef.current.get(newUser.id)?.status === 'accepted';
+
+                let isVisible = true;
+                if (newUser.activity_status === 'offline') isVisible = false;
+                if (newUser.visibility_mode === 'ghost') isVisible = false;
+                if (newUser.visibility_mode === 'friends' && !isFriend) isVisible = false;
+
+                // Anti-stalking: Hide strangers who are physically too close (< 80m) for safety
+                if (isVisible && !isFriend) {
+                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+                    const strangerLat = newUser.latitude;
+                    const strangerLng = newUser.longitude;
+                    if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
+                        const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
+                        if (physDist < 80) isVisible = false;
+                    }
+                }
+
+                if (newUser.last_seen) {
+                    const lastSeenDate = new Date(newUser.last_seen);
+                    const now = new Date();
+                    const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                    if (diffMinutes > 60) isVisible = false;
+                }
+
+                // Backward compat: if old fields say location is off and they have no last_seen
+                if (newUser.is_location_on === false && !newUser.last_seen) isVisible = false;
+
+                if (isVisible) {
 
                     // Preload Image Immediately
                     const mapAvatar = newUser.avatar_url;
@@ -1480,12 +1560,43 @@ export default function MapHome() {
                             }
                         }
 
+                        const rawLat = parseFloat(newUser.latitude);
+                        const rawLng = parseFloat(newUser.longitude);
+
+                        // Apply fuzzy location caching so coordinates remain stable/consistent
+                        const viewCount = viewCountsRef.current[newUser.id] || 0;
+                        const isStalked = viewCount >= 5;
+                        let fCache = fuzzyLocationCache.current.get(newUser.id);
+                        const wasStalkedInCache = fCache?.isStalked;
+
+                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, rawLat, rawLng) > 50 || isStalked !== wasStalkedInCache) {
+                            let fLoc = fuzzyLocation(rawLat, rawLng, newUser.activity_status, newUser.is_stationary, newUser.stationary_since);
+                            
+                            if (viewCount >= 5) {
+                                const extraOffset = 200 + Math.random() * 100;
+                                const bearing = Math.random() * 2 * Math.PI;
+                                const METRES_PER_DEG_LAT = 111_000;
+                                const METRES_PER_DEG_LNG = 111_000 * Math.cos((rawLat * Math.PI) / 180);
+                                fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                                fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                            }
+
+                            fCache = {
+                                realLat: rawLat,
+                                realLng: rawLng,
+                                fuzzyLat: fLoc.lat,
+                                fuzzyLng: fLoc.lng,
+                                isStalked: isStalked
+                            };
+                            fuzzyLocationCache.current.set(newUser.id, fCache);
+                        }
+
                         // Add new user
                         return [...prev, {
                             id: newUser.id,
                             name: newUser.username || 'User',
-                            lat: parseFloat(newUser.latitude),
-                            lng: parseFloat(newUser.longitude),
+                            lat: fCache.fuzzyLat,
+                            lng: fCache.fuzzyLng,
                             avatar: mapAvatar,
                             originalAvatar: newUser.avatar_url,
                             status: statusEmoji,
@@ -2553,17 +2664,15 @@ export default function MapHome() {
     // 🔄 Sync
     useEffect(() => {
         if (locationEnabled && currentUser) {
-            if (currentUser.is_ghost_mode || currentUser.is_location_on === false) {
+            const isGhost = currentUser.visibility_mode === 'ghost' || currentUser.is_ghost_mode;
+            if (isGhost) {
+                // Keep ghost state intact
+                return;
+            }
+            if (currentUser.is_location_on === false) {
                 setCurrentUser(prev => {
                     if (!prev) return prev;
-
-                    if (
-                        prev.is_ghost_mode === false &&
-                        prev.is_location_on === true
-                    ) {
-                        return prev; // prevent unnecessary re-render
-                    }
-
+                    if (prev.is_location_on === true) return prev;
                     return {
                         ...prev,
                         is_ghost_mode: false,
@@ -2574,6 +2683,7 @@ export default function MapHome() {
         }
     }, [
         locationEnabled,
+        currentUser?.visibility_mode,
         currentUser?.is_ghost_mode,
         currentUser?.is_location_on
     ]);
@@ -3429,7 +3539,7 @@ export default function MapHome() {
                                             setCurrentUser(prev => ({ ...prev, visibility_mode: 'ghost' }));
                                             await supabase.from('profiles').update({ visibility_mode: 'ghost' }).eq('id', currentUser.id);
                                             showToast("👻 Ghost Mode On");
-                                            stopLocation();
+                                            startLocation();
                                         }}
                                         style={{
                                             background: currentUser?.visibility_mode === 'ghost' ? 'rgba(255,255,255,0.1)' : 'transparent',

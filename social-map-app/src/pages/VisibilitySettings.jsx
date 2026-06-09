@@ -35,7 +35,8 @@ const VisibilitySettings = () => {
             }).eq('id', session.user.id);
 
             if (mode === 'ghost') {
-                stopLocation();
+                // Keep location tracking active so user can access the map and see everyone's avatar, but they are hidden (handled via DB columns).
+                startLocation();
             } else {
                 startLocation();
             }

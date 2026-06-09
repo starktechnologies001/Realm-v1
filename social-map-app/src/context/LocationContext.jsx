@@ -47,13 +47,18 @@ export function LocationProvider({ children }) {
     // 🔥 PHASE 1: Immediately broadcast "live" to DB — no GPS fix needed yet.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        supabase.from("profiles").update({
-          is_location_on: true,
-          is_ghost_mode: false,
-          visibility_mode: 'public',
-          activity_status: 'live',
-          last_seen: new Date().toISOString()
-        }).eq("id", session.user.id).then();
+        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+          const currentMode = data?.visibility_mode || 'public';
+          const isGhost = currentMode === 'ghost';
+          
+          supabase.from("profiles").update({
+            is_location_on: !isGhost,
+            is_ghost_mode: isGhost,
+            visibility_mode: currentMode,
+            activity_status: isGhost ? 'offline' : 'live',
+            last_seen: new Date().toISOString()
+          }).eq("id", session.user.id).then();
+        });
       }
     });
 
@@ -84,17 +89,24 @@ export function LocationProvider({ children }) {
             const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, false, null);
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
-                supabase.from("profiles").update({
-                  latitude: fLoc.latitude,
-                  longitude: fLoc.longitude,
-                  last_location: fLoc.last_location,
-                  is_location_on: true,
-                  activity_status: 'live',
-                  last_seen: new Date().toISOString(),
-                  is_stationary: false,
-                  stationary_since: null
-                }).eq("id", session.user.id).then(({ error }) => {
-                  if (error) console.error("Location sync error:", error);
+                supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+                  const currentMode = data?.visibility_mode || 'public';
+                  const isGhost = currentMode === 'ghost';
+
+                  supabase.from("profiles").update({
+                    latitude: fLoc.latitude,
+                    longitude: fLoc.longitude,
+                    last_location: fLoc.last_location,
+                    is_location_on: !isGhost,
+                    is_ghost_mode: isGhost,
+                    visibility_mode: currentMode,
+                    activity_status: isGhost ? 'offline' : 'live',
+                    last_seen: new Date().toISOString(),
+                    is_stationary: false,
+                    stationary_since: null
+                  }).eq("id", session.user.id).then(({ error }) => {
+                    if (error) console.error("Location sync error:", error);
+                  });
                 });
               }
             }).catch(err => console.warn("Session error during location start:", err));
@@ -198,17 +210,24 @@ export function LocationProvider({ children }) {
                 const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, isStationaryRef.current, stationarySinceRef.current);
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
-                        supabase.from("profiles").update({
-                            latitude: fLoc.latitude,
-                            longitude: fLoc.longitude,
-                            last_location: fLoc.last_location,
-                            is_location_on: true,
-                            activity_status: 'live',
-                            last_seen: new Date().toISOString(),
-                            is_stationary: isStationaryRef.current,
-                            stationary_since: stationarySinceRef.current
-                        }).eq("id", session.user.id).then(({ error }) => {
-                            if (error) console.error("Location sync error:", error);
+                        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+                            const currentMode = data?.visibility_mode || 'public';
+                            const isGhost = currentMode === 'ghost';
+
+                            supabase.from("profiles").update({
+                                latitude: fLoc.latitude,
+                                longitude: fLoc.longitude,
+                                last_location: fLoc.last_location,
+                                is_location_on: !isGhost,
+                                is_ghost_mode: isGhost,
+                                visibility_mode: currentMode,
+                                activity_status: isGhost ? 'offline' : 'live',
+                                last_seen: new Date().toISOString(),
+                                is_stationary: isStationaryRef.current,
+                                stationary_since: stationarySinceRef.current
+                            }).eq("id", session.user.id).then(({ error }) => {
+                                if (error) console.error("Location sync error:", error);
+                            });
                         });
                     }
                 }).catch(err => console.warn("Session error during location watch sync:", err));

@@ -137,13 +137,13 @@ export default function Profile() {
         fetchProfile();
     }, []);
 
-    // 🔥 Sync UI: If Location is Enabled, Ghost Mode MUST be Off
+    // 🔥 Sync UI: If Location is Enabled, Ghost Mode MUST be Off (unless user's visibility mode is ghost)
     useEffect(() => {
-        if (locationEnabled && user?.is_ghost_mode) {
+        if (locationEnabled && user?.is_ghost_mode && user?.visibility_mode !== 'ghost') {
              console.log("🔵 [Profile] Location enabled, forcing Ghost Mode OFF in UI");
              setUser(prev => ({ ...prev, is_ghost_mode: false }));
         }
-    }, [locationEnabled, user?.is_ghost_mode]);
+    }, [locationEnabled, user?.is_ghost_mode, user?.visibility_mode]);
 
     const fetchProfile = async () => {
         try {
