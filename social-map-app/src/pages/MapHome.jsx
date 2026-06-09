@@ -2850,7 +2850,7 @@ export default function MapHome() {
 
 
     // Check if any full-screen overlay is active to "pop" the container above BottomNav (z-index 2000)
-    const isOverlayActive = !!viewingStoryUser || showReportModal || showMuteModal || showThoughtInput;
+    const isOverlayActive = !!selectedUser || showFullProfile || !!viewingStoryUser || showReportModal || showMuteModal || showThoughtInput;
 
     // 5️⃣ If all good, render map
     return (

@@ -484,12 +484,12 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         align-items: center;
                         gap: 20px;
                         position: relative;
-                        background: var(--glass-bg);
+                        background: linear-gradient(135deg, rgba(28, 28, 30, 0.96), rgba(18, 18, 20, 0.98));
                         backdrop-filter: blur(30px);
                         -webkit-backdrop-filter: blur(30px);
-                        border: 1px solid var(--glass-border);
+                        border: 1px solid rgba(255, 255, 255, 0.08);
                         border-bottom: none;
-                        box-shadow: 0 -12px 40px rgba(0,0,0,0.12);
+                        box-shadow: 0 -12px 40px rgba(0,0,0,0.45);
                     }
 
                     .card-drag-handle {
@@ -539,6 +539,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     
                     .avatar-large-container.status-ring-viewed::after {
                         border-color: var(--text-secondary);
+                        border-color: rgba(255, 255, 255, 0.5);
                         opacity: 0.5;
                         box-shadow: 0 0 8px rgba(0,0,0,0.05);
                     }
@@ -552,7 +553,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         width: 100%; height: 100%; 
                         border-radius: 50%; 
                         object-fit: cover;
-                        border: 3.5px solid var(--bg-color); /* Separation from outer ring */
+                        border: 3.5px solid #1e1e23;
                         position: relative;
                         z-index: 2;
                     }
@@ -560,40 +561,39 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .status-dot {
                         position: absolute; bottom: 4px; right: 4px;
                         width: 20px; height: 20px;
-                        border-radius: 50%; border: 3.5px solid var(--bg-color);
+                        border-radius: 50%; border: 3.5px solid #1e1e23;
                         z-index: 2;
                     }
                     .status-dot.online { background: #34C759; box-shadow: 0 0 8px rgba(52,199,89,0.5); }
                     .status-dot.offline { background: #8e8e93; }
 
                     .user-info-area h2 {
-                        margin: 0; font-size: 1.5rem; color: var(--text-primary); font-weight: 700;
+                        margin: 0; font-size: 1.5rem; color: #ffffff; font-weight: 700;
                         display: flex; align-items: center; justify-content: center; gap: 6px;
                     }
-                    .user-info-area h2 span { color: var(--text-secondary); font-size: 1.2rem; }
+                    .user-info-area h2 span { color: rgba(255, 255, 255, 0.6); font-size: 1.2rem; }
 
                     .badges-row {
-                        display: flex; justify-content: center; gap: 8px; margin-top: 8px;
+                        display: flex; justify-content: center; gap: 8px; margin-top: 14px;
                     }
-
                     .badge-pill {
                         font-size: 0.78rem; padding: 6px 14px; border-radius: 100px;
-                        font-weight: 600; background: var(--bg-secondary); color: var(--text-secondary);
-                        border: 1px solid var(--glass-border);
+                        font-weight: 600; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.7);
+                        border: 1px solid rgba(255, 255, 255, 0.1);
                     }
                     .badge-pill.status { 
-                        background: rgba(0, 132, 255, 0.08); color: #0084ff; border: 1px solid rgba(0, 132, 255, 0.15); 
+                        background: rgba(0, 132, 255, 0.12); color: #38a1ff; border: 1px solid rgba(0, 132, 255, 0.25); 
                     }
-
+ 
                     .thought-bubble-large {
-                        background: var(--text-primary); color: var(--bg-color); padding: 12px 18px; border-radius: 18px;
+                        background: #ffffff; color: #1c1c1e; padding: 12px 18px; border-radius: 18px;
                         font-weight: 600; position: relative; max-width: 90%; text-align: center;
                         font-size: 0.92rem;
-                        box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+                        box-shadow: 0 6px 16px rgba(0,0,0,0.25);
                     }
                     .thought-bubble-large::after {
                         content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
-                        border-width: 0 8px 8px; border-style: solid; border-color: transparent transparent var(--text-primary);
+                        border-width: 0 8px 8px; border-style: solid; border-color: transparent transparent #ffffff;
                     }
 
                     /* 4-Column Grid for Buttons */
@@ -609,9 +609,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         display: flex; flex-direction: column; align-items: center; justify-content: center;
                         aspect-ratio: 1;
                         border-radius: 20px;
-                        border: 1px solid var(--glass-border);
-                        background: var(--bg-secondary);
-                        color: var(--text-primary);
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        background: rgba(255, 255, 255, 0.08);
+                        color: #ffffff;
                         cursor: pointer;
                         transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
                         padding: 0;
@@ -620,12 +620,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                     .action-btn:hover {
                         transform: translateY(-2px);
-                        background: var(--glass-border);
+                        background: rgba(255, 255, 255, 0.15);
+                        border-color: rgba(255, 255, 255, 0.15);
                     }
                     .action-btn:active { transform: scale(0.95); }
 
                     .action-btn .icon { font-size: 24px; line-height: 1; }
-                    .action-btn .label { font-size: 11px; font-weight: 700; letter-spacing: 0.1px; color: var(--text-secondary); }
+                    .action-btn .label { font-size: 11px; font-weight: 700; letter-spacing: 0.1px; color: rgba(255, 255, 255, 0.65); }
 
                     /* Button Specific Styles */
                     
@@ -641,12 +642,12 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                     /* Danger (Block/Report) - Red tint */
                     .danger {
-                        background: rgba(255, 59, 48, 0.08);
-                        border-color: rgba(255, 59, 48, 0.2);
-                        color: #ff3b30;
+                        background: rgba(255, 59, 48, 0.12);
+                        border-color: rgba(255, 59, 48, 0.25);
+                        color: #ff453a;
                     }
-                    .danger .label { color: #ff3b30; }
-                    .danger .icon { color: #ff3b30; }
+                    .danger .label { color: #ff453a; }
+                    .danger .icon { color: #ff453a; }
 
                     /* Mobile: shrink card to fit screen */
                     @media (max-width: 480px) {
