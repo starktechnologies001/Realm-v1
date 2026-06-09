@@ -484,7 +484,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         align-items: center;
                         gap: 20px;
                         position: relative;
-                        background: linear-gradient(135deg, rgba(28, 28, 30, 0.96), rgba(18, 18, 20, 0.98));
+                        background: linear-gradient(135deg, rgba(35, 35, 45, 0.96), rgba(20, 20, 25, 0.98));
                         backdrop-filter: blur(30px);
                         -webkit-backdrop-filter: blur(30px);
                         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -574,7 +574,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .user-info-area h2 span { color: rgba(255, 255, 255, 0.6); font-size: 1.2rem; }
 
                     .badges-row {
-                        display: flex; justify-content: center; gap: 8px; margin-top: 14px;
+                        display: flex; justify-content: center; gap: 8px; margin-top: 24px;
                     }
                     .badge-pill {
                         font-size: 0.78rem; padding: 6px 14px; border-radius: 100px;
@@ -590,6 +590,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         font-weight: 600; position: relative; max-width: 90%; text-align: center;
                         font-size: 0.92rem;
                         box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+                        word-wrap: break-word;
+                        word-break: break-word;
+                        white-space: pre-wrap;
                     }
                     .thought-bubble-large::after {
                         content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);

@@ -12,7 +12,7 @@ export const initializePresence = async (userId) => {
   // Set user as online
   await setOnline(userId, true);
 
-  // Start heartbeat to update last_active_at every 60 seconds
+  // Start heartbeat to update last_active every 60 seconds
   heartbeatInterval = setInterval(() => {
     updateActivity(userId);
   }, 60000);
@@ -46,7 +46,7 @@ export const updateActivity = async (userId) => {
     await supabase
       .from('profiles')
       .update({ 
-        last_active_at: new Date().toISOString(),
+        last_active: new Date().toISOString(),
         is_online: true 
       })
       .eq('id', userId);
@@ -64,7 +64,7 @@ export const setOnline = async (userId, isOnline) => {
   try {
     const updates = { is_online: isOnline };
     if (isOnline) {
-      updates.last_active_at = new Date().toISOString();
+      updates.last_active = new Date().toISOString();
     }
 
     await supabase
@@ -129,7 +129,7 @@ export const getPresenceStatus = async (targetUserId, viewerId) => {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('is_online, last_active_at, show_online_status, last_seen_privacy')
+      .select('is_online, last_active, show_online_status, last_seen_privacy')
       .eq('id', targetUserId)
       .maybeSingle();
 
@@ -163,7 +163,7 @@ export const getPresenceStatus = async (targetUserId, viewerId) => {
 
     return {
       isOnline: data.is_online,
-      lastSeen: data.last_active_at,
+      lastSeen: data.last_active,
       canViewOnline: true,
       canViewLastSeen
     };
