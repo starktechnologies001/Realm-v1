@@ -50,7 +50,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     // Interaction States
     const [isFullPhoto, setIsFullPhoto] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
-    
+    const [isReplyingToThought, setIsReplyingToThought] = useState(false);
+    const [replyText, setReplyText] = useState('');
+    const [isSendingReply, setIsSendingReply] = useState(false);
 
     // Long Press Logic
     const longPressTimer = useRef(null);
@@ -100,6 +102,67 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
             longPressTimer.current = null;
         }
     }, []);
+
+    const handleReplySubmit = async (e) => {
+        e.preventDefault();
+        if (!replyText.trim()) return;
+
+        setIsSendingReply(true);
+        try {
+            const { supabase } = await import('../supabaseClient');
+            const isFriend = user.friendshipStatus === 'accepted';
+
+            if (isFriend) {
+                // Insert into messages
+                const messageContent = `Replying to your thought: "${user.thought}"\n\n${replyText.trim()}`;
+                
+                const { error } = await supabase
+                    .from('messages')
+                    .insert({
+                        sender_id: currentUser.id,
+                        receiver_id: user.id,
+                        content: messageContent,
+                        message_type: 'text',
+                        is_read: false,
+                        delivery_status: 'sent'
+                    });
+
+                if (error) throw error;
+                window.Toast.show("Reply sent to chat! 💬");
+            } else {
+                // Insert into message_requests
+                const { error } = await supabase
+                    .from('message_requests')
+                    .insert({
+                        sender_id: currentUser.id,
+                        receiver_id: user.id,
+                        content: replyText.trim(),
+                        thought_text: user.thought,
+                        status: 'pending'
+                    });
+
+                if (error) {
+                    if (error.code === '23505') { // Unique constraint violation
+                        throw new Error("You already have a pending request with this user.");
+                    }
+                    throw error;
+                }
+                window.Toast.show("Message request sent! 📨");
+            }
+            
+            setIsReplyingToThought(false);
+            setReplyText('');
+        } catch (err) {
+            console.error("Error sending reply:", err);
+            if (window.Toast) {
+                window.Toast.show("Failed to send reply");
+            } else {
+                alert("Failed to send reply");
+            }
+        } finally {
+            setIsSendingReply(false);
+        }
+    };
 
 
     return (
@@ -273,8 +336,45 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     </div>
 
                     {canViewDetails && displayThought && (
-                        <div className="thought-bubble-large">
-                            {displayThought}
+                        <div className="thought-section">
+                            <div className="thought-bubble-large">
+                                {displayThought}
+                                {!isOwner && (
+                                    <button 
+                                        className="reply-thought-btn"
+                                        onClick={() => setIsReplyingToThought(!isReplyingToThought)}
+                                    >
+                                        Reply
+                                    </button>
+                                )}
+                            </div>
+                            
+                            <AnimatePresence>
+                                {isReplyingToThought && (
+                                    <motion.form 
+                                        className="thought-reply-form"
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        onSubmit={handleReplySubmit}
+                                    >
+                                        <input 
+                                            type="text" 
+                                            placeholder="Type a reply..." 
+                                            value={replyText}
+                                            onChange={(e) => setReplyText(e.target.value)}
+                                            disabled={isSendingReply}
+                                            autoFocus
+                                        />
+                                        <button 
+                                            type="submit" 
+                                            disabled={!replyText.trim() || isSendingReply}
+                                        >
+                                            {isSendingReply ? '...' : 'Send'}
+                                        </button>
+                                    </motion.form>
+                                )}
+                            </AnimatePresence>
                         </div>
                     )}
 
@@ -593,10 +693,78 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         word-wrap: break-word;
                         word-break: break-word;
                         white-space: pre-wrap;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        gap: 8px;
                     }
                     .thought-bubble-large::after {
                         content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
                         border-width: 0 8px 8px; border-style: solid; border-color: transparent transparent #ffffff;
+                    }
+                    
+                    .thought-section {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        width: 100%;
+                        gap: 12px;
+                    }
+                    
+                    .reply-thought-btn {
+                        background: rgba(0, 132, 255, 0.1);
+                        color: #0084ff;
+                        border: none;
+                        border-radius: 12px;
+                        padding: 4px 12px;
+                        font-size: 0.8rem;
+                        font-weight: 700;
+                        cursor: pointer;
+                        margin-top: 4px;
+                        transition: background 0.2s;
+                    }
+                    
+                    .reply-thought-btn:hover {
+                        background: rgba(0, 132, 255, 0.2);
+                    }
+                    
+                    .thought-reply-form {
+                        display: flex;
+                        width: 90%;
+                        gap: 8px;
+                        background: rgba(255, 255, 255, 0.1);
+                        padding: 6px;
+                        border-radius: 20px;
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                    }
+                    
+                    .thought-reply-form input {
+                        flex: 1;
+                        background: transparent;
+                        border: none;
+                        color: white;
+                        padding: 8px 12px;
+                        outline: none;
+                        font-size: 0.9rem;
+                    }
+                    
+                    .thought-reply-form input::placeholder {
+                        color: rgba(255, 255, 255, 0.5);
+                    }
+                    
+                    .thought-reply-form button {
+                        background: #0084ff;
+                        color: white;
+                        border: none;
+                        border-radius: 16px;
+                        padding: 0 16px;
+                        font-weight: 600;
+                        cursor: pointer;
+                    }
+                    
+                    .thought-reply-form button:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
                     }
 
                     /* 4-Column Grid for Buttons */

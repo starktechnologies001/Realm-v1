@@ -6,8 +6,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import MapProfileCard from '../components/MapProfileCard';
 import FullProfileModal from '../components/FullProfileModal';
+import ReplyThoughtModal from '../components/ReplyThoughtModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
+import MessageRequestsPage from '../components/MessageRequestsPage';
 import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
@@ -413,6 +415,8 @@ export default function MapHome() {
 
     // Notification State
     const [friendRequests, setFriendRequests] = useState([]);
+    const [messageRequestsCount, setMessageRequestsCount] = useState(0);
+    const [isMessageRequestsPageOpen, setIsMessageRequestsPageOpen] = useState(false);
 
     // Fetch Notifications
     useEffect(() => {
@@ -430,6 +434,17 @@ export default function MapHome() {
             
             if (pendingRequests) {
                 setFriendRequests(pendingRequests.map(r => r.id));
+            }
+
+            // Message Requests Count
+            const { count: msgCount } = await supabase
+                .from('message_requests')
+                .select('id', { count: 'exact', head: true })
+                .eq('receiver_id', user.id)
+                .eq('status', 'pending');
+                
+            if (msgCount !== null) {
+                setMessageRequestsCount(msgCount);
             }
         };
 
@@ -579,9 +594,9 @@ export default function MapHome() {
         const startLat = currentLatLng.lat;
         const startLng = currentLatLng.lng;
 
-        // Ignore micro GPS jitter (do not animate if movement < 3 meters)
+        // Ignore micro GPS jitter (do not animate if movement < 15 meters)
         const dist = getDistance(startLat, startLng, newLat, newLng);
-        if (dist < 3) return;
+        if (dist < 15) return;
 
         // Cancel previous animation to prevent stacking/flickering
         if (animationRefs.current.has(id)) {
@@ -615,6 +630,18 @@ export default function MapHome() {
         animationRefs.current.set(id, requestAnimationFrame(animate));
     }, []);
 
+    const [replyingToThought, setReplyingToThought] = useState(null); // { userId, thoughtText }
+
+    // Global handler for replying to a thought directly from the map bubble
+    useEffect(() => {
+        window.handleThoughtReplyClick = (userId, thoughtText) => {
+            setReplyingToThought({ userId, thoughtText });
+        };
+        return () => {
+            delete window.handleThoughtReplyClick;
+        };
+    }, []);
+
     // 🔥 Keep userLocationRef in sync with context without causing downstream re-renders
     useEffect(() => {
         userLocationRef.current = userLocation;
@@ -636,6 +663,8 @@ export default function MapHome() {
 
         let lastDbUpdate = 0;
         let watchId = null;
+        let lastAnimatedLat = null;
+        let lastAnimatedLng = null;
         
         try {
             watchId = navigator.geolocation.watchPosition(
@@ -643,12 +672,17 @@ export default function MapHome() {
                     const newLat = pos.coords.latitude;
                     const newLng = pos.coords.longitude;
 
-                    // Animate local marker natively IMMEDIATELY (no React state wait)
-                    animateNativeMarker(currentUser.id, newLat, newLng);
+                    // Only animate local marker if the user actually moved > 10 meters
+                    const movedEnough = !lastAnimatedLat || getDistance(lastAnimatedLat, lastAnimatedLng, newLat, newLng) >= 10;
+                    if (movedEnough) {
+                        lastAnimatedLat = newLat;
+                        lastAnimatedLng = newLng;
+                        animateNativeMarker(currentUser.id, newLat, newLng);
+                    }
 
-                    // Update Supabase throttled (every 2-3 seconds)
+                    // Update Supabase throttled (every 10 seconds AND moved > 10m)
                     const now = Date.now();
-                    if (now - lastDbUpdate >= 2500) {
+                    if (now - lastDbUpdate >= 10000 && movedEnough) {
                         lastDbUpdate = now;
                         const isGhost = currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode;
                         const fLoc = fuzzyLocationForDB(newLat, newLng);
@@ -665,7 +699,7 @@ export default function MapHome() {
                     }
                 },
                 (err) => { if (err.code !== 3) console.log('Map watch error:', err); },
-                { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
             );
         } catch (e) {
             console.warn("Geolocation hardware locked during background wake", e);
@@ -888,6 +922,25 @@ export default function MapHome() {
                         requesterId: newRec.requester_id,
                         friendshipId: newRec.id
                     } : u));
+                }
+            })
+            .subscribe();
+
+        // Listen for message requests
+        const messageRequestsChannel = supabase
+            .channel('message_requests_map')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'message_requests',
+                filter: `receiver_id=eq.${currentUser.id}`
+            }, (payload) => {
+                const { eventType, new: newRec, old: oldRec } = payload;
+                if (eventType === 'INSERT' && newRec.status === 'pending') {
+                    setMessageRequestsCount(prev => prev + 1);
+                    showToast('You have a new message request! 📬');
+                } else if (eventType === 'DELETE' || (eventType === 'UPDATE' && newRec.status !== 'pending' && oldRec.status === 'pending')) {
+                    setMessageRequestsCount(prev => Math.max(0, prev - 1));
                 }
             })
             .subscribe();
@@ -1394,7 +1447,13 @@ export default function MapHome() {
                     let fCache = fuzzyLocationCache.current.get(updatedUser.id);
                     const wasStalkedInCache = fCache?.isStalked;
 
-                    if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, latVal, lngVal) > 50 || isStalked !== wasStalkedInCache) {
+                    // Only rebuild fuzzy cache if:
+                    // 1. No cache exists yet
+                    // 2. Real coordinates moved > 50m AND user is not stationary
+                    const realMoved = fCache ? distanceMetres(fCache.realLat, fCache.realLng, latVal, lngVal) > 50 : true;
+                    const isCurrentlyStationary = updatedUser.is_stationary === true;
+
+                    if (!fCache || (realMoved && !isCurrentlyStationary) || isStalked !== wasStalkedInCache) {
                         let fLoc = fuzzyLocation(latVal, lngVal, updatedUser.activity_status, updatedUser.is_stationary, updatedUser.stationary_since);
                         
                         if (viewCount >= 5) {
@@ -1479,10 +1538,17 @@ export default function MapHome() {
                             setSelectedUser(prevSelected => prevSelected?.id === updatedUser.id ? { ...prevSelected, ...newUserObj } : prevSelected);
                             return prev.map(u => u.id === updatedUser.id ? { ...u, ...newUserObj } : u);
                         } else {
-                            // 🔥 COORD-ONLY UPDATE — animate natively, NO React state change, NO profile card re-render
-                            animateNativeMarker(updatedUser.id, renderLat, renderLng);
-                            existingUser.lat = renderLat;
-                            existingUser.lng = renderLng;
+                            // 🔥 COORD-ONLY UPDATE — only animate natively if real coords actually changed
+                            const prevFCache = fuzzyLocationCache.current.get(updatedUser.id);
+                            const prevRealLat = prevFCache?.realLat;
+                            const prevRealLng = prevFCache?.realLng;
+                            const realCoordMoved = !prevRealLat || distanceMetres(prevRealLat, prevRealLng, latVal, lngVal) > 15;
+                            
+                            if (realCoordMoved) {
+                                animateNativeMarker(updatedUser.id, renderLat, renderLng);
+                                existingUser.lat = renderLat;
+                                existingUser.lng = renderLng;
+                            }
                             existingUser.lastActive = newUserObj.lastActive;
                             return prev;
                         }
@@ -2373,11 +2439,12 @@ export default function MapHome() {
 
         // Only show thought if it exists (simplified check)
         const thoughtHTML = thought
-            ? `<div class="thought-bubble" style="background: white !important; color: black !important;">
+            ? `<div class="thought-bubble" style="background: white !important; color: black !important; position: relative; padding-right: 24px;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem;">${name}</div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
                     ${thought}
                  </div>
+                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thought.replace(/`/g, '\\`')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" title="Reply to thought">⋮</button>` : ''}
                </div>`
             : '';
 
@@ -3445,6 +3512,29 @@ export default function MapHome() {
                     
                     {/* Action Buttons - Right Side */}
                     <div className="header-action-buttons">
+                        {/* Message Requests Lock */}
+                        <button 
+                            className="control-btn" 
+                            onClick={() => setIsMessageRequestsPageOpen(true)} 
+                            title="Message Requests"
+                            style={{ position: 'relative' }}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            {messageRequestsCount > 0 && (
+                                <span className="notification-badge" style={{ 
+                                    position: 'absolute', top: -5, right: -5, 
+                                    background: '#ff3b30', color: 'white', 
+                                    fontSize: '10px', fontWeight: 'bold', 
+                                    padding: '2px 6px', borderRadius: '10px', border: '2px solid var(--bg-color)' 
+                                }}>
+                                    {messageRequestsCount > 99 ? '99+' : messageRequestsCount}
+                                </span>
+                            )}
+                        </button>
+
                         {/* Status / Thoughts */}
                         <button 
                             className="control-btn status-trigger-btn" 
@@ -3801,6 +3891,18 @@ export default function MapHome() {
                 }
             `}</style>
 
+            {/* Reply Thought Modal directly from map bubble click */}
+            {replyingToThought && (
+                <ReplyThoughtModal
+                    isOpen={!!replyingToThought}
+                    onClose={() => setReplyingToThought(null)}
+                    currentUser={currentUser}
+                    targetUserId={replyingToThought.userId}
+                    thoughtText={replyingToThought.thoughtText}
+                    friendshipsMapRef={friendshipsMapRef}
+                />
+            )}
+
             <MapProfileCard
                 user={selectedUser}
                 currentUser={currentUser}
@@ -3808,6 +3910,15 @@ export default function MapHome() {
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
             />
+
+            <PokeNotifications currentUser={currentUser} />
+
+            {isMessageRequestsPageOpen && (
+                <MessageRequestsPage
+                    onClose={() => setIsMessageRequestsPageOpen(false)}
+                    currentUser={currentUser}
+                />
+            )}
 
             {showFullProfile && fullProfileUser && (
                 <FullProfileModal

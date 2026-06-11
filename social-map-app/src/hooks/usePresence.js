@@ -51,9 +51,16 @@ export const usePresence = (userId, viewerId) => {
         const canView = targetShows && viewerShows;
 
         // 4. Calculate display status
+        // Guard: treat as online only if is_online flag is true AND last_active is within 5 minutes.
+        // This prevents stale DB flags from showing users as "Online" after they close the app.
+        const lastActiveMs = targetData.last_active
+          ? Date.now() - new Date(targetData.last_active).getTime()
+          : Infinity;
+        const isActuallyOnline = !!targetData.is_online && lastActiveMs < 5 * 60 * 1000;
+
         let displayStatus = '';
         if (canView) {
-          if (targetData.is_online) {
+          if (isActuallyOnline) {
             displayStatus = 'Online';
           } else if (targetData.last_active) {
             displayStatus = formatLastSeen(targetData.last_active);
@@ -65,7 +72,7 @@ export const usePresence = (userId, viewerId) => {
         }
 
         setPresence({
-          isOnline: canView ? targetData.is_online : false,
+          isOnline: canView ? isActuallyOnline : false,
           lastSeen: canView ? targetData.last_active : null,
           displayStatus,
           canViewOnline: canView,
@@ -100,9 +107,15 @@ export const usePresence = (userId, viewerId) => {
             
             const canView = targetShows && viewerShows;
 
+            // Guard: same 5-minute freshness check for real-time updates
+            const lastActiveMsRT = newData.last_active
+              ? Date.now() - new Date(newData.last_active).getTime()
+              : Infinity;
+            const isActuallyOnlineRT = !!newData.is_online && lastActiveMsRT < 5 * 60 * 1000;
+
             let displayStatus = '';
             if (canView) {
-              if (newData.is_online) {
+              if (isActuallyOnlineRT) {
                 displayStatus = 'Online';
               } else if (newData.last_active) {
                 displayStatus = formatLastSeen(newData.last_active);
@@ -115,7 +128,7 @@ export const usePresence = (userId, viewerId) => {
 
             return {
               ...prev,
-              isOnline: canView ? newData.is_online : false,
+              isOnline: canView ? isActuallyOnlineRT : false,
               lastSeen: canView ? newData.last_active : null,
               displayStatus,
               canViewOnline: canView,

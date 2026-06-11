@@ -1,0 +1,132 @@
+.reply-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.reply-modal-container {
+    background: var(--bg-color);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.reply-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.reply-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: var(--text-primary);
+}
+
+.reply-modal-content {
+    padding: 20px;
+}
+
+.thought-context {
+    background: var(--bg-secondary);
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    position: relative;
+    border-left: 4px solid #0084ff;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.quote-icon {
+    color: #0084ff;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: serif;
+    opacity: 0.5;
+    line-height: 1;
+}
+
+.thought-context p {
+    margin: 0;
+    color: var(--text-primary);
+    font-style: italic;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    flex: 1;
+}
+
+.reply-form {
+    display: flex;
+    gap: 10px;
+}
+
+.reply-form input {
+    flex: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.reply-form input:focus {
+    border-color: #0084ff;
+}
+
+.reply-form button {
+    background: #0084ff;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 0 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reply-form button:hover:not(:disabled) {
+    background: #0073e6;
+}
+
+.reply-form button:disabled {
+    background: var(--glass-border);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}

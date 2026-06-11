@@ -53,6 +53,7 @@ const UserProfilePage = lazyWithRetry(() => import('./pages/UserProfilePage'));
 const Landing = lazyWithRetry(() => import('./pages/Landing'));
 const Welcome = lazyWithRetry(() => import('./pages/Welcome'));
 const VisibilitySettings = lazyWithRetry(() => import('./pages/VisibilitySettings'));
+const MessageRequestsPage = lazyWithRetry(() => import('./components/MessageRequestsPage'));
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
@@ -152,6 +153,7 @@ function App() {
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile/:userId" element={<UserProfilePage />} />
+                  <Route path="/message-requests" element={<MessageRequestsPage />} />
                 </Route>
 
                 <Route path="/confirm-email" element={<ConfirmEmail />} />

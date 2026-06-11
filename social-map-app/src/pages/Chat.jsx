@@ -100,6 +100,45 @@ export default function Chat() {
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
     const { isLocationEnabled } = useLocationContext();
+    const [messageRequestsCount, setMessageRequestsCount] = useState(0);
+
+    // Fetch and subscribe to message requests
+    useEffect(() => {
+        if (!currentUser?.id) return;
+
+        const fetchRequestsCount = async () => {
+            const { count } = await supabase
+                .from('message_requests')
+                .select('id', { count: 'exact', head: true })
+                .eq('receiver_id', currentUser.id)
+                .eq('status', 'pending');
+            
+            if (count !== null) setMessageRequestsCount(count);
+        };
+
+        fetchRequestsCount();
+
+        const channel = supabase
+            .channel('message_requests_chat')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'message_requests',
+                filter: `receiver_id=eq.${currentUser.id}`
+            }, (payload) => {
+                const { eventType, new: newRec, old: oldRec } = payload;
+                if (eventType === 'INSERT' && newRec.status === 'pending') {
+                    setMessageRequestsCount(prev => prev + 1);
+                } else if (eventType === 'DELETE' || (eventType === 'UPDATE' && newRec.status !== 'pending' && oldRec.status === 'pending')) {
+                    setMessageRequestsCount(prev => Math.max(0, prev - 1));
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser]);
 
     // ------------------------------------------------------------------
     // 🔗 URL PERSISTENCE LOGIC (Re-open chat on refresh)
@@ -214,7 +253,7 @@ export default function Chat() {
 
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen')
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active')
             .in('id', validPartnerIds);
 
         if (!profiles) {
@@ -332,6 +371,10 @@ export default function Chat() {
             }
             const genderAvatar = getAvatarHeadshot(rawAvatar);
 
+            // Consider online if is_online flag is true AND last_active within 5 minutes
+            const lastActiveMs = partner.last_active ? Date.now() - new Date(partner.last_active).getTime() : Infinity;
+            const isOnline = !!partner.is_online && lastActiveMs < 5 * 60 * 1000;
+
             return {
                 id: partner.id,
                 name: partner.username,
@@ -341,6 +384,7 @@ export default function Chat() {
                 rawTime: rawTime,
                 unread: count || 0,
                 isMuted: isMuted,
+                isOnline: isOnline,
                 fullProfile: partner
             };
         }));
@@ -763,6 +807,7 @@ export default function Chat() {
                 currentUser={currentUser} 
                 connectionStatus={connectionStatus} 
                 refreshTrigger={refreshTrigger}
+                messageRequestsCount={messageRequestsCount}
             />
             
             {/* Story Viewer Overlay */}
@@ -780,9 +825,10 @@ export default function Chat() {
     );
 }
 
-function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger }) {
+function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger, messageRequestsCount }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('messages');
+    const navigate = useNavigate();
     
     // Selection mode for chat deletion
     const [selectionMode, setSelectionMode] = useState(false);
@@ -886,7 +932,6 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                         <>
                             <h1 className="page-title">Chats</h1>
                             <div className="header-actions">
-                                {/* Status and Settings removed as per user request */}
                             </div>
                         </>
                     )}
@@ -909,17 +954,40 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 </div>
 
                 {activeTab === 'messages' && (
-                    <div className="search-bar">
-                        <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
-                        <input 
-                            type="text" 
-                            placeholder="Search chats..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                    <div className="search-container" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div className="search-bar" style={{ flex: 1, margin: 0 }}>
+                            <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input 
+                                type="text" 
+                                placeholder="Search chats..." 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            className="header-icon-btn" 
+                            onClick={() => navigate('/message-requests')} 
+                            title="Message Requests"
+                            style={{ position: 'relative', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', cursor: 'pointer', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            {messageRequestsCount > 0 && (
+                                <span className="notification-badge" style={{ 
+                                    position: 'absolute', top: -5, right: -5, 
+                                    background: '#ff3b30', color: 'white', 
+                                    fontSize: '10px', fontWeight: 'bold', 
+                                    padding: '2px 6px', borderRadius: '10px', border: '2px solid var(--bg-color)' 
+                                }}>
+                                    {messageRequestsCount > 99 ? '99+' : messageRequestsCount}
+                                </span>
+                            )}
+                        </button>
                     </div>
                 )}
             </header>
@@ -968,8 +1036,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                                     loading="eager"
                                     decoding="sync"
                                 />
-                                {/* We can verify online status if needed, assuming true for demo or passed in */}
-                                <div className="online-badge"></div>
+                                {/* Only show green dot for users who are actually online */}
+                                {chat.isOnline && <div className="online-badge"></div>}
                             </div>
                             
                             <div className="chat-info">
@@ -3250,8 +3318,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             )}
                         </div>
                     </div>
-                    </>
-                )}
+                </>
+            )}
             </div>
 
             {/* Theme Menu Modal */}
