@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import Toast from './Toast';
@@ -7,13 +7,15 @@ import './ReplyThoughtModal.css';
 export default function ReplyThoughtModal({ isOpen, onClose, currentUser, targetUserId, thoughtText, friendshipsMapRef }) {
     const [replyText, setReplyText] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const isSendingRef = useRef(false);
 
     if (!isOpen || !targetUserId) return null;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!replyText.trim() || !currentUser) return;
+        if (isSendingRef.current || !replyText.trim() || !currentUser) return;
         
+        isSendingRef.current = true;
         setIsSending(true);
         
         try {
@@ -65,6 +67,7 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
             console.error("Error sending reply:", err);
             Toast.show(err.message || "Failed to send reply");
         } finally {
+            isSendingRef.current = false;
             setIsSending(false);
         }
     };

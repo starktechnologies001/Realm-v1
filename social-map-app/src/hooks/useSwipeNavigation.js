@@ -52,39 +52,10 @@ export function useSwipeNavigation() {
         const currentIndex = routes.indexOf(location.pathname);
         if (currentIndex === -1) return; // Not on a main tab
 
-        // EDGE DETECTION FOR MAP
-        // If on Map, only allow swipe if it started near the edge (e.g., 50px)
+        // 🛑 DISABLE SWIPE ENTIRELY ON MAP PAGE
+        // To prevent conflicts with panning the map
         if (location.pathname === '/map') {
-            const isLeftEdge = touchStartRef.current.x < 50;
-            const isRightEdge = touchStartRef.current.x > window.innerWidth - 50;
-            
-            // If swiping Left (to go Next), must start from Right Edge? 
-            // - No, standard is dragging the screen.
-            // But dragging the map pans it.
-            // Edge swipe:
-            // - To go Next (Right tab), drag Left. Start from Right Edge? That feels like closing a drawer.
-            // - Usually, you standard swipe.
-            // Let's enforce Edge Swipe strictly for Map.
-            
-            // Swipe Left (Go Next) -> Start from Right Edge? No, usually Start from anywhere?
-            // If I am on Map, and I want to go to Friends (Next), I swipe LEFT.
-            // This conflicts with panning Map East.
-            // So I must start swipe from Right Edge to trigger navigation?
-            // Or usually, Map allows panning, but if you hit the boundary? No.
-            
-            // Let's try: ONLY edge swipes on Map.
-            // To go Next (/friends), Swipe Left. MUST start from Right Edge? (confusing)
-            // Actually, "Side Menu" logic often uses Left Edge to go Back/Open Menu.
-            
-            // Let's implement:
-            // Swipe Left (deltaX > 0) -> Requires Right Edge if on Map
-            // Swipe Right (deltaX < 0) -> Requires Left Edge if on Map
-            
-            const isSwipeLeft = distanceX > MIN_SWIPE_DISTANCE;
-            const isSwipeRight = distanceX < -MIN_SWIPE_DISTANCE;
-
-            if (isSwipeLeft && !isRightEdge) return; // Ignore non-edge swipe on map
-            if (isSwipeRight && !isLeftEdge) return; // Ignore non-edge swipe on map
+            return;
         }
 
         if (distanceX > MIN_SWIPE_DISTANCE) {

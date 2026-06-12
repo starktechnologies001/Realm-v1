@@ -27,6 +27,42 @@ export function LocationProvider({ children }) {
   const lastSyncLoc = useRef(null);
   const isStationaryRef = useRef(false);
   const stationarySinceRef = useRef(null);
+  const fuzzyCacheRef = useRef(null);
+
+  const getCachedFuzzyLocation = (newLoc, isStationary, stationarySince) => {
+      const now = Date.now();
+      const cache = fuzzyCacheRef.current;
+      let shouldRegenerate = false;
+
+      if (!cache) {
+          shouldRegenerate = true;
+      } else {
+          const timeElapsed = now - cache.lastGeneratedTime;
+          const distMoved = distanceMetres(cache.realLat, cache.realLng, newLoc.lat, newLoc.lng);
+          // Regenerate if 60s passed OR moved > 20m
+          if (timeElapsed > 60000 || distMoved > 20) {
+              shouldRegenerate = true;
+          }
+      }
+
+      if (shouldRegenerate) {
+          const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, isStationary, stationarySince);
+          fuzzyCacheRef.current = {
+              realLat: newLoc.lat,
+              realLng: newLoc.lng,
+              fLat: fLoc.latitude,
+              fLng: fLoc.longitude,
+              last_location: fLoc.last_location,
+              lastGeneratedTime: now
+          };
+      }
+
+      return {
+          latitude: fuzzyCacheRef.current.fLat,
+          longitude: fuzzyCacheRef.current.fLng,
+          last_location: fuzzyCacheRef.current.last_location
+      };
+  };
 
   // ----------------------------------------
   // 🔹 START LOCATION
@@ -86,7 +122,7 @@ export function LocationProvider({ children }) {
             startWatching();
 
             // Store FUZZY randomized coordinates in DB to protect user privacy (Never show exact GPS)
-            const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, false, null);
+            const fLoc = getCachedFuzzyLocation(newLoc, false, null);
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
@@ -207,7 +243,7 @@ export function LocationProvider({ children }) {
                     stationarySinceRef.current = null;
                 }
 
-                const fLoc = fuzzyLocationForDB(newLoc.lat, newLoc.lng, isStationaryRef.current, stationarySinceRef.current);
+                const fLoc = getCachedFuzzyLocation(newLoc, isStationaryRef.current, stationarySinceRef.current);
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session?.user?.id) {
                         supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {

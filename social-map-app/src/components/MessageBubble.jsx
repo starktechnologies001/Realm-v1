@@ -7,14 +7,17 @@ const MessageBubble = ({
     deliveryStatus,
     userId, 
     partner, 
-    isSelectionMode, 
-    isSelected, 
+    isSelectionMode,
+    isSelected,
     isHighlighted, 
     dateHeader, 
-    onSwipeReply, 
+    onSwipeReply,
     onToggleSelection, 
     onViewImage,
-    onScrollToMessage 
+    onScrollToMessage,
+    onMessageLongPress,
+    onReactionToggle,
+    onReactionBadgeClick
 }) => {
     const isMe = msg.sender_id === userId;
     const isImage = msg.message_type === 'image' || msg.type === 'image';
@@ -41,8 +44,12 @@ const MessageBubble = ({
             longPressTimer.current = setTimeout(() => {
                 if (navigator.vibrate) navigator.vibrate(50);
                 longPressTriggered.current = true; // Mark as triggered
-                onToggleSelection(msg.id, true);
-            }, 500);
+                if (onMessageLongPress) {
+                    onMessageLongPress(msg.id);
+                } else {
+                    onToggleSelection(msg.id, true);
+                }
+            }, 1000); // 1 sec
         }
     };
 
@@ -337,6 +344,43 @@ const MessageBubble = ({
                         />
                     </div>
                 )}
+
+                {/* Reactions Display */}
+                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                    <div className="reactions-display" style={{
+                        position: 'absolute',
+                        bottom: '-12px',
+                        [isMe ? 'right' : 'left']: '12px',
+                        display: 'flex',
+                        gap: '4px',
+                        zIndex: 2,
+                    }}>
+                        {Array.from(new Set(Object.values(msg.reactions))).map((emoji, idx) => {
+                            const count = Object.values(msg.reactions).filter(e => e === emoji).length;
+                            return (
+                                <span 
+                                    key={idx} 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (msg.reactions && msg.reactions[userId] === emoji) {
+                                            if (onReactionBadgeClick) onReactionBadgeClick(msg.id, emoji);
+                                        } else {
+                                            if (onReactionToggle) onReactionToggle(msg.id, emoji);
+                                        }
+                                    }}
+                                    style={{
+                                        fontSize: '1rem',
+                                        cursor: 'pointer',
+                                        padding: '0 2px',
+                                        filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.3))'
+                                    }}
+                                >
+                                    {emoji} {count > 1 ? <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>{count}</span> : ''}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
             </motion.div>
         </React.Fragment>
     );
@@ -360,7 +404,8 @@ const arePropsEqual = (prevProps, nextProps) => {
         prevProps.msg.id !== nextProps.msg.id ||
         prevProps.msg.content !== nextProps.msg.content ||
         prevProps.msg.delivery_status !== nextProps.msg.delivery_status ||
-        prevProps.msg.is_read !== nextProps.msg.is_read
+        prevProps.msg.is_read !== nextProps.msg.is_read ||
+        JSON.stringify(prevProps.msg.reactions) !== JSON.stringify(nextProps.msg.reactions)
     ) {
         return false;
     }

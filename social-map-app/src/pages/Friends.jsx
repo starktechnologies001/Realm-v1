@@ -333,7 +333,12 @@ export default function Friends() {
                         ) : (
                             <div className="list">
                                 {friends.map(friend => (
-                                    <div key={friend.id} className="friend-card" onClick={(e) => handleViewProfile(e, friend)}>
+                                    <div 
+                                        key={friend.id} 
+                                        className="friend-card" 
+                                        style={{ zIndex: activeMenuId === friend.id ? 50 : 1 }}
+                                        onClick={(e) => handleViewProfile(e, friend)}
+                                    >
                                         <div className="avatar-container">
                                             <img 
                                                 src={(() => {

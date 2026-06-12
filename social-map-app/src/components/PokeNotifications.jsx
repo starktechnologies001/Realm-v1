@@ -236,7 +236,7 @@ export default function PokeNotifications({ currentUser }) {
                         }}>✕</button>
                     </div>
                     <div className="poke-list">
-                        {pendingPokes.map(poke => (
+                        {pendingPokes.slice(0, 1).map(poke => (
                             <div key={poke.id} className="poke-item">
                                 <img 
                                     src={poke.requester.avatar_url ? getAvatar2D(poke.requester.avatar_url) : (() => {
@@ -266,6 +266,11 @@ export default function PokeNotifications({ currentUser }) {
                                 </div>
                             </div>
                         ))}
+                        {pendingPokes.length > 1 && (
+                            <div style={{ textAlign: 'center', padding: '8px', color: '#aaa', fontSize: '0.8rem' }}>
+                                + {pendingPokes.length - 1} more in queue
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

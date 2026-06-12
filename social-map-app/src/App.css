@@ -16,8 +16,7 @@
 
 .thought-bubble {
     position: absolute;
-    bottom: 130%; /* Increased from 120% to clear smaller avatar */
-    /* Push it slightly higher */
+    bottom: calc(100% + 12px);
     left: 50%;
     transform: translateX(-50%);
     background: white !important;

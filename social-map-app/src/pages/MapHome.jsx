@@ -272,7 +272,8 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 u.mood, 
                 moodUpdatedAt,
                 0, // no stagger delay needed natively
-                u.activity_status // PASS ACTIVITY STATUS
+                u.activity_status, // PASS ACTIVITY STATUS
+                u.id // PASS ID
             );
 
             if (!marker) {
@@ -287,9 +288,15 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 if (marker.options.icon.options.html !== icon.options.html) {
                     marker.setIcon(icon);
                 }
+                // Sync coordinate drift/movement smoothly
+                const currentLatLng = marker.getLatLng();
+                const dist = getDistance(currentLatLng.lat, currentLatLng.lng, u.lat, u.lng);
+                if (dist > 5) {
+                    animateNativeMarker(u.id, u.lat, u.lng);
+                }
             }
         });
-    }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs]);
+    }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs, animateNativeMarker]);
 
     // Sync local user marker visually (initial creation and icon changes)
     useEffect(() => {
@@ -395,6 +402,11 @@ const mapAvatarStyle = `
     }
 `;
 
+// Module-level persistent caches to prevent avatars from jumping or losing stalker protection view counts on unmount
+const globalFuzzyLocationCache = new Map();
+const globalViewCounts = {};
+let globalNearbyUsersCache = [];
+
 export default function MapHome() {
     // Map UI State
     const [searchQuery, setSearchQuery] = useState('');
@@ -489,9 +501,14 @@ export default function MapHome() {
     const friendshipsMapRef = useRef(new Map()); // Map<partner_id, { status, id, requesterId }>
     const blockedIdsRef = useRef(new Set()); // Blocked users cache
     const blockChannelRef = useRef(null);    // 🚀 Reuse subscribed channel for instant broadcasts
-    const fuzzyLocationCache = useRef(new Map()); // Caches fuzzied lat/lng per user so avatars don't jump around
+    const fuzzyLocationCache = useRef(globalFuzzyLocationCache); // Caches fuzzied lat/lng per user so avatars don't jump around
+    const initialLoadComplete = useRef(false);
 
-    const [nearbyUsers, setNearbyUsers] = useState([]);
+    const [nearbyUsers, setNearbyUsers] = useState(globalNearbyUsersCache);
+
+    useEffect(() => {
+        globalNearbyUsersCache = nearbyUsers;
+    }, [nearbyUsers]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
@@ -581,7 +598,7 @@ export default function MapHome() {
     const canvasRef = React.useRef(null);
     const markerRefs = React.useRef(new Map());
     const animationRefs = React.useRef(new Map());
-    const viewCountsRef = React.useRef({});
+    const viewCountsRef = React.useRef(globalViewCounts);
     // 🔥 Ref-based location for non-reactive reads (prevents GPS updates causing full re-renders)
     const userLocationRef = React.useRef(userLocation);
 
@@ -672,15 +689,15 @@ export default function MapHome() {
                     const newLat = pos.coords.latitude;
                     const newLng = pos.coords.longitude;
 
-                    // Only animate local marker if the user actually moved > 10 meters
-                    const movedEnough = !lastAnimatedLat || getDistance(lastAnimatedLat, lastAnimatedLng, newLat, newLng) >= 10;
+                    // Only animate local marker if the user actually moved > 30 meters
+                    const movedEnough = !lastAnimatedLat || getDistance(lastAnimatedLat, lastAnimatedLng, newLat, newLng) >= 30;
                     if (movedEnough) {
                         lastAnimatedLat = newLat;
                         lastAnimatedLng = newLng;
                         animateNativeMarker(currentUser.id, newLat, newLng);
                     }
 
-                    // Update Supabase throttled (every 10 seconds AND moved > 10m)
+                    // Update Supabase throttled (every 10 seconds AND moved > 30m)
                     const now = Date.now();
                     if (now - lastDbUpdate >= 10000 && movedEnough) {
                         lastDbUpdate = now;
@@ -1237,30 +1254,31 @@ export default function MapHome() {
                         const lat = parseFloat(u.latitude);
                         const lng = parseFloat(u.longitude);
 
-                        // Fetch or create fuzzy location cache
+                        // Database coordinates are ALREADY safely blurred for privacy.
+                        // We only need to apply extra jitter if the user is being stalked.
                         const viewCount = viewCountsRef.current[u.id] || 0;
                         const isStalked = viewCount >= 5;
                         let fCache = fuzzyLocationCache.current.get(u.id);
-                        const wasStalkedInCache = fCache?.isStalked;
 
-                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, lat, lng) > 50 || isStalked !== wasStalkedInCache) {
-                            let fLoc = fuzzyLocation(lat, lng, u.activity_status, u.is_stationary, u.stationary_since);
+                        if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng || fCache.isStalked !== isStalked) {
+                            let rLat = lat;
+                            let rLng = lng;
                             
                             // If repeatedly clicked, shift coordinate dynamically by 200m–300m in a random direction
-                            if (viewCount >= 5) {
+                            if (isStalked) {
                                 const extraOffset = 200 + Math.random() * 100;
                                 const bearing = Math.random() * 2 * Math.PI;
                                 const METRES_PER_DEG_LAT = 111_000;
                                 const METRES_PER_DEG_LNG = 111_000 * Math.cos((lat * Math.PI) / 180);
-                                fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                                fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                                rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                                rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
                             }
 
                             fCache = { 
                                 realLat: lat, 
                                 realLng: lng, 
-                                fuzzyLat: fLoc.lat, 
-                                fuzzyLng: fLoc.lng,
+                                fuzzyLat: rLat, 
+                                fuzzyLng: rLng,
                                 isStalked: isStalked
                             };
                             fuzzyLocationCache.current.set(u.id, fCache);
@@ -1332,6 +1350,7 @@ export default function MapHome() {
                     });
                     return Array.from(map.values());
                 });
+                initialLoadComplete.current = true;
             } catch (err) {
                 console.error(err);
             }
@@ -1342,6 +1361,7 @@ export default function MapHome() {
             .channel('public:profiles')
             // Unified UPDATE listener for Location + Profile changes
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+                if (!initialLoadComplete.current) return;
                 const updatedUser = payload.new;
 
                 // 🔥 Self-update: only update our own profile data (mood, avatar, status).
@@ -1445,31 +1465,25 @@ export default function MapHome() {
                     const viewCount = viewCountsRef.current[updatedUser.id] || 0;
                     const isStalked = viewCount >= 5;
                     let fCache = fuzzyLocationCache.current.get(updatedUser.id);
-                    const wasStalkedInCache = fCache?.isStalked;
 
-                    // Only rebuild fuzzy cache if:
-                    // 1. No cache exists yet
-                    // 2. Real coordinates moved > 50m AND user is not stationary
-                    const realMoved = fCache ? distanceMetres(fCache.realLat, fCache.realLng, latVal, lngVal) > 50 : true;
-                    const isCurrentlyStationary = updatedUser.is_stationary === true;
-
-                    if (!fCache || (realMoved && !isCurrentlyStationary) || isStalked !== wasStalkedInCache) {
-                        let fLoc = fuzzyLocation(latVal, lngVal, updatedUser.activity_status, updatedUser.is_stationary, updatedUser.stationary_since);
+                    if (!fCache || fCache.realLat !== latVal || fCache.realLng !== lngVal || fCache.isStalked !== isStalked) {
+                        let rLat = latVal;
+                        let rLng = lngVal;
                         
-                        if (viewCount >= 5) {
+                        if (isStalked) {
                             const extraOffset = 200 + Math.random() * 100;
                             const bearing = Math.random() * 2 * Math.PI;
                             const METRES_PER_DEG_LAT = 111_000;
                             const METRES_PER_DEG_LNG = 111_000 * Math.cos((latVal * Math.PI) / 180);
-                            fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                            fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                            rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                            rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
                         }
 
                         fCache = {
                             realLat: latVal,
                             realLng: lngVal,
-                            fuzzyLat: fLoc.lat,
-                            fuzzyLng: fLoc.lng,
+                            fuzzyLat: rLat,
+                            fuzzyLng: rLng,
                             isStalked: isStalked
                         };
                         fuzzyLocationCache.current.set(updatedUser.id, fCache);
@@ -1509,6 +1523,7 @@ export default function MapHome() {
                         is_public: updatedUser.is_public,
                         hide_status: updatedUser.hide_status,
                         show_last_seen: updatedUser.show_last_seen,
+                        activity_status: updatedUser.activity_status,
                         friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null,
                         hasStory: exists ? prev[existingIndex].hasStory : false,
                         hasUnseenStory: exists ? prev[existingIndex].hasUnseenStory : false
@@ -1530,7 +1545,8 @@ export default function MapHome() {
                             existingUser.status_updated_at !== newUserObj.status_updated_at ||
                             existingUser.is_public !== newUserObj.is_public ||
                             existingUser.hide_status !== newUserObj.hide_status ||
-                            existingUser.show_last_seen !== newUserObj.show_last_seen;
+                            existingUser.show_last_seen !== newUserObj.show_last_seen ||
+                            existingUser.activity_status !== newUserObj.activity_status;
 
                         if (didDataChange) {
                             // Data changed (avatar, status, mood etc.) → Update React state.
@@ -1564,6 +1580,7 @@ export default function MapHome() {
             })
             // Listen for new user logins (INSERT events)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, (payload) => {
+                if (!initialLoadComplete.current) return;
                 const newUser = payload.new;
                 if (!newUser.latitude || !newUser.longitude) return;
                 if (newUser.id === currentUser.id) return; // Skip self
@@ -1630,34 +1647,36 @@ export default function MapHome() {
                         const rawLng = parseFloat(newUser.longitude);
 
                         // Apply fuzzy location caching so coordinates remain stable/consistent
-                        const viewCount = viewCountsRef.current[newUser.id] || 0;
-                        const isStalked = viewCount >= 5;
                         let fCache = fuzzyLocationCache.current.get(newUser.id);
-                        const wasStalkedInCache = fCache?.isStalked;
-
-                        if (!fCache || distanceMetres(fCache.realLat, fCache.realLng, rawLat, rawLng) > 50 || isStalked !== wasStalkedInCache) {
-                            let fLoc = fuzzyLocation(rawLat, rawLng, newUser.activity_status, newUser.is_stationary, newUser.stationary_since);
+                        
+                        if (!fCache || fCache.realLat !== rawLat || fCache.realLng !== rawLng || fCache.isStalked !== false) {
+                            let rLat = rawLat;
+                            let rLng = rawLng;
                             
-                            if (viewCount >= 5) {
+                            // A brand new user isn't stalked yet, but just in case:
+                            const viewCount = viewCountsRef.current[newUser.id] || 0;
+                            const isStalked = viewCount >= 5;
+
+                            if (isStalked) {
                                 const extraOffset = 200 + Math.random() * 100;
                                 const bearing = Math.random() * 2 * Math.PI;
                                 const METRES_PER_DEG_LAT = 111_000;
                                 const METRES_PER_DEG_LNG = 111_000 * Math.cos((rawLat * Math.PI) / 180);
-                                fLoc.lat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                                fLoc.lng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+                                rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+                                rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
                             }
 
                             fCache = {
                                 realLat: rawLat,
                                 realLng: rawLng,
-                                fuzzyLat: fLoc.lat,
-                                fuzzyLng: fLoc.lng,
+                                fuzzyLat: rLat,
+                                fuzzyLng: rLng,
                                 isStalked: isStalked
                             };
                             fuzzyLocationCache.current.set(newUser.id, fCache);
                         }
 
-                        // Add new user
+                        // Add new user locally
                         return [...prev, {
                             id: newUser.id,
                             name: newUser.username || 'User',
@@ -1679,6 +1698,7 @@ export default function MapHome() {
                             is_public: newUser.is_public,
                             hide_status: newUser.hide_status,
                             show_last_seen: newUser.show_last_seen,
+                            activity_status: newUser.activity_status,
 
                             friendshipStatus: null,
                             hasStory: false,
@@ -2408,11 +2428,11 @@ export default function MapHome() {
 
     const iconCache = useRef(new Map());
 
-    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live') => {
+    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live', id = null) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && currentUser?.is_ghost_mode;
         // Prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v6_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}`;
+        const cacheKey = `v6_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -2439,12 +2459,12 @@ export default function MapHome() {
 
         // Only show thought if it exists (simplified check)
         const thoughtHTML = thought
-            ? `<div class="thought-bubble" style="background: white !important; color: black !important; position: relative; padding-right: 24px;">
+            ? `<div class="thought-bubble" style="background: white !important; color: black !important; padding-right: 24px;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem;">${name}</div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
                     ${thought}
                  </div>
-                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thought.replace(/`/g, '\\`')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" title="Reply to thought">⋮</button>` : ''}
+                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thought.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
                </div>`
             : '';
 
@@ -2521,7 +2541,7 @@ export default function MapHome() {
             }
         }
 
-        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live');
+        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live', currentUser.id);
     }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, createAvatarIcon]);
 
  // 4. Main App (Map & Overlays)
@@ -4467,7 +4487,6 @@ export default function MapHome() {
                 /* SMOOTH MARKER ANIMATIONS */
                 /* Re-enabled for real-time smooth location gliding */
                 .leaflet-marker-icon {
-                    transition: transform 0.5s ease-out;
                     will-change: transform;   /* GPU layer — prevents repaint on every GPS tick */
                     opacity: 1;
                 }

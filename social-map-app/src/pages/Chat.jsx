@@ -878,12 +878,12 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
         if (!confirmed) return;
         
         try {
-            // Delete all messages for selected chats
+            // Delete all messages for selected chats (soft delete for current user only)
             for (const chatId of selectedChats) {
-                await supabase
-                    .from('messages')
-                    .delete()
-                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${chatId}),and(sender_id.eq.${chatId},receiver_id.eq.${currentUser.id})`);
+                await supabase.rpc('delete_chat_for_user', {
+                    p_user_id: currentUser.id,
+                    p_partner_id: chatId
+                });
             }
             
             // Immediately update UI by filtering out deleted chats
@@ -904,9 +904,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
         setSelectedChats(new Set());
     };
     
-    // Filter chats
+    // Filter chats: only show if they have a message history (c.time is not empty)
     const filteredChats = chats?.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase())
+        c.time && c.name.toLowerCase().includes(searchTerm.toLowerCase())
     ) || [];
 
     return (
@@ -1633,8 +1633,86 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const galleryInputRef = useRef(null);
     const documentInputRef = useRef(null);
 
+    // Message context menu state (long-press) REPLACED by Selection Mode
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedMessages, setSelectedMessages] = useState(new Set());
+    const [showMessageMenu, setShowMessageMenu] = useState(false); // Kept for backward compat if needed, but will likely remove
+    const [selectedMessage, setSelectedMessage] = useState(null); // Kept for backward compat
+
     // Emoji Picker State
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [activeReactionMsgId, setActiveReactionMsgId] = useState(null);
+    const [activeRemoveReaction, setActiveRemoveReaction] = useState(null); // { msgId, emoji }
+    const reactionPopupRef = useRef(null);
+    const removeReactionPopupRef = useRef(null);
+
+    // Close reaction popup when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (activeReactionMsgId && reactionPopupRef.current && !reactionPopupRef.current.contains(event.target)) {
+                setActiveReactionMsgId(null);
+            }
+            if (activeRemoveReaction && removeReactionPopupRef.current && !removeReactionPopupRef.current.contains(event.target)) {
+                setActiveRemoveReaction(null);
+            }
+        };
+        if (activeReactionMsgId || activeRemoveReaction) {
+            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [activeReactionMsgId, activeRemoveReaction]);
+
+    const handleMessageLongPress = useCallback((msgId) => {
+        if (!isSelectionMode) {
+            setActiveReactionMsgId(msgId);
+            setIsSelectionMode(true);
+            setSelectedMessages(new Set([msgId]));
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+    }, [isSelectionMode]);
+
+    const handleReactionToggle = async (msgId, emoji) => {
+        // Optimistic UI Update
+        const userId = currentUser.id;
+        let previousMessages = messages;
+        
+        setMessages(prev => prev.map(m => {
+            if (m.id !== msgId) return m;
+            const newReactions = { ...(m.reactions || {}) };
+            if (newReactions[userId] === emoji) {
+                delete newReactions[userId];
+            } else {
+                newReactions[userId] = emoji;
+            }
+            return { ...m, reactions: newReactions };
+        }));
+
+        try {
+            const { data, error } = await supabase.rpc('toggle_message_reaction', {
+                p_message_id: msgId,
+                p_emoji: emoji
+            });
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error toggling reaction:', error);
+            // Revert optimistic update on failure
+            setMessages(previousMessages);
+            setToastMsg('Failed to add reaction');
+            setTimeout(() => setToastMsg(null), 3000);
+        }
+    };
+
+    const handleReaction = (emoji) => {
+        if (!activeReactionMsgId) return;
+        handleReactionToggle(activeReactionMsgId, emoji);
+        setActiveReactionMsgId(null);
+        setIsSelectionMode(false);
+        setSelectedMessages(new Set());
+    };
     const emojiPickerRef = useRef(null);
     const emojiBtnRef = useRef(null);
 
@@ -1681,10 +1759,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     
     // Message context menu state (long-press)
     // Message context menu state (long-press) REPLACED by Selection Mode
-    const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedMessages, setSelectedMessages] = useState(new Set());
-    const [showMessageMenu, setShowMessageMenu] = useState(false); // Kept for backward compat if needed, but will likely remove
-    const [selectedMessage, setSelectedMessage] = useState(null); // Kept for backward compat
 
     // Message refs for scroll-to functionality
     const messageRefs = useRef({});
@@ -3702,20 +3776,93 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                     return (
                         <React.Fragment key={`${msg.id || msg.tempId || 'msg'}-${i}`}>
-                            <MessageBubble
-                                msg={msg}
-                                deliveryStatus={displayStatus}
-                                userId={currentUser.id}
-                                partner={partner || targetUser}
-                                isSelectionMode={isSelectionMode}
-                                isSelected={isSelected}
-                                isHighlighted={highlightedMessageId === msg.id}
-                                dateHeader={dateHeader}
-                                onSwipeReply={handleSwipeReply}
-                                onToggleSelection={handleToggleSelection}
-                                onViewImage={handleViewImage}
-                                onScrollToMessage={handleScrollToMessage}
-                            />
+                            <div style={{ 
+                                position: 'relative', 
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: msg.sender_id === currentUser.id ? 'flex-end' : 'flex-start'
+                            }}>
+                                {/* REACTION POPOVER */}
+                                {activeReactionMsgId === msg.id && (
+                                    <div ref={reactionPopupRef} className="reaction-popover" style={{
+                                        position: 'absolute',
+                                        top: '-45px',
+                                        [isMe ? 'right' : 'left']: '20px',
+                                        background: 'rgba(40, 40, 40, 0.95)',
+                                        backdropFilter: 'blur(10px)',
+                                        WebkitBackdropFilter: 'blur(10px)',
+                                        padding: '8px 16px',
+                                        borderRadius: '30px',
+                                        display: 'flex',
+                                        gap: '16px',
+                                        alignItems: 'center',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                        zIndex: 100,
+                                        border: '1px solid rgba(255,255,255,0.15)',
+                                        animation: 'popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards'
+                                    }}>
+                                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                                            <span 
+                                                key={emoji} 
+                                                onClick={(e) => { e.stopPropagation(); handleReaction(emoji); }}
+                                                style={{ fontSize: '1.6rem', cursor: 'pointer', transition: 'transform 0.1s' }}
+                                                onPointerDown={(e) => e.target.style.transform = 'scale(1.3)'}
+                                                onPointerUp={(e) => e.target.style.transform = 'scale(1)'}
+                                                onPointerLeave={(e) => e.target.style.transform = 'scale(1)'}
+                                            >
+                                                {emoji}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {/* REMOVE REACTION POPOVER */}
+                                {activeRemoveReaction && activeRemoveReaction.msgId === msg.id && (
+                                    <div ref={removeReactionPopupRef} className="remove-reaction-popover" style={{
+                                        position: 'absolute',
+                                        bottom: '-40px',
+                                        [isMe ? 'right' : 'left']: '10px',
+                                        background: 'rgba(30, 30, 30, 0.85)',
+                                        backdropFilter: 'blur(16px)',
+                                        WebkitBackdropFilter: 'blur(16px)',
+                                        padding: '8px 14px',
+                                        borderRadius: '16px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                                        zIndex: 100,
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        cursor: 'pointer',
+                                        animation: 'popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards'
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleReactionToggle(msg.id, activeRemoveReaction.emoji);
+                                        setActiveRemoveReaction(null);
+                                    }}>
+                                        <span style={{ fontSize: '1rem' }}>{activeRemoveReaction.emoji}</span>
+                                        <span style={{ color: '#ff453a', fontWeight: 500, fontSize: '0.9rem' }}>Remove</span>
+                                    </div>
+                                )}
+                                <MessageBubble
+                                    msg={msg}
+                                    deliveryStatus={displayStatus}
+                                    userId={currentUser.id}
+                                    partner={partner || targetUser}
+                                    isSelectionMode={isSelectionMode}
+                                    isSelected={isSelected}
+                                    isHighlighted={highlightedMessageId === msg.id}
+                                    dateHeader={dateHeader}
+                                    onSwipeReply={handleSwipeReply}
+                                    onToggleSelection={handleToggleSelection}
+                                    onViewImage={handleViewImage}
+                                    onScrollToMessage={handleScrollToMessage}
+                                    onMessageLongPress={handleMessageLongPress}
+                                    onReactionToggle={handleReactionToggle}
+                                    onReactionBadgeClick={(msgId, emoji) => setActiveRemoveReaction({ msgId, emoji })}
+                                />
+                            </div>
                         </React.Fragment>
                     );
                 })}
@@ -4435,8 +4582,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     background: rgba(20,20,20,0.95); border-bottom: 1px solid #333; color: white;
                     height: auto; /* Allow growth */
                     min-height: 60px; /* Maintain minimum height */
+                    flex-shrink: 0; /* CRITICAL: Prevents the header from disappearing when messages overflow */
+                    position: relative !important; /* CRITICAL: Override sticky from glass-header inside flex column */
+                    z-index: 100;
                 }
-                .back-btn { background: none; color: white; font-size: 1.5rem; border: none; padding: 0 8px; cursor: pointer; }
+                .back-btn { background: none; color: white; font-size: 1.5rem; border: none; padding: 0 8px; cursor: pointer; flex-shrink: 0; }
                 .header-user { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; /* Enable truncation */ }
                 .header-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
                 .header-text { display: flex; flex-direction: column; justify-content: center; min-width: 0; /* Enable flex child truncation */ }

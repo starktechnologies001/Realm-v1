@@ -71,19 +71,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
     const endCallRef = useRef(null); // Access endCall inside useEffect
     const callDbId = useRef(null); // Store DB ID of the current call
 
-    // Play Local Video Track when ready and camera is on
-    useEffect(() => {
-        if (localTrackReady && localVideoTrackRef.current && localVideoRef.current && !cameraOff) {
-            localVideoTrackRef.current.play(localVideoRef.current);
-        }
-    }, [localTrackReady, cameraOff]);
-
-    // Play Remote Video Track when available
-    useEffect(() => {
-        if (remoteUsers.length > 0 && remoteUsers[0].videoTrack && remoteVideoRef.current) {
-            remoteUsers[0].videoTrack.play(remoteVideoRef.current);
-        }
-    }, [remoteUsers]);
+    // (Video effects removed from here and consolidated below)
 
     useEffect(() => {
         let mounted = true;
@@ -445,10 +433,10 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
 
     // Effect to play Local Video when ready
     useEffect(() => {
-        if (localTrackReady && localVideoRef.current && localVideoTrackRef.current) {
+        if (localTrackReady && localVideoRef.current && localVideoTrackRef.current && !cameraOff) {
             localVideoTrackRef.current.play(localVideoRef.current);
         }
-    }, [localTrackReady, cameraOff]);
+    }, [localTrackReady, cameraOff, isMinimized]);
 
     // Effect to play Remote Video when ready
     useEffect(() => {
@@ -460,7 +448,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 }
             });
         }
-    }, [remoteUsers]);
+    }, [remoteUsers, isMinimized]);
 
     // Safely stop outgoing ringtone — must await play() promise before pausing
     const stopOutgoingRingtone = () => {
