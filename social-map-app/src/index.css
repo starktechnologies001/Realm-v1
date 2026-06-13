@@ -88,6 +88,7 @@ button {
   height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 /* Proper Dark Mode Defaults */
