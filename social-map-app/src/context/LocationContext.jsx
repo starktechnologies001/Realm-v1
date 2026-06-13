@@ -29,6 +29,18 @@ export function LocationProvider({ children }) {
   const stationarySinceRef = useRef(null);
   const fuzzyCacheRef = useRef(null);
 
+  // Initialize fuzzy location cache from localStorage safely on first paint
+  if (fuzzyCacheRef.current === null) {
+      try {
+          const cached = localStorage.getItem('lastFuzzyCache');
+          if (cached) {
+              fuzzyCacheRef.current = JSON.parse(cached);
+          }
+      } catch (e) {
+          console.warn("Failed to load fuzzy location cache:", e);
+      }
+  }
+
   const getCachedFuzzyLocation = (newLoc, isStationary, stationarySince) => {
       const now = Date.now();
       const cache = fuzzyCacheRef.current;
@@ -38,8 +50,8 @@ export function LocationProvider({ children }) {
           shouldRegenerate = true;
       } else {
           const distMoved = distanceMetres(cache.realLat, cache.realLng, newLoc.lat, newLoc.lng);
-          // Regenerate only if moved > 20m
-          if (distMoved > 20) {
+          // Stable threshold of 100 meters to keep avatars still
+          if (distMoved > 100) {
               shouldRegenerate = true;
           }
       }
@@ -54,6 +66,11 @@ export function LocationProvider({ children }) {
               last_location: fLoc.last_location,
               lastGeneratedTime: now
           };
+          try {
+              localStorage.setItem('lastFuzzyCache', JSON.stringify(fuzzyCacheRef.current));
+          } catch (e) {
+              console.warn("Error saving fuzzy cache to localStorage:", e);
+          }
       }
 
       return {
@@ -66,7 +83,7 @@ export function LocationProvider({ children }) {
   // ----------------------------------------
   // 🔹 START LOCATION
   // ----------------------------------------
-  const startLocation = () => {
+  const startLocation = (forcePublic = false) => {
     if (loadingLocation) return;
 
     if (!navigator.geolocation) {
@@ -83,7 +100,10 @@ export function LocationProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
-          const currentMode = data?.visibility_mode || 'public';
+          let currentMode = data?.visibility_mode || 'public';
+          if (forcePublic && currentMode === 'ghost') {
+              currentMode = 'public';
+          }
           const isGhost = currentMode === 'ghost';
           
           supabase.from("profiles").update({
@@ -125,7 +145,10 @@ export function LocationProvider({ children }) {
             supabase.auth.getSession().then(({ data: { session } }) => {
               if (session?.user?.id) {
                 supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
-                  const currentMode = data?.visibility_mode || 'public';
+                  let currentMode = data?.visibility_mode || 'public';
+                  if (forcePublic && currentMode === 'ghost') {
+                      currentMode = 'public';
+                  }
                   const isGhost = currentMode === 'ghost';
 
                   supabase.from("profiles").update({

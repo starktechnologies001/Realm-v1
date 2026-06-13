@@ -684,10 +684,12 @@ export default function Profile() {
 
                                     if (checked) {
                                         // 1️⃣ Start GPS (this triggers browser permission automatically)
-                                        startLocation();        
+                                        startLocation(true);        
                                         // 2️⃣ Update profile DB
                                         await updateProfile({
-                                            is_ghost_mode: false
+                                            is_ghost_mode: false,
+                                            is_location_on: true,
+                                            visibility_mode: user.visibility_mode === 'ghost' ? 'public' : (user.visibility_mode || 'public')
                                         });
 
                                     } else {
@@ -695,7 +697,8 @@ export default function Profile() {
                                         stopLocation();
                                         // 2️⃣ Update profile DB
                                         await updateProfile({
-                                            is_ghost_mode: true
+                                            is_ghost_mode: true,
+                                            is_location_on: false
                                         });
                                     }
                                 }}  

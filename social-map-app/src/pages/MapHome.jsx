@@ -1199,10 +1199,6 @@ export default function MapHome() {
                         
                         if (isBlocked || isMe) return false;
 
-                        // Anti-stalking: Hide users checked more than 10 times in a session
-                        const checkCount = viewCountsRef.current[u.id] || 0;
-                        if (checkCount > 10) return false;
-
                         // Step 9: Offline system
                         if (u.activity_status === 'offline') return false;
 
@@ -1216,27 +1212,8 @@ export default function MapHome() {
                         // Filter if they have visibility_mode = 'ghost'
                         if (u.visibility_mode === 'ghost') return false;
 
-                        const isFriend = myFriendships.has(u.id) && myFriendships.get(u.id).status === 'accepted';
-
-                        // Filter if they have visibility_mode = 'friends' and are not accepted friends
-                        if (u.visibility_mode === 'friends') {
-                            if (!isFriend) return false;
-                        }
-
-                        // Anti-stalking: Hide strangers (!isFriend) who are physically too close (< 80m) for safety
-                        if (!isFriend) {
-                            const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
-                            const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
-                            const strangerLat = u.latitude;
-                            const strangerLng = u.longitude;
-                            if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
-                                const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
-                                if (physDist < 80) return false;
-                            }
-                        }
-
-                        // Backward compat: if old fields say location is off and they have no last_seen
-                        if (u.is_location_on === false && !u.last_seen) return false;
+                        // Check location enabled explicitly
+                        if (u.is_location_on === false) return false;
 
                         return true;
                     })
@@ -1249,37 +1226,17 @@ export default function MapHome() {
                         else if (u.gender === 'Female') fallbackAvatar = DEFAULT_FEMALE_AVATAR;
                         else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
 
-                        // Micro-jitter for initial load
-                        // Ensure we work with Numbers
                         const lat = parseFloat(u.latitude);
                         const lng = parseFloat(u.longitude);
 
-                        // Database coordinates are ALREADY safely blurred for privacy.
-                        // We only need to apply extra jitter if the user is being stalked.
-                        const viewCount = viewCountsRef.current[u.id] || 0;
-                        const isStalked = viewCount >= 5;
                         let fCache = fuzzyLocationCache.current.get(u.id);
 
-                        if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng || fCache.isStalked !== isStalked) {
-                            let rLat = lat;
-                            let rLng = lng;
-                            
-                            // If repeatedly clicked, shift coordinate dynamically by 200m–300m in a random direction
-                            if (isStalked) {
-                                const extraOffset = 200 + Math.random() * 100;
-                                const bearing = Math.random() * 2 * Math.PI;
-                                const METRES_PER_DEG_LAT = 111_000;
-                                const METRES_PER_DEG_LNG = 111_000 * Math.cos((lat * Math.PI) / 180);
-                                rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                                rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
-                            }
-
+                        if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng) {
                             fCache = { 
                                 realLat: lat, 
                                 realLng: lng, 
-                                fuzzyLat: rLat, 
-                                fuzzyLng: rLng,
-                                isStalked: isStalked
+                                fuzzyLat: lat, 
+                                fuzzyLng: lng
                             };
                             fuzzyLocationCache.current.set(u.id, fCache);
                         }
@@ -1392,24 +1349,10 @@ export default function MapHome() {
                 }
 
                 // Check visibility criteria
-                const isFriend = friendshipsMapRef.current.get(updatedUser.id)?.status === 'accepted';
-
                 let isVisible = true;
                 if (updatedUser.activity_status === 'offline') isVisible = false;
                 if (updatedUser.visibility_mode === 'ghost') isVisible = false;
-                if (updatedUser.visibility_mode === 'friends' && !isFriend) isVisible = false;
-
-                // Anti-stalking: Hide strangers who are physically too close (< 80m) for safety
-                if (isVisible && !isFriend) {
-                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
-                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
-                    const strangerLat = updatedUser.latitude;
-                    const strangerLng = updatedUser.longitude;
-                    if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
-                        const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
-                        if (physDist < 80) isVisible = false;
-                    }
-                }
+                if (updatedUser.is_location_on === false) isVisible = false;
 
                 if (updatedUser.last_seen) {
                     const lastSeenDate = new Date(updatedUser.last_seen);
@@ -1417,11 +1360,6 @@ export default function MapHome() {
                     const diffMinutes = (now - lastSeenDate) / (1000 * 60);
                     if (diffMinutes > 60) isVisible = false;
                 }
-
-                // Backward compat: if old fields say location is off and they have no last_seen
-                if (updatedUser.is_location_on === false && !updatedUser.last_seen) isVisible = false;
-
-
 
                 setNearbyUsers(prev => {
 
@@ -1462,29 +1400,14 @@ export default function MapHome() {
                     // Apply fuzzy location caching so coordinates remain stable/consistent
                     const latVal = renderLat;
                     const lngVal = renderLng;
-                    const viewCount = viewCountsRef.current[updatedUser.id] || 0;
-                    const isStalked = viewCount >= 5;
                     let fCache = fuzzyLocationCache.current.get(updatedUser.id);
 
-                    if (!fCache || fCache.realLat !== latVal || fCache.realLng !== lngVal || fCache.isStalked !== isStalked) {
-                        let rLat = latVal;
-                        let rLng = lngVal;
-                        
-                        if (isStalked) {
-                            const extraOffset = 200 + Math.random() * 100;
-                            const bearing = Math.random() * 2 * Math.PI;
-                            const METRES_PER_DEG_LAT = 111_000;
-                            const METRES_PER_DEG_LNG = 111_000 * Math.cos((latVal * Math.PI) / 180);
-                            rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                            rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
-                        }
-
+                    if (!fCache || fCache.realLat !== latVal || fCache.realLng !== lngVal) {
                         fCache = {
                             realLat: latVal,
                             realLng: lngVal,
-                            fuzzyLat: rLat,
-                            fuzzyLng: rLng,
-                            isStalked: isStalked
+                            fuzzyLat: latVal,
+                            fuzzyLng: lngVal
                         };
                         fuzzyLocationCache.current.set(updatedUser.id, fCache);
                     }
@@ -1589,24 +1512,10 @@ export default function MapHome() {
                 if (blockedIdsRef.current.has(newUser.id)) return;
 
                 // Check visibility criteria
-                const isFriend = friendshipsMapRef.current.get(newUser.id)?.status === 'accepted';
-
                 let isVisible = true;
                 if (newUser.activity_status === 'offline') isVisible = false;
                 if (newUser.visibility_mode === 'ghost') isVisible = false;
-                if (newUser.visibility_mode === 'friends' && !isFriend) isVisible = false;
-
-                // Anti-stalking: Hide strangers who are physically too close (< 80m) for safety
-                if (isVisible && !isFriend) {
-                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
-                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
-                    const strangerLat = newUser.latitude;
-                    const strangerLng = newUser.longitude;
-                    if (myLat != null && myLng != null && strangerLat != null && strangerLng != null) {
-                        const physDist = distanceMetres(myLat, myLng, strangerLat, strangerLng);
-                        if (physDist < 80) isVisible = false;
-                    }
-                }
+                if (newUser.is_location_on === false) isVisible = false;
 
                 if (newUser.last_seen) {
                     const lastSeenDate = new Date(newUser.last_seen);
@@ -1614,9 +1523,6 @@ export default function MapHome() {
                     const diffMinutes = (now - lastSeenDate) / (1000 * 60);
                     if (diffMinutes > 60) isVisible = false;
                 }
-
-                // Backward compat: if old fields say location is off and they have no last_seen
-                if (newUser.is_location_on === false && !newUser.last_seen) isVisible = false;
 
                 if (isVisible) {
 
@@ -1649,29 +1555,12 @@ export default function MapHome() {
                         // Apply fuzzy location caching so coordinates remain stable/consistent
                         let fCache = fuzzyLocationCache.current.get(newUser.id);
                         
-                        if (!fCache || fCache.realLat !== rawLat || fCache.realLng !== rawLng || fCache.isStalked !== false) {
-                            let rLat = rawLat;
-                            let rLng = rawLng;
-                            
-                            // A brand new user isn't stalked yet, but just in case:
-                            const viewCount = viewCountsRef.current[newUser.id] || 0;
-                            const isStalked = viewCount >= 5;
-
-                            if (isStalked) {
-                                const extraOffset = 200 + Math.random() * 100;
-                                const bearing = Math.random() * 2 * Math.PI;
-                                const METRES_PER_DEG_LAT = 111_000;
-                                const METRES_PER_DEG_LNG = 111_000 * Math.cos((rawLat * Math.PI) / 180);
-                                rLat += (extraOffset * Math.cos(bearing)) / METRES_PER_DEG_LAT;
-                                rLng += (extraOffset * Math.sin(bearing)) / METRES_PER_DEG_LNG;
-                            }
-
+                        if (!fCache || fCache.realLat !== rawLat || fCache.realLng !== rawLng) {
                             fCache = {
                                 realLat: rawLat,
                                 realLng: rawLng,
-                                fuzzyLat: rLat,
-                                fuzzyLng: rLng,
-                                isStalked: isStalked
+                                fuzzyLat: rawLat,
+                                fuzzyLng: rawLng
                             };
                             fuzzyLocationCache.current.set(newUser.id, fCache);
                         }
