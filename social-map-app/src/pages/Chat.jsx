@@ -1699,6 +1699,106 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
     const [hasPendingSentRequest, setHasPendingSentRequest] = useState(false);
+    const [friendshipStatus, setFriendshipStatus] = useState(null);
+    const [pendingRequest, setPendingRequest] = useState(null);
+    const [rejectedRequest, setRejectedRequest] = useState(null);
+    const [requestAccepted, setRequestAccepted] = useState(false);
+    const [loadingAccess, setLoadingAccess] = useState(true);
+
+    const checkChatAccess = async () => {
+        if (!currentUser?.id || !targetUser?.id) return;
+        try {
+            // Check accepted friendship
+            const { data: friendship } = await supabase
+                .from('friendships')
+                .select('status')
+                .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                .eq('status', 'accepted')
+                .maybeSingle();
+
+            // Check message requests
+            const { data: request } = await supabase
+                .from('message_requests')
+                .select('*')
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            setFriendshipStatus(friendship ? 'accepted' : null);
+            if (request) {
+                if (request.status === 'pending') {
+                    setPendingRequest(request);
+                    setRejectedRequest(null);
+                    setRequestAccepted(false);
+                    setHasPendingSentRequest(request.sender_id === currentUser.id);
+                } else if (request.status === 'rejected') {
+                    setPendingRequest(null);
+                    setRejectedRequest(request);
+                    setRequestAccepted(false);
+                    setHasPendingSentRequest(false);
+                } else if (request.status === 'accepted') {
+                    setPendingRequest(null);
+                    setRejectedRequest(null);
+                    setRequestAccepted(true);
+                    setHasPendingSentRequest(false);
+                } else {
+                    setPendingRequest(null);
+                    setRejectedRequest(null);
+                    setRequestAccepted(false);
+                    setHasPendingSentRequest(false);
+                }
+            } else {
+                setPendingRequest(null);
+                setRejectedRequest(null);
+                setRequestAccepted(false);
+                setHasPendingSentRequest(false);
+            }
+        } catch (err) {
+            console.error("Error checking chat access:", err);
+        } finally {
+            setLoadingAccess(false);
+        }
+    };
+
+    useEffect(() => {
+        checkChatAccess();
+    }, [currentUser?.id, targetUser?.id]);
+
+    // Subscribe to message request and friendship updates for real-time access changes
+    useEffect(() => {
+        if (!currentUser?.id || !targetUser?.id) return;
+
+        const channel = supabase.channel(`chat_access_sync_${currentUser.id}_${targetUser.id}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'message_requests',
+                filter: `receiver_id=eq.${currentUser.id}`
+            }, () => {
+                checkChatAccess();
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'message_requests',
+                filter: `sender_id=eq.${currentUser.id}`
+            }, () => {
+                checkChatAccess();
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'friendships'
+            }, () => {
+                checkChatAccess();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, targetUser?.id]);
 
     // Image Viewer State
     const [viewingImage, setViewingImage] = useState(null);
@@ -1740,12 +1840,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             }
         };
         if (activeReactionMsgId || activeRemoveReaction) {
-            document.addEventListener('mousedown', handleClickOutside);
-            document.addEventListener('touchstart', handleClickOutside);
+            document.addEventListener('pointerdown', handleClickOutside);
         }
         return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('pointerdown', handleClickOutside);
         };
     }, [activeReactionMsgId, activeRemoveReaction]);
 
@@ -3224,6 +3322,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     };
 
     const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
+    const canChat = (friendshipStatus === 'accepted') || requestAccepted;
 
     return (
         <div 
@@ -3248,10 +3347,29 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             onClick={handleBackgroundClick}
         >
             <style>{`
-                /* Selection Mode Styles */
+                /* Selection Mode Styles (Force high contrast white icons & text on dark background in both light & dark modes) */
                 .chat-room-header.selection-mode { 
-                    background: rgba(30, 30, 35, 0.95) !important; 
-                    border-bottom: 1px solid rgba(255,255,255,0.15); 
+                    background: rgba(20, 20, 25, 0.98) !important; 
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important; 
+                    color: #ffffff !important;
+                }
+                .chat-room-header.selection-mode .selection-count {
+                    color: #ffffff !important;
+                }
+                .chat-room-header.selection-mode .icon-btn {
+                    color: #ffffff !important;
+                    opacity: 1 !important;
+                }
+                .chat-room-header.selection-mode .icon-btn svg {
+                    stroke: #ffffff !important;
+                    opacity: 1 !important;
+                }
+                .chat-room-header.selection-mode .icon-btn:hover {
+                    background: rgba(255, 255, 255, 0.15) !important;
+                    color: #00f0ff !important;
+                }
+                .chat-room-header.selection-mode .icon-btn:hover svg {
+                    stroke: #00f0ff !important;
                 }
                 .selection-header-left { 
                     display: flex; align-items: center; gap: 15px; 
@@ -3994,6 +4112,90 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 <div className="blocked-message-banner">
                     <p>You have blocked this contact.</p>
                     <button onClick={handleBlockAction} className="unblock-btn">Unblock</button>
+                </div>
+            ) : loadingAccess ? (
+                <div className="blocked-message-banner">
+                    <p>Checking chat accessibility...</p>
+                </div>
+            ) : (!canChat && pendingRequest && pendingRequest.receiver_id === currentUser.id) ? (
+                <div className="blocked-message-banner" style={{ background: 'rgba(20, 20, 25, 0.98)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <p style={{ marginBottom: '10px' }}><strong>{targetUser.username || targetUser.full_name}</strong> sent you a message request.</p>
+                    <div style={{ display: 'flex', gap: '10px', width: '100%', maxWidth: '280px' }}>
+                        <button 
+                            onClick={async () => {
+                                try {
+                                    const { error } = await supabase
+                                        .from('message_requests')
+                                        .update({ status: 'rejected' })
+                                        .eq('id', pendingRequest.id);
+                                    if (error) throw error;
+                                    Toast.show("Request declined");
+                                    checkChatAccess();
+                                    onBack();
+                                } catch (err) {
+                                    Toast.show("Error declining request");
+                                }
+                            }} 
+                            className="unblock-btn" 
+                            style={{ flex: 1, background: 'rgba(255, 59, 48, 0.2)', color: '#ff3b30', boxShadow: 'none' }}
+                        >
+                            Decline
+                        </button>
+                        <button 
+                            onClick={async () => {
+                                try {
+                                    const { data, error } = await supabase.rpc('accept_message_request', {
+                                        p_request_id: pendingRequest.id
+                                    });
+                                    if (error) throw error;
+                                    if (data && data.success) {
+                                        Toast.show("Request accepted!");
+                                        checkChatAccess();
+                                    } else {
+                                        Toast.show(data?.error || "Failed to accept");
+                                    }
+                                } catch (err) {
+                                    Toast.show("Error accepting request");
+                                }
+                            }} 
+                            className="unblock-btn" 
+                            style={{ flex: 1, background: '#0084ff', color: 'white', boxShadow: 'none' }}
+                        >
+                            Accept
+                        </button>
+                    </div>
+                </div>
+            ) : (!canChat && pendingRequest && pendingRequest.sender_id === currentUser.id) ? (
+                <div className="chat-input-container disabled" onClick={(e) => e.stopPropagation()} style={{ opacity: 0.6, pointerEvents: 'none' }}>
+                    <div className="glass-input-bar">
+                        <button className="input-icon-btn attachment-btn" disabled>
+                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="16"></line>
+                                <line x1="8" y1="12" x2="16" y2="12"></line>
+                            </svg>
+                        </button>
+                        <button className="input-icon-btn" disabled>
+                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                        </button>
+                        <input
+                            className="msg-input"
+                            value=""
+                            placeholder="Waiting for request acceptance."
+                            disabled
+                        />
+                        <button className="send-btn" disabled>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            ) : (!canChat && rejectedRequest) ? (
+                <div className="blocked-message-banner">
+                    <p>Message request declined. You can only message them if you are friends.</p>
+                </div>
+            ) : (!canChat) ? (
+                <div className="blocked-message-banner">
+                    <p>You can only message friends or reply to their floating thoughts.</p>
                 </div>
             ) : (
             <div className="chat-input-container" onClick={(e) => e.stopPropagation()}>

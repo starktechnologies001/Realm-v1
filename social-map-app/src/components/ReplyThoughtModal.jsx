@@ -19,13 +19,22 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
         setIsSending(true);
         
         try {
-            const isFriend = friendshipsMapRef.current.get(targetUserId)?.status === 'accepted';
+            // Check if there is an existing message request
+            const { data: existingRequest } = await supabase
+                .from('message_requests')
+                .select('status')
+                .eq('sender_id', currentUser.id)
+                .eq('receiver_id', targetUserId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const isFriend = friendshipsMapRef.current?.get(targetUserId)?.status === 'accepted';
+            const requestAccepted = existingRequest?.status === 'accepted';
+            const canChat = isFriend || requestAccepted;
             
-            if (isFriend) {
+            if (canChat) {
                 // Insert into messages as a normal chat
-                const tempId = `temp_${Date.now()}`;
-                
-                // Embed the thought context into the message so it's clear what they are replying to
                 const messageContent = `Replying to your thought: "${thoughtText}"\n\n${replyText.trim()}`;
                 
                 const { error } = await supabase
@@ -41,6 +50,13 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                     
                 if (error) throw error;
             } else {
+                if (existingRequest?.status === 'pending') {
+                    throw new Error("You already have a pending request with this user.");
+                }
+                if (existingRequest?.status === 'rejected') {
+                    throw new Error("Your message request was declined. You can only message them if you become friends.");
+                }
+
                 // Insert into message_requests
                 const { error } = await supabase
                     .from('message_requests')
@@ -60,7 +76,7 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                 }
             }
             
-            Toast.show(isFriend ? "Message sent!" : "Message request sent!");
+            Toast.show(canChat ? "Message sent!" : "Message request sent!");
             setReplyText('');
             onClose();
         } catch (err) {

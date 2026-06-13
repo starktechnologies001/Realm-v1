@@ -678,7 +678,6 @@ export default function MapHome() {
             return;
         }
 
-        let lastDbUpdate = 0;
         let watchId = null;
         let lastAnimatedLat = null;
         let lastAnimatedLng = null;
@@ -695,24 +694,6 @@ export default function MapHome() {
                         lastAnimatedLat = newLat;
                         lastAnimatedLng = newLng;
                         animateNativeMarker(currentUser.id, newLat, newLng);
-                    }
-
-                    // Update Supabase throttled (every 10 seconds AND moved > 30m)
-                    const now = Date.now();
-                    if (now - lastDbUpdate >= 10000 && movedEnough) {
-                        lastDbUpdate = now;
-                        const isGhost = currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode;
-                        const fLoc = fuzzyLocationForDB(newLat, newLng);
-                        supabase.from("profiles").update({
-                            latitude: fLoc.latitude,
-                            longitude: fLoc.longitude,
-                            last_location: fLoc.last_location,
-                            is_location_on: !isGhost,
-                            is_ghost_mode: isGhost,
-                            visibility_mode: isGhost ? 'ghost' : (currentUser?.visibility_mode || 'public'),
-                            activity_status: isGhost ? 'offline' : 'live',
-                            last_seen: new Date().toISOString()
-                        }).eq("id", currentUser.id).then();
                     }
                 },
                 (err) => { if (err.code !== 3) console.log('Map watch error:', err); },
@@ -869,9 +850,17 @@ export default function MapHome() {
                     if (partnerId) {
                         friendshipsRef.current.delete(deletedId);
                         friendshipsMapRef.current.delete(partnerId);
-                        // Reset status in UI
+                        // Reset status in UI and filter out if they have visibility_mode = 'friends' / 'friend'
                         setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null, friendshipId: null, requesterId: null } : prev);
-                        setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u));
+                        setNearbyUsers(prev => prev
+                            .map(u => u.id === partnerId ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u)
+                            .filter(u => {
+                                if (u.id === partnerId && (u.visibility_mode === 'friends' || u.visibility_mode === 'friend')) {
+                                    return false; // Remove if they are no longer friends
+                                }
+                                return true;
+                            })
+                        );
                         showToast("Status changed to Poke");
                     }
                     // Also remove from pending requests badge if it was a pending request
@@ -911,6 +900,81 @@ export default function MapHome() {
                     setNearbyUsers(prev => prev.map(u => u.id === relevantId ? { ...u, friendshipStatus: 'accepted' } : u));
                     // Remove from pending requests badge (I accepted their poke)
                     setFriendRequests(prev => prev.filter(id => id !== newRec.id));
+
+                    // Fetch friend's profile to immediately show their avatar on map if visible under friends mode
+                    supabase.from('profiles').select('*').eq('id', relevantId).maybeSingle().then(({ data: friendProfile }) => {
+                        if (friendProfile) {
+                            let isVisible = true;
+                            if (friendProfile.activity_status === 'offline') isVisible = false;
+                            if (friendProfile.visibility_mode === 'ghost') isVisible = false;
+                            if (friendProfile.is_location_on === false) isVisible = false;
+                            if (friendProfile.last_seen) {
+                                const lastSeenDate = new Date(friendProfile.last_seen);
+                                const now = new Date();
+                                const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                                if (diffMinutes > 60) isVisible = false;
+                            }
+                            if (isVisible) {
+                                setNearbyUsers(prev => {
+                                    if (prev.some(u => u.id === relevantId)) return prev;
+
+                                    const lat = parseFloat(friendProfile.latitude);
+                                    const lng = parseFloat(friendProfile.longitude);
+                                    
+                                    let fCache = fuzzyLocationCache.current.get(relevantId);
+                                    if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng) {
+                                        fCache = { realLat: lat, realLng: lng, fuzzyLat: lat, fuzzyLng: lng };
+                                        fuzzyLocationCache.current.set(relevantId, fCache);
+                                    }
+
+                                    let fallbackAvatar;
+                                    if (friendProfile.gender === 'Male') fallbackAvatar = DEFAULT_MALE_AVATAR;
+                                    else if (friendProfile.gender === 'Female') fallbackAvatar = DEFAULT_FEMALE_AVATAR;
+                                    else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
+
+                                    let statusMessage = friendProfile.status_message;
+                                    let statusEmoji = friendProfile.status;
+                                    if (friendProfile.status_updated_at) {
+                                        const statusDate = new Date(friendProfile.status_updated_at);
+                                        const now = new Date();
+                                        const diffHours = (now - statusDate) / (1000 * 60 * 60);
+                                        if (diffHours > 3) {
+                                            statusMessage = null;
+                                            statusEmoji = null;
+                                        }
+                                    }
+
+                                    const newUserObj = {
+                                        id: friendProfile.id,
+                                        name: friendProfile.username || 'User',
+                                        lat: fCache.fuzzyLat,
+                                        lng: fCache.fuzzyLng,
+                                        avatar: friendProfile.avatar_url || fallbackAvatar,
+                                        originalAvatar: friendProfile.avatar_url,
+                                        status: statusEmoji,
+                                        thought: statusMessage,
+                                        lastActive: friendProfile.last_active || friendProfile.last_seen,
+                                        isLocationShared: true,
+                                        isLocationOn: friendProfile.is_location_on,
+                                        relationshipStatus: friendProfile.relationship_status,
+                                        mood: friendProfile.mood,
+                                        moodUpdatedAt: friendProfile.mood_updated_at,
+                                        status_updated_at: friendProfile.status_updated_at,
+                                        is_public: friendProfile.is_public,
+                                        hide_status: friendProfile.hide_status,
+                                        show_last_seen: friendProfile.show_last_seen,
+                                        activity_status: friendProfile.activity_status,
+                                        visibility_mode: friendProfile.visibility_mode,
+                                        friendshipStatus: 'accepted',
+                                        friendshipId: newRec.id,
+                                        hasStory: false,
+                                        hasUnseenStory: false
+                                    };
+                                    return [...prev, newUserObj];
+                                });
+                            }
+                        }
+                    });
                 }
 
                 // CASE 4: PENDING (New Poke)
@@ -1212,6 +1276,14 @@ export default function MapHome() {
                         // Filter if they have visibility_mode = 'ghost'
                         if (u.visibility_mode === 'ghost') return false;
 
+                        // Filter if visibility_mode is 'friends' (or 'friend') and they are not our friend
+                        if (u.visibility_mode === 'friends' || u.visibility_mode === 'friend') {
+                            const fData = myFriendships.get(u.id);
+                            if (!fData || fData.status !== 'accepted') {
+                                return false;
+                            }
+                        }
+
                         // Check location enabled explicitly
                         if (u.is_location_on === false) return false;
 
@@ -1286,6 +1358,7 @@ export default function MapHome() {
                             friendshipId: fData?.id || null,
                             is_public: u.is_public,
                             status_updated_at: u.status_updated_at, // 🔥 Critical for expiration check
+                            visibility_mode: u.visibility_mode,
                             // PRIVACY CHECK: Only show story if public OR friends
                             hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
                             hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
@@ -1353,6 +1426,13 @@ export default function MapHome() {
                 if (updatedUser.activity_status === 'offline') isVisible = false;
                 if (updatedUser.visibility_mode === 'ghost') isVisible = false;
                 if (updatedUser.is_location_on === false) isVisible = false;
+
+                if (updatedUser.visibility_mode === 'friends' || updatedUser.visibility_mode === 'friend') {
+                    const fData = friendshipsMapRef.current.get(updatedUser.id);
+                    if (!fData || fData.status !== 'accepted') {
+                        isVisible = false;
+                    }
+                }
 
                 if (updatedUser.last_seen) {
                     const lastSeenDate = new Date(updatedUser.last_seen);
@@ -1447,6 +1527,7 @@ export default function MapHome() {
                         hide_status: updatedUser.hide_status,
                         show_last_seen: updatedUser.show_last_seen,
                         activity_status: updatedUser.activity_status,
+                        visibility_mode: updatedUser.visibility_mode,
                         friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null,
                         hasStory: exists ? prev[existingIndex].hasStory : false,
                         hasUnseenStory: exists ? prev[existingIndex].hasUnseenStory : false
@@ -1469,7 +1550,8 @@ export default function MapHome() {
                             existingUser.is_public !== newUserObj.is_public ||
                             existingUser.hide_status !== newUserObj.hide_status ||
                             existingUser.show_last_seen !== newUserObj.show_last_seen ||
-                            existingUser.activity_status !== newUserObj.activity_status;
+                            existingUser.activity_status !== newUserObj.activity_status ||
+                            existingUser.visibility_mode !== newUserObj.visibility_mode;
 
                         if (didDataChange) {
                             // Data changed (avatar, status, mood etc.) → Update React state.
@@ -1516,6 +1598,13 @@ export default function MapHome() {
                 if (newUser.activity_status === 'offline') isVisible = false;
                 if (newUser.visibility_mode === 'ghost') isVisible = false;
                 if (newUser.is_location_on === false) isVisible = false;
+
+                if (newUser.visibility_mode === 'friends' || newUser.visibility_mode === 'friend') {
+                    const fData = friendshipsMapRef.current.get(newUser.id);
+                    if (!fData || fData.status !== 'accepted') {
+                        isVisible = false;
+                    }
+                }
 
                 if (newUser.last_seen) {
                     const lastSeenDate = new Date(newUser.last_seen);
@@ -1589,7 +1678,9 @@ export default function MapHome() {
                             show_last_seen: newUser.show_last_seen,
                             activity_status: newUser.activity_status,
 
-                            friendshipStatus: null,
+                            friendshipStatus: friendshipsMapRef.current.get(newUser.id)?.status || null,
+                            friendshipId: friendshipsMapRef.current.get(newUser.id)?.id || null,
+                            visibility_mode: newUser.visibility_mode,
                             hasStory: false,
                             hasUnseenStory: false
                         }];
