@@ -1543,6 +1543,18 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
 
+    // Fix for mobile browser address bar layout shifts
+    useEffect(() => {
+        // Reset scroll to ensure layout viewport aligns with visual viewport
+        window.scrollTo(0, 0);
+        // Lock body scroll to prevent address bar from shifting the fixed overlay
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, []);
+
     // Blocking State
     // Blocking State
     const [blockStatus, setBlockStatus] = useState({ blockedByMe: false, blockedByThem: false, blockedAt: null });
