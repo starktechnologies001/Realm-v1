@@ -30,7 +30,8 @@ const lazyWithRetry = (componentImport) =>
         // (TypeError: Failed to fetch dynamically imported module)
         console.warn('Dynamic import failed, reloading page to fetch latest chunks...', error);
         window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
-        return window.location.reload();
+        window.location.reload();
+        return new Promise(() => {}); // Prevent React from crashing while reloading
       }
       
       // The page has already been reloaded, so assuming this is an actual error
