@@ -10,6 +10,13 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
     const [localUser, setLocalUser] = useState(currentUser);
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [toastMsg, setToastMsg] = useState(null);
+    const [processingId, setProcessingId] = useState(null);
+
+    const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(null), 3000);
+    };
 
     useEffect(() => {
         if (currentUser) {
@@ -36,7 +43,6 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
         const fetchRequests = async () => {
             setLoading(true);
             try {
-                // Fetch pending requests for the current user
                 const { data, error } = await supabase
                     .from('message_requests')
                     .select(`
@@ -60,7 +66,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                 setRequests(data || []);
             } catch (err) {
                 console.error("Error fetching message requests:", err);
-                Toast.show("Failed to load requests");
+                showToast("Failed to load requests");
             } finally {
                 setLoading(false);
             }
@@ -71,27 +77,48 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
 
     const handleClose = onClose || (() => navigate(-1));
 
-    const handleAccept = async (requestId) => {
+    const handleAccept = async (request) => {
+        if (processingId) return;
+        setProcessingId(request.id);
         try {
             const { data, error } = await supabase.rpc('accept_message_request', {
-                p_request_id: requestId
+                p_request_id: request.id
             });
 
             if (error) throw error;
 
             if (data && data.success) {
-                Toast.show("Request accepted! You can now chat.");
-                setRequests(prev => prev.filter(r => r.id !== requestId));
+                // Remove request from list immediately
+                setRequests(prev => prev.filter(r => r.id !== request.id));
+
+                // Navigate to chat with the sender
+                const sender = request.sender;
+                handleClose();
+                navigate('/chat', {
+                    state: {
+                        targetUser: {
+                            id: sender.id,
+                            name: sender.full_name || sender.username,
+                            username: sender.username,
+                            avatar_url: sender.avatar_url,
+                            gender: sender.gender,
+                        }
+                    }
+                });
             } else {
-                Toast.show(data?.error || "Failed to accept request");
+                showToast(data?.error || "Failed to accept request");
             }
         } catch (err) {
             console.error("Error accepting request:", err);
-            Toast.show("Error accepting request");
+            showToast("Error accepting request");
+        } finally {
+            setProcessingId(null);
         }
     };
 
     const handleDecline = async (requestId) => {
+        if (processingId) return;
+        setProcessingId(requestId);
         try {
             const { error } = await supabase
                 .from('message_requests')
@@ -100,17 +127,20 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
 
             if (error) throw error;
 
-            Toast.show("Request declined");
+            // Remove request from list immediately
             setRequests(prev => prev.filter(r => r.id !== requestId));
+            showToast("Request declined");
         } catch (err) {
             console.error("Error declining request:", err);
-            Toast.show("Error declining request");
+            showToast("Error declining request");
+        } finally {
+            setProcessingId(null);
         }
     };
 
     return (
         <AnimatePresence>
-            <motion.div 
+            <motion.div
                 className="requests-page-container"
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -127,64 +157,74 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                 </header>
 
                 <div className="requests-page-content">
-                        {loading ? (
-                            <div className="loading-state">
-                                <div className="spinner"></div>
-                                <p>Loading requests...</p>
-                            </div>
-                        ) : requests.length === 0 ? (
-                            <div className="empty-state">
-                                <div className="empty-icon">📭</div>
-                                <h3>No Message Requests</h3>
-                                <p>There are no message requests.</p>
-                            </div>
-                        ) : (
-                            requests.map(request => (
-                                <div key={request.id} className="request-card">
-                                    <div className="request-header">
-                                        <img 
-                                            src={getAvatarHeadshot(request.sender.avatar_url)} 
-                                            alt={request.sender.username} 
-                                            className="request-avatar" 
-                                        />
-                                        <div className="request-info">
-                                            <h4>{request.sender.username || request.sender.full_name}</h4>
-                                            <span className="request-time">
-                                                {new Date(request.created_at).toLocaleDateString()}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    
-                                    {request.thought_text && (
-                                        <div className="request-thought">
-                                            <strong>Replied to your thought:</strong>
-                                            <p>"{request.thought_text}"</p>
-                                        </div>
-                                    )}
-                                    
-                                    <div className="request-message">
-                                        <p>{request.content}</p>
-                                    </div>
-                                    
-                                    <div className="request-actions">
-                                        <button 
-                                            className="decline-btn" 
-                                            onClick={() => handleDecline(request.id)}
-                                        >
-                                            Decline
-                                        </button>
-                                        <button 
-                                            className="accept-btn" 
-                                            onClick={() => handleAccept(request.id)}
-                                        >
-                                            Accept
-                                        </button>
+                    {loading ? (
+                        <div className="loading-state">
+                            <div className="spinner"></div>
+                            <p>Loading requests...</p>
+                        </div>
+                    ) : requests.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-icon">📭</div>
+                            <h3>No Message Requests</h3>
+                            <p>There are no pending message requests.</p>
+                        </div>
+                    ) : (
+                        requests.map(request => (
+                            <motion.div
+                                key={request.id}
+                                className="request-card"
+                                initial={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                layout
+                            >
+                                <div className="request-header">
+                                    <img
+                                        src={getAvatarHeadshot(request.sender.avatar_url)}
+                                        alt={request.sender.username}
+                                        className="request-avatar"
+                                    />
+                                    <div className="request-info">
+                                        <h4>{request.sender.username || request.sender.full_name}</h4>
+                                        <span className="request-time">
+                                            {new Date(request.created_at).toLocaleDateString()}
+                                        </span>
                                     </div>
                                 </div>
-                            ))
-                        )}
+
+                                {request.thought_text && (
+                                    <div className="request-thought">
+                                        <strong>Replied to your thought:</strong>
+                                        <p>"{request.thought_text}"</p>
+                                    </div>
+                                )}
+
+                                <div className="request-message">
+                                    <p>{request.content}</p>
+                                </div>
+
+                                <div className="request-actions">
+                                    <button
+                                        className="decline-btn"
+                                        onClick={() => handleDecline(request.id)}
+                                        disabled={processingId === request.id}
+                                    >
+                                        {processingId === request.id ? '...' : 'Decline'}
+                                    </button>
+                                    <button
+                                        className="accept-btn"
+                                        onClick={() => handleAccept(request)}
+                                        disabled={processingId === request.id}
+                                    >
+                                        {processingId === request.id ? '...' : 'Accept'}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))
+                    )}
                 </div>
-                
+
+                {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
+
                 <style>{`
                     .requests-page-container {
                         position: fixed;
@@ -285,13 +325,18 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                             border: none;
                             transition: all 0.2s;
                         }
+
+                        .request-actions button:disabled {
+                            opacity: 0.5;
+                            cursor: not-allowed;
+                        }
                         
                         .decline-btn {
                             background: rgba(255, 59, 48, 0.1);
                             color: #ff3b30;
                         }
                         
-                        .decline-btn:hover {
+                        .decline-btn:hover:not(:disabled) {
                             background: rgba(255, 59, 48, 0.2);
                         }
                         
@@ -299,7 +344,10 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                             background: #0084ff;
                             color: white;
                         }
-                        
+
+                        .accept-btn:hover:not(:disabled) {
+                            background: #0073e6;
+                        }
                 `}</style>
             </motion.div>
         </AnimatePresence>

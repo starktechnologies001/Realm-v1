@@ -3904,6 +3904,7 @@ export default function MapHome() {
                     targetUserId={replyingToThought.userId}
                     thoughtText={replyingToThought.thoughtText}
                     friendshipsMapRef={friendshipsMapRef}
+                    showToast={showToast}
                 />
             )}
 
@@ -3913,6 +3914,7 @@ export default function MapHome() {
                 userLocation={userLocation}
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
+                showToast={showToast}
             />
 
             <PokeNotifications currentUser={currentUser} />

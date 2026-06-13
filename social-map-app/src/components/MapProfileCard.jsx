@@ -7,7 +7,7 @@ import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction 
 import { nearbyLabel } from '../utils/locationPrivacy';
 
 
-export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation }) {
+export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast }) {
     if (!user) return null;
     const navigate = useNavigate();
 
@@ -105,14 +105,27 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
     const handleReplySubmit = async (e) => {
         e.preventDefault();
-        if (!replyText.trim()) return;
+        if (!replyText.trim() || !currentUser) return;
 
         setIsSendingReply(true);
         try {
             const { supabase } = await import('../supabaseClient');
-            const isFriend = user.friendshipStatus === 'accepted';
+            
+            // Check if there is an existing message request
+            const { data: existingRequest } = await supabase
+                .from('message_requests')
+                .select('status')
+                .eq('sender_id', currentUser.id)
+                .eq('receiver_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-            if (isFriend) {
+            const isFriend = user.friendshipStatus === 'accepted';
+            const requestAccepted = existingRequest?.status === 'accepted';
+            const canChat = isFriend || requestAccepted;
+
+            if (canChat) {
                 // Insert into messages
                 const messageContent = `Replying to your thought: "${user.thought}"\n\n${replyText.trim()}`;
                 
@@ -128,8 +141,15 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     });
 
                 if (error) throw error;
-                window.Toast.show("Reply sent to chat! 💬");
+                if (showToast) showToast("Reply sent to chat! 💬");
             } else {
+                if (existingRequest?.status === 'pending') {
+                    throw new Error("You already have a pending request with this user.");
+                }
+                if (existingRequest?.status === 'rejected') {
+                    throw new Error("Your message request was declined. You can only message them if you become friends.");
+                }
+
                 // Insert into message_requests
                 const { error } = await supabase
                     .from('message_requests')
@@ -147,17 +167,21 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     }
                     throw error;
                 }
-                window.Toast.show("Message request sent! 📨");
+                if (showToast) showToast("Message request sent! 📨");
             }
             
             setIsReplyingToThought(false);
             setReplyText('');
         } catch (err) {
-            console.error("Error sending reply:", err);
-            if (window.Toast) {
-                window.Toast.show("Failed to send reply");
+            // Suppress expected validation errors from console error logs
+            if (!err.message?.includes("already have a pending request") && 
+                !err.message?.includes("was declined")) {
+                console.error("Error sending reply:", err);
+            }
+            if (showToast) {
+                showToast(err.message || "Failed to send reply");
             } else {
-                alert("Failed to send reply");
+                alert(err.message || "Failed to send reply");
             }
         } finally {
             setIsSendingReply(false);

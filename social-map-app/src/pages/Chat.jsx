@@ -1716,7 +1716,21 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .eq('status', 'accepted')
                 .maybeSingle();
 
-            // Check message requests
+            const isFriend = !!friendship;
+            setFriendshipStatus(isFriend ? 'accepted' : null);
+
+            // If they are friends, clear all message request state — friendship takes full precedence
+            if (isFriend) {
+                setPendingRequest(null);
+                setRejectedRequest(null);
+                setRequestAccepted(false);
+                setHasPendingSentRequest(false);
+                return;
+            }
+
+            // Not friends — check message request state
+            // Note: unfriending always deletes message_requests, so requestAccepted
+            // will be false after unfriending regardless.
             const { data: request } = await supabase
                 .from('message_requests')
                 .select('*')
@@ -1725,7 +1739,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .limit(1)
                 .maybeSingle();
 
-            setFriendshipStatus(friendship ? 'accepted' : null);
             if (request) {
                 if (request.status === 'pending') {
                     setPendingRequest(request);
@@ -1738,6 +1751,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     setRequestAccepted(false);
                     setHasPendingSentRequest(false);
                 } else if (request.status === 'accepted') {
+                    // Accepted message request — allow chat (unfriending clears this row)
                     setPendingRequest(null);
                     setRejectedRequest(null);
                     setRequestAccepted(true);
@@ -3249,6 +3263,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .delete()
                 .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
 
+            // Also clear message requests so they can't chat via the old accepted request
+            await supabase.from('message_requests')
+                .delete()
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+
             showToast(`💔 Unfriended ${targetUser.name}`);
             setTimeout(onBack, 1000);
         }
@@ -3322,6 +3341,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     };
 
     const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
+    // Friends can always chat. Message-request accepted users can chat only if they never had a friendship.
+    // If they were friends and unfriended, canChat becomes false immediately via checkChatAccess.
     const canChat = (friendshipStatus === 'accepted') || requestAccepted;
 
     return (

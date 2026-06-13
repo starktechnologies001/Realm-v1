@@ -70,21 +70,79 @@ export default function Friends() {
             .channel('public:profiles:friends_list')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
                 const updatedUser = payload.new;
-                
-                setFriends(prev => prev.map(f => 
+                setFriends(prev => prev.map(f =>
                     f.id === updatedUser.id ? { ...f, ...updatedUser } : f
                 ));
-                
-                setRequests(prev => prev.map(r => 
+                setRequests(prev => prev.map(r =>
                     r.id === updatedUser.id ? { ...r, ...updatedUser } : r
                 ));
             })
             .subscribe();
 
+        // Real-time listener for friendship changes — poke requests appear INSTANTLY
+        let friendshipSub = null;
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            const userId = session?.user?.id;
+            if (!userId) return;
+
+            friendshipSub = supabase
+                .channel(`friendships_rt_${userId}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'friendships',
+                    filter: `receiver_id=eq.${userId}`
+                }, async (payload) => {
+                    const newRow = payload.new;
+                    if (newRow.status !== 'pending') return;
+
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen')
+                        .eq('id', newRow.requester_id)
+                        .maybeSingle();
+
+                    if (profile) {
+                        setRequests(prev => {
+                            if (prev.some(r => r.friendship_id === newRow.id)) return prev;
+                            return [{ friendship_id: newRow.id, ...profile }, ...prev];
+                        });
+                        setActiveTab('requests');
+                    }
+                })
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'friendships',
+                    filter: `receiver_id=eq.${userId}`
+                }, (payload) => {
+                    const updated = payload.new;
+                    if (updated.status === 'accepted') {
+                        setRequests(prev => prev.filter(r => r.friendship_id !== updated.id));
+                        fetchFriendsData();
+                    } else if (updated.status === 'rejected') {
+                        setRequests(prev => prev.filter(r => r.friendship_id !== updated.id));
+                    }
+                })
+                .on('postgres_changes', {
+                    event: 'DELETE',
+                    schema: 'public',
+                    table: 'friendships',
+                    filter: `receiver_id=eq.${userId}`
+                }, (payload) => {
+                    const deleted = payload.old;
+                    setRequests(prev => prev.filter(r => r.friendship_id !== deleted.id));
+                    setFriends(prev => prev.filter(f => f.friendship_id !== deleted.id));
+                })
+                .subscribe();
+        });
+
         return () => {
-             supabase.removeChannel(profileSub);
+            supabase.removeChannel(profileSub);
+            if (friendshipSub) supabase.removeChannel(friendshipSub);
         };
     }, []);
+
 
     const handleAccept = async (id) => {
         await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
@@ -164,6 +222,12 @@ export default function Friends() {
                 await fetchFriendsData();
                 return;
             }
+
+            // Clear any message requests between them so chat is blocked after unfriending
+            await supabase
+                .from('message_requests')
+                .delete()
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendToUnfriend.id}),and(sender_id.eq.${friendToUnfriend.id},receiver_id.eq.${currentUser.id})`);
             
             console.log("Deleted count:", count);
 

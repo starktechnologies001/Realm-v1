@@ -130,3 +130,43 @@
     color: var(--text-secondary);
     cursor: not-allowed;
 }
+
+.reply-status-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+}
+
+.reply-status-box .status-icon {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.reply-status-box p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.reply-status-box .status-hint {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 400;
+}
+
+.reply-status-box.rejected {
+    border-color: rgba(255, 69, 58, 0.3);
+    background: rgba(255, 69, 58, 0.08);
+}
+
+.reply-status-box.pending {
+    border-color: rgba(255, 159, 10, 0.3);
+    background: rgba(255, 159, 10, 0.08);
+}

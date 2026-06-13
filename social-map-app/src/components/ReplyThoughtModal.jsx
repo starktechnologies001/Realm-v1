@@ -1,25 +1,27 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
-import Toast from './Toast';
 import './ReplyThoughtModal.css';
 
-export default function ReplyThoughtModal({ isOpen, onClose, currentUser, targetUserId, thoughtText, friendshipsMapRef }) {
+export default function ReplyThoughtModal({ isOpen, onClose, currentUser, targetUserId, thoughtText, friendshipsMapRef, showToast }) {
     const [replyText, setReplyText] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [accessStatus, setAccessStatus] = useState('loading'); // 'loading' | 'allowed' | 'pending' | 'rejected'
     const isSendingRef = useRef(false);
 
-    if (!isOpen || !targetUserId) return null;
+    // Check request/friendship status when modal opens
+    useEffect(() => {
+        if (!isOpen || !targetUserId || !currentUser?.id) return;
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (isSendingRef.current || !replyText.trim() || !currentUser) return;
-        
-        isSendingRef.current = true;
-        setIsSending(true);
-        
-        try {
-            // Check if there is an existing message request
+        const checkStatus = async () => {
+            setAccessStatus('loading');
+
+            const isFriend = friendshipsMapRef.current?.get(targetUserId)?.status === 'accepted';
+            if (isFriend) {
+                setAccessStatus('allowed');
+                return;
+            }
+
             const { data: existingRequest } = await supabase
                 .from('message_requests')
                 .select('status')
@@ -29,75 +31,153 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                 .limit(1)
                 .maybeSingle();
 
-            const isFriend = friendshipsMapRef.current?.get(targetUserId)?.status === 'accepted';
-            const requestAccepted = existingRequest?.status === 'accepted';
-            const canChat = isFriend || requestAccepted;
-            
-            if (canChat) {
-                // Insert into messages as a normal chat
-                const messageContent = `Replying to your thought: "${thoughtText}"\n\n${replyText.trim()}`;
-                
-                const { error } = await supabase
-                    .from('messages')
-                    .insert({
-                        sender_id: currentUser.id,
-                        receiver_id: targetUserId,
-                        content: messageContent,
-                        message_type: 'text',
-                        is_read: false,
-                        delivery_status: 'sent' // Fallback, will update if recipient is online
-                    });
-                    
-                if (error) throw error;
+            if (!existingRequest) {
+                setAccessStatus('allowed'); // No prior request — can send one
+            } else if (existingRequest.status === 'accepted') {
+                setAccessStatus('allowed');
+            } else if (existingRequest.status === 'pending') {
+                setAccessStatus('pending');
+            } else if (existingRequest.status === 'rejected') {
+                setAccessStatus('rejected');
             } else {
-                if (existingRequest?.status === 'pending') {
-                    throw new Error("You already have a pending request with this user.");
-                }
-                if (existingRequest?.status === 'rejected') {
-                    throw new Error("Your message request was declined. You can only message them if you become friends.");
-                }
+                setAccessStatus('allowed');
+            }
+        };
 
-                // Insert into message_requests
-                const { error } = await supabase
+        checkStatus();
+    }, [isOpen, targetUserId, currentUser?.id]);
+
+    if (!isOpen || !targetUserId) return null;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (isSendingRef.current || !replyText.trim() || !currentUser) return;
+        if (accessStatus === 'pending' || accessStatus === 'rejected' || accessStatus === 'loading') return;
+
+        isSendingRef.current = true;
+        setIsSending(true);
+
+        try {
+            const isFriend = friendshipsMapRef.current?.get(targetUserId)?.status === 'accepted';
+
+            if (isFriend || accessStatus === 'allowed') {
+                // Check one more time if a prior accepted request exists
+                const { data: existingRequest } = await supabase
                     .from('message_requests')
-                    .insert({
-                        sender_id: currentUser.id,
-                        receiver_id: targetUserId,
-                        content: replyText.trim(),
-                        thought_text: thoughtText,
-                        status: 'pending'
-                    });
-                    
-                if (error) {
-                    if (error.code === '23505') { // Unique violation
-                        throw new Error("You already have a pending request with this user.");
+                    .select('status')
+                    .eq('sender_id', currentUser.id)
+                    .eq('receiver_id', targetUserId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                const requestAccepted = existingRequest?.status === 'accepted';
+                const canChat = isFriend || requestAccepted;
+
+                if (canChat) {
+                    // Send as normal chat message
+                    const messageContent = `Replying to your thought: "${thoughtText}"\n\n${replyText.trim()}`;
+                    const { error } = await supabase
+                        .from('messages')
+                        .insert({
+                            sender_id: currentUser.id,
+                            receiver_id: targetUserId,
+                            content: messageContent,
+                            message_type: 'text',
+                            is_read: false,
+                            delivery_status: 'sent'
+                        });
+                    if (error) throw error;
+                    if (showToast) showToast('Message sent! 💬');
+                } else {
+                    // Send as message request
+                    const { error } = await supabase
+                        .from('message_requests')
+                        .insert({
+                            sender_id: currentUser.id,
+                            receiver_id: targetUserId,
+                            content: replyText.trim(),
+                            thought_text: thoughtText,
+                            status: 'pending'
+                        });
+                    if (error) {
+                        if (error.code === '23505') {
+                            setAccessStatus('pending');
+                            throw new Error('You already have a pending request with this user.');
+                        }
+                        throw error;
                     }
-                    throw error;
+                    setAccessStatus('pending');
+                    if (showToast) showToast('Message request sent! 📨');
                 }
             }
-            
-            Toast.show(canChat ? "Message sent!" : "Message request sent!");
+
             setReplyText('');
             onClose();
         } catch (err) {
-            console.error("Error sending reply:", err);
-            Toast.show(err.message || "Failed to send reply");
+            console.error('[ReplyModal] Error:', err);
+            if (showToast) showToast(err.message || 'Failed to send reply');
         } finally {
             isSendingRef.current = false;
             setIsSending(false);
         }
     };
 
+    const renderBody = () => {
+        if (accessStatus === 'loading') {
+            return (
+                <div className="reply-status-box">
+                    <span className="status-icon">⏳</span>
+                    <p>Checking access...</p>
+                </div>
+            );
+        }
+        if (accessStatus === 'rejected') {
+            return (
+                <div className="reply-status-box rejected">
+                    <span className="status-icon">🚫</span>
+                    <p>Your previous message request was declined.</p>
+                    <p className="status-hint">You can only message this person if you become friends.</p>
+                </div>
+            );
+        }
+        if (accessStatus === 'pending') {
+            return (
+                <div className="reply-status-box pending">
+                    <span className="status-icon">⏳</span>
+                    <p>Message request sent.</p>
+                    <p className="status-hint">Waiting for them to accept your request.</p>
+                </div>
+            );
+        }
+        // 'allowed' — show reply form
+        return (
+            <form onSubmit={handleSubmit} className="reply-form">
+                <input
+                    type="text"
+                    placeholder="Type your reply..."
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    disabled={isSending}
+                    autoFocus
+                />
+                <button type="submit" disabled={!replyText.trim() || isSending}>
+                    {isSending ? 'Sending...' : 'Send'}
+                </button>
+            </form>
+        );
+    };
+
     return (
         <AnimatePresence>
-            <motion.div 
+            <motion.div
                 className="reply-modal-overlay"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
             >
-                <motion.div 
+                <motion.div
                     className="reply-modal-container"
                     initial={{ scale: 0.9, opacity: 0, y: 20 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -116,19 +196,7 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                             <span className="quote-icon">"</span>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="reply-form">
-                            <input 
-                                type="text" 
-                                placeholder="Type your reply..." 
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                disabled={isSending}
-                                autoFocus
-                            />
-                            <button type="submit" disabled={!replyText.trim() || isSending}>
-                                {isSending ? 'Sending...' : 'Send'}
-                            </button>
-                        </form>
+                        {renderBody()}
                     </div>
                 </motion.div>
             </motion.div>

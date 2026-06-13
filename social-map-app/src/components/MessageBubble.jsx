@@ -37,6 +37,19 @@ const MessageBubble = ({
     const longPressTimer = useRef(null);
     const longPressTriggered = useRef(false);
 
+    const triggerLongPress = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+        longPressTriggered.current = true; // Mark as triggered
+        if (onMessageLongPress) {
+            onMessageLongPress(msg.id);
+        } else {
+            onToggleSelection(msg.id, true);
+        }
+    };
+
     const handlePointerDown = () => {
         // Reset trigger state on new touch
         longPressTriggered.current = false;
@@ -44,13 +57,8 @@ const MessageBubble = ({
         if (!isSelectionMode) {
             longPressTimer.current = setTimeout(() => {
                 if (navigator.vibrate) navigator.vibrate(50);
-                longPressTriggered.current = true; // Mark as triggered
-                if (onMessageLongPress) {
-                    onMessageLongPress(msg.id);
-                } else {
-                    onToggleSelection(msg.id, true);
-                }
-            }, 1000); // 1 sec
+                triggerLongPress();
+            }, 400); // 400ms for mobile long press
         }
     };
 
@@ -118,6 +126,7 @@ const MessageBubble = ({
                 onDragEnd={handleDragEnd}
                 onPointerDown={handlePointerDown}
                 onPointerUp={() => longPressTimer.current && clearTimeout(longPressTimer.current)}
+                onPointerCancel={() => longPressTimer.current && clearTimeout(longPressTimer.current)}
                 
                 style={{
                     x,
@@ -125,13 +134,14 @@ const MessageBubble = ({
                     cursor: isSelectionMode ? 'pointer' : 'grab',
                     userSelect: 'none',
                     WebkitUserSelect: 'none',
+                    WebkitTouchCallout: 'none',
                     scale: isSelected ? 0.98 : 1
                 }}
                 
                 onClickCapture={handleBubbleClick}
                 onContextMenu={(e) => {
                     e.preventDefault(); 
-                    if (!isSelectionMode) onToggleSelection(msg.id, true);
+                    if (!isSelectionMode) triggerLongPress();
                 }}
                 
                 // Layout transition
