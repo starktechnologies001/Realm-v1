@@ -229,6 +229,15 @@ export default function Chat() {
         // Collect all unique Partner IDs
         const partnerIds = new Set();
         
+        // Fetch pending sent message requests
+        const { data: sentRequests } = await supabase
+            .from('message_requests')
+            .select('receiver_id')
+            .eq('sender_id', userId)
+            .eq('status', 'pending');
+            
+        if (sentRequests) sentRequests.forEach(r => partnerIds.add(r.receiver_id));
+
         // Add friends first
         friendships.forEach(f => {
             const isRequester = f.requester.id === userId;
@@ -271,10 +280,33 @@ export default function Chat() {
                 .limit(50); // Fetch top 50 to find first non-deleted (increased from 10)
 
             // Find first message NOT deleted for me
-            const lastMessage = recentMessages?.find(msg => {
+            let lastMessage = recentMessages?.find(msg => {
                 const deletedFor = msg.deleted_for || [];
                 return !deletedFor.includes(userId);
             });
+            
+            // Check for pending sent requests
+            const { data: recentRequests } = await supabase
+                .from('message_requests')
+                .select('content, created_at, sender_id, status, thought_text')
+                .eq('sender_id', userId)
+                .eq('receiver_id', partner.id)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+                .limit(1);
+                
+            const pendingRequest = recentRequests?.[0];
+            
+            if (pendingRequest) {
+                if (!lastMessage || new Date(pendingRequest.created_at) > new Date(lastMessage.created_at)) {
+                    lastMessage = {
+                        content: `💭 Replied to thought: ${pendingRequest.content}`,
+                        created_at: pendingRequest.created_at,
+                        sender_id: pendingRequest.sender_id,
+                        message_type: 'text'
+                    };
+                }
+            }
 
             let lastMsgContent = 'Tap to chat';
             let lastMsgTime = '';
@@ -321,7 +353,11 @@ export default function Chat() {
                          lastMsgContent = '📞 Call log';
                     }
                 } else if (lastMessage.message_type === 'image') {
-                    lastMsgContent = lastMessage.sender_id === userId ? 'You: 📷 Photo' : '📷 Photo';
+                    const caption = lastMessage.content && lastMessage.content !== '📷 Photo' ? ` 📷 ${lastMessage.content}` : ' 📷 Photo';
+                    lastMsgContent = lastMessage.sender_id === userId ? `You:${caption}` : caption.trim();
+                } else if (lastMessage.message_type === 'video') {
+                    const caption = lastMessage.content && lastMessage.content !== '🎥 Video' ? ` 🎥 ${lastMessage.content}` : ' 🎥 Video';
+                    lastMsgContent = lastMessage.sender_id === userId ? `You:${caption}` : caption.trim();
                 } else if (lastMessage.message_type === 'attachment') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📎 Attachment' : '📎 Attachment';
                 } else {
@@ -1616,6 +1652,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const isInitialLoad = useRef(true);
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
+    const [hasPendingSentRequest, setHasPendingSentRequest] = useState(false);
 
     // Image Viewer State
     const [viewingImage, setViewingImage] = useState(null);
@@ -2402,7 +2439,36 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     const deletedFor = msg.deleted_for || [];
                     return !deletedFor.includes(currentUser.id);
                 });
-                setMessages(filteredMessages);
+                
+                // Fetch pending sent message requests to inject into chat
+                const { data: pendingRequests } = await supabase
+                    .from('message_requests')
+                    .select('*')
+                    .eq('sender_id', currentUser.id)
+                    .eq('receiver_id', targetUser.id)
+                    .eq('status', 'pending');
+                    
+                if (pendingRequests && pendingRequests.length > 0) {
+                    setHasPendingSentRequest(true);
+                    
+                    const requestMessages = pendingRequests.map(req => ({
+                        id: req.id,
+                        sender_id: req.sender_id,
+                        receiver_id: req.receiver_id,
+                        content: `💭 Replied to thought "${req.thought_text}":\n\n${req.content}`,
+                        message_type: 'text',
+                        created_at: req.created_at,
+                        is_request: true
+                    }));
+                    
+                    const mergedMessages = [...filteredMessages, ...requestMessages].sort((a, b) => {
+                        return new Date(a.created_at) - new Date(b.created_at);
+                    });
+                    setMessages(mergedMessages);
+                } else {
+                    setHasPendingSentRequest(false);
+                    setMessages(filteredMessages);
+                }
 
                 // Mark UNREAD messages from this user as READ (excluding system messages)
                 const unreadIds = data.filter(m => m.receiver_id === currentUser.id && !m.is_read && m.message_type !== 'system').map(m => m.id);
@@ -2741,7 +2807,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             tempId,
             sender_id: currentUser.id,
             receiver_id: targetUser.id,
-            content: type === 'text' ? textToSend : '📷 Photo',
+            content: type === 'text' ? textToSend : (textToSend || (type === 'video' ? '🎥 Video' : '📷 Photo')),
             message_type: type,
             image_url: imageUrl,
             created_at: new Date().toISOString(),
@@ -2853,7 +2919,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
                 const isImage = file.type.startsWith('image/');
-                const bucket = isImage ? 'chat-images' : 'chat-attachments';
+                const isVideo = file.type.startsWith('video/');
+                const bucket = isImage || isVideo ? 'chat-images' : 'chat-attachments';
                 
                 // Upload file
                 const result = await uploadToStorage(file, currentUser.id, (progress) => {
@@ -2865,9 +2932,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     throw new Error(result.error);
                 }
 
-                if (isImage) {
-                    // Send as image message with caption, which uses standard MessageBubble with ticks
-                    await sendMessage('image', caption || '', result.fileUrl);
+                if (isImage || isVideo) {
+                    // Send as image/video message with caption, which uses standard MessageBubble with ticks
+                    await sendMessage(isImage ? 'image' : 'video', caption || '', result.fileUrl);
                 } else {
                     // Send as attachment (existing code)
                     const { data: messageData, error: messageError } = await supabase
@@ -3945,6 +4012,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         onClick={() => setShowAttachmentPicker(true)} 
                         className="input-icon-btn attachment-btn"
                         title="Attach files"
+                        disabled={uploading || hasPendingSentRequest}
                     >
                         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -3954,7 +4022,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     </button>
                     
                     {/* Existing Image Button */}
-                    <button onClick={() => fileInputRef.current.click()} disabled={uploading} className="input-icon-btn">
+                    <button onClick={() => fileInputRef.current.click()} disabled={uploading || hasPendingSentRequest} className="input-icon-btn">
                         {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
                     </button>
 
@@ -3964,11 +4032,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         value={input}
                         onChange={e => setInput(e.target.value)}
                         onKeyPress={e => e.key === 'Enter' && sendMessage()}
-                        placeholder="Type a message..."
-                        disabled={uploading}
+                        placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
+                        disabled={uploading || hasPendingSentRequest}
                     />
                     
-                    <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading)}>
+                    <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading) || hasPendingSentRequest}>
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
                     </button>
                 </div>
@@ -4294,9 +4362,33 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     border: 1px solid rgba(255, 255, 255, 0.05);
                 }
                 .chat-room-container[data-theme-type="light"] .msg-system span {
-                    background: rgba(0, 0, 0, 0.05);
-                    color: rgba(0,0,0,0.5);
-                    border-color: rgba(0,0,0,0.05);
+                    background: rgba(0,0,0,0.1);
+                    color: #555;
+                }
+                
+                /* Light Theme Chat Room Header */
+                .chat-room-container[data-theme-type="light"] .chat-room-header {
+                    background: rgba(255, 255, 255, 0.85);
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+                    color: #111;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .back-btn,
+                .chat-room-container[data-theme-type="light"] .chat-room-header .icon-btn {
+                    color: #333;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .back-btn:hover,
+                .chat-room-container[data-theme-type="light"] .chat-room-header .icon-btn:hover {
+                    background: rgba(0,0,0,0.05);
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .header-text h3 {
+                    color: #000;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .header-text .user-status.offline {
+                    color: #666;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .header-text .user-status.online {
+                    color: #0084ff;
+                }
                 }
                 /* Theme Background Patterns */
                 [data-pattern="hearts"]::before {

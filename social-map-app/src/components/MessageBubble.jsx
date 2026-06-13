@@ -21,6 +21,7 @@ const MessageBubble = ({
 }) => {
     const isMe = msg.sender_id === userId;
     const isImage = msg.message_type === 'image' || msg.type === 'image';
+    const isVideoMsg = msg.message_type === 'video' || msg.type === 'video';
     const imageUrl = msg.image_url || msg.media_url;
     
     // Framer Motion Values
@@ -205,6 +206,7 @@ const MessageBubble = ({
                         </div>
                         <div className="quoted-message-content">
                             {msg.reply_to.message_type === 'image' ? '📷 Photo' : 
+                             msg.reply_to.message_type === 'video' ? '🎥 Video' :
                              msg.reply_to.message_type === 'call_log' ? (
                                 (() => {
                                     try {
@@ -233,16 +235,25 @@ const MessageBubble = ({
                     </div>
                 )}
 
-                {isImage ? (
+                {isImage || isVideoMsg ? (
                     <div className="msg-image-container" style={{ display: 'flex', flexDirection: 'column' }}>
-                        <img 
-                            src={imageUrl} 
-                            alt="Sent" 
-                            className="sent-image" 
-                            onClick={() => onViewImage(imageUrl)}
-                            style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' ? '6px' : '0' }}
-                        />
-                        {msg.content && msg.content !== '📷 Photo' && (
+                        {isVideoMsg ? (
+                            <video 
+                                src={imageUrl} 
+                                controls 
+                                className="sent-video" 
+                                style={{ borderRadius: '8px', marginBottom: msg.content && msg.content !== '🎥 Video' && msg.content !== '📷 Photo' ? '6px' : '0', maxWidth: '100%', maxHeight: '300px' }}
+                            />
+                        ) : (
+                            <img 
+                                src={imageUrl} 
+                                alt="Sent" 
+                                className="sent-image" 
+                                onClick={() => onViewImage(imageUrl)}
+                                style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' ? '6px' : '0' }}
+                            />
+                        )}
+                        {msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' && (
                             <span className="msg-text" style={{ padding: '0 4px', wordBreak: 'break-word' }}>{msg.content}</span>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', padding: '4px 4px 0 0', marginTop: '2px' }}>

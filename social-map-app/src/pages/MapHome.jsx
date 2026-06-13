@@ -870,9 +870,9 @@ export default function MapHome() {
                         friendshipsRef.current.delete(deletedId);
                         friendshipsMapRef.current.delete(partnerId);
                         // Reset status in UI
-                        setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null } : prev);
-                        setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null } : u));
-                        showToast("Friend removed. You can now poke them again.");
+                        setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null, friendshipId: null, requesterId: null } : prev);
+                        setNearbyUsers(prev => prev.map(u => u.id === partnerId ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u));
+                        showToast("Status changed to Poke");
                     }
                     // Also remove from pending requests badge if it was a pending request
                     setFriendRequests(prev => prev.filter(id => id !== deletedId));
@@ -2270,6 +2270,10 @@ export default function MapHome() {
                     friendshipId: null,
                     requesterId: null
                 });
+                
+                setNearbyUsers(prev => prev.map(u => 
+                    u.id === targetUser.id ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u
+                ));
 
             } catch (err) {
                 console.error('Cancel poke error:', err);

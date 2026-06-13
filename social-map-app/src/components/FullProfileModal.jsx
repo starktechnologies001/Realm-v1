@@ -270,9 +270,21 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
 
                         {/* Poke Pill Button for Non-Friends */}
                         {!isFriend && !isOwner && (
-                            <button className="fp-poke-pill" onClick={() => onAction('poke', user)}>
-                                <span style={{ marginRight: '6px' }}>👋</span> 
-                                {user.friendshipStatus === 'pending' ? 'Poke Sent' : 'Poke'}
+                            <button 
+                                className="fp-poke-pill" 
+                                onClick={() => {
+                                    if (user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id) {
+                                        onAction('cancel-poke', user);
+                                    } else {
+                                        onAction('poke', user);
+                                    }
+                                }}
+                                style={user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? { background: 'rgba(255, 149, 0, 0.2)', color: '#FF9500', borderColor: 'rgba(255, 149, 0, 0.4)' } : user.friendshipStatus === 'pending' ? { background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', borderColor: 'rgba(52, 199, 89, 0.4)' } : {}}
+                            >
+                                <span style={{ marginRight: '6px' }}>
+                                    {user.friendshipStatus === 'pending' ? (user.requesterId === currentUser?.id ? '⏳' : '🤝') : '👋'}
+                                </span> 
+                                {user.friendshipStatus === 'pending' ? (user.requesterId === currentUser?.id ? 'Requested' : 'Accept Poke') : 'Poke'}
                             </button>
                         )}
 

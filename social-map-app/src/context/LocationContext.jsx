@@ -37,10 +37,9 @@ export function LocationProvider({ children }) {
       if (!cache) {
           shouldRegenerate = true;
       } else {
-          const timeElapsed = now - cache.lastGeneratedTime;
           const distMoved = distanceMetres(cache.realLat, cache.realLng, newLoc.lat, newLoc.lng);
-          // Regenerate if 60s passed OR moved > 20m
-          if (timeElapsed > 60000 || distMoved > 20) {
+          // Regenerate only if moved > 20m
+          if (distMoved > 20) {
               shouldRegenerate = true;
           }
       }
