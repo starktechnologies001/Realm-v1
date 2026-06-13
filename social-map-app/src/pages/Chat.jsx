@@ -1543,19 +1543,48 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [partner, setPartner] = useState(targetUser);
     const { startCall } = useCall();
 
-    // Fix for mobile browser address bar layout shifts
+    // Fix for mobile browser address bar layout shifts and page viewport shifts
     useEffect(() => {
+        // Record scroll position of the chat list page
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+
         // Reset scroll to ensure layout viewport aligns with visual viewport
         window.scrollTo(0, 0);
         document.body.scrollTop = 0;
         if (document.documentElement) {
             document.documentElement.scrollTop = 0;
         }
-        // Lock body scroll to prevent address bar from shifting the fixed overlay
+
+        // Lock body scroll using position: fixed to prevent address bar/document shifts
         const originalOverflow = document.body.style.overflow;
+        const originalPosition = document.body.style.position;
+        const originalTop = document.body.style.top;
+        const originalWidth = document.body.style.width;
+        const originalHeight = document.body.style.height;
+
         document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.top = '0';
+        document.body.style.left = '0';
+        document.body.style.width = '100%';
+        document.body.style.height = '100%';
+
+        // Backup scroll reset on next tick
+        const timeoutId = setTimeout(() => {
+            window.scrollTo(0, 0);
+        }, 50);
+
         return () => {
+            // Restore original body styles
             document.body.style.overflow = originalOverflow;
+            document.body.style.position = originalPosition;
+            document.body.style.top = originalTop;
+            document.body.style.width = originalWidth;
+            document.body.style.height = originalHeight;
+
+            // Restore original scroll position on the chat list page
+            window.scrollTo(0, scrollY);
+            clearTimeout(timeoutId);
         };
     }, []);
 
@@ -1664,6 +1693,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [input, setInput] = useState('');
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const chatMessagesRef = useRef(null);
     const messagesEndRef = useRef(null);
     const isInitialLoad = useRef(true);
     const fileInputRef = useRef(null);
@@ -2785,12 +2815,16 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     }, [currentUser.id, targetUser.id, blockStatus]);
 
     useEffect(() => {
-        if (messages.length > 0) {
-            const behavior = isInitialLoad.current ? "auto" : "smooth";
-            messagesEndRef.current?.scrollIntoView({ behavior });
-            
+        if (messages.length > 0 && chatMessagesRef.current) {
+            const container = chatMessagesRef.current;
             if (isInitialLoad.current) {
+                container.scrollTop = container.scrollHeight;
                 isInitialLoad.current = false;
+            } else {
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: 'smooth'
+                });
             }
         }
     }, [messages]);
@@ -3671,6 +3705,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
 
             <div 
+                ref={chatMessagesRef}
                 className={`chat-messages ${getThemeClass()}`}
                 data-theme={chatTheme}
                 data-pattern={CHAT_THEMES[chatTheme]?.backgroundPattern || 'none'}
