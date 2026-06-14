@@ -5,8 +5,17 @@ import { getAvatar2D } from '../utils/avatarUtils';
 export default function PokeNotifications({ currentUser }) {
     const [pendingPokes, setPendingPokes] = useState([]);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [seenIds, setSeenIds] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+        } catch (e) {
+            return [];
+        }
+    });
     // Track whether user manually dismissed the panel this session
     const dismissedKey = 'poke_panel_dismissed';
+
+    const unseenPokes = pendingPokes.filter(poke => !seenIds.includes(poke.id));
 
     useEffect(() => {
         if (!currentUser) return;
@@ -29,15 +38,16 @@ export default function PokeNotifications({ currentUser }) {
                 setPendingPokes(data);
                 
                 // Get list of seen/dismissed poke IDs from localStorage
-                let seenIds = [];
+                let storedSeen = [];
                 try {
-                    seenIds = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                    storedSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
                 } catch (e) {
-                    seenIds = [];
+                    storedSeen = [];
                 }
+                setSeenIds(storedSeen);
 
                 // Check if there is any poke that hasn't been seen/dismissed yet
-                const hasUnseen = data.some(poke => !seenIds.includes(poke.id));
+                const hasUnseen = data.some(poke => !storedSeen.includes(poke.id));
 
                 if (hasUnseen) {
                     setShowNotifications(true);
@@ -48,8 +58,9 @@ export default function PokeNotifications({ currentUser }) {
                 // Self-clean localStorage seen_poke_ids to keep only active pending IDs
                 try {
                     const activeIds = data.map(p => p.id);
-                    const updatedSeen = seenIds.filter(id => activeIds.includes(id));
+                    const updatedSeen = storedSeen.filter(id => activeIds.includes(id));
                     localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
+                    setSeenIds(updatedSeen);
                 } catch (e) {
                     console.error('Error cleaning up seen pokes', e);
                 }
@@ -100,6 +111,16 @@ export default function PokeNotifications({ currentUser }) {
                 console.log('Poke Update Payload:', payload);
                 if (payload.new.status === 'pending') {
                     // It's a new poke (re-poke via update)! 
+                    // Clear from seenIds so it alerts the user again
+                    setSeenIds(prev => prev.filter(id => id !== payload.new.id));
+                    try {
+                        const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                        const updatedSeen = currentSeen.filter(id => id !== payload.new.id);
+                        localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
+                    } catch (e) {
+                        console.error('Error updating seen pokes on update', e);
+                    }
+
                     // Check if we already have it to avoid duplicates
                     setPendingPokes(prev => {
                         if (prev.find(p => p.id === payload.new.id)) return prev;
@@ -209,13 +230,13 @@ export default function PokeNotifications({ currentUser }) {
         };
     }, [showNotifications]);
 
-    if (!showNotifications || pendingPokes.length === 0) return null;
+    if (unseenPokes.length === 0) return null;
 
     return (
         <>
             {/* Notification Badge */}
             <div className="poke-badge" onClick={() => setShowNotifications(!showNotifications)}>
-                👋 {pendingPokes.length}
+                👋 {unseenPokes.length}
             </div>
 
             {/* Notification Panel */}
@@ -229,6 +250,7 @@ export default function PokeNotifications({ currentUser }) {
                                 const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
                                 const newSeen = Array.from(new Set([...currentSeen, ...pendingPokes.map(p => p.id)]));
                                 localStorage.setItem('seen_poke_ids', JSON.stringify(newSeen));
+                                setSeenIds(newSeen);
                             } catch (e) {
                                 console.error('Error saving seen pokes', e);
                             }
@@ -236,7 +258,7 @@ export default function PokeNotifications({ currentUser }) {
                         }}>✕</button>
                     </div>
                     <div className="poke-list">
-                        {pendingPokes.slice(0, 1).map(poke => (
+                        {unseenPokes.slice(0, 1).map(poke => (
                             <div key={poke.id} className="poke-item">
                                 <img 
                                     src={poke.requester.avatar_url ? getAvatar2D(poke.requester.avatar_url) : (() => {
@@ -266,9 +288,9 @@ export default function PokeNotifications({ currentUser }) {
                                 </div>
                             </div>
                         ))}
-                        {pendingPokes.length > 1 && (
+                        {unseenPokes.length > 1 && (
                             <div style={{ textAlign: 'center', padding: '8px', color: '#aaa', fontSize: '0.8rem' }}>
-                                + {pendingPokes.length - 1} more in queue
+                                + {unseenPokes.length - 1} more in queue
                             </div>
                         )}
                     </div>
