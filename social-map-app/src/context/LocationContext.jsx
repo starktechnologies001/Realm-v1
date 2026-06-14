@@ -173,6 +173,61 @@ export function LocationProvider({ children }) {
           // ERROR
           (error) => {
             console.log("❌ Location error:", error);
+
+            // Code 3 = Timeout — very common on mobile cold-start GPS.
+            // Silently retry once with a relaxed timeout rather than killing the session.
+            if (error.code === 3) {
+              console.warn("📍 GPS timeout — retrying with relaxed timeout...");
+              setLoadingLocation(false);
+              // Retry with a much longer timeout and accept any cached position
+              try {
+                navigator.geolocation.getCurrentPosition(
+                  (position) => {
+                    const newLoc = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    isStationaryRef.current = false;
+                    stationarySinceRef.current = null;
+                    setDevicePermissionGranted(true);
+                    setLocationEnabled(true);
+                    setUserLocation(newLoc);
+                    try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
+                    startWatching();
+                    const fLoc = getCachedFuzzyLocation(newLoc, false, null);
+                    supabase.auth.getSession().then(({ data: { session } }) => {
+                      if (session?.user?.id) {
+                        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+                          const currentMode = data?.visibility_mode || 'public';
+                          const isGhost = currentMode === 'ghost';
+                          supabase.from("profiles").update({
+                            latitude: fLoc.latitude,
+                            longitude: fLoc.longitude,
+                            last_location: fLoc.last_location,
+                            is_location_on: !isGhost,
+                            is_ghost_mode: isGhost,
+                            visibility_mode: currentMode,
+                            activity_status: isGhost ? 'offline' : 'live',
+                            last_seen: new Date().toISOString(),
+                            is_stationary: false,
+                            stationary_since: null
+                          }).eq("id", session.user.id).then();
+                        });
+                      }
+                    });
+                  },
+                  (retryError) => {
+                    // Retry also failed — log silently, do not show alert or mark offline
+                    console.warn("📍 GPS retry also timed out. Will try again when user moves.", retryError);
+                    setLoadingLocation(false);
+                  },
+                  { enableHighAccuracy: false, maximumAge: 60000, timeout: 60000 }
+                );
+              } catch (e) {
+                console.warn("LocationContext: retry getCurrentPosition failed", e);
+                setLoadingLocation(false);
+              }
+              return; // Do NOT mark user offline for a timeout
+            }
+
+            // Non-timeout errors (code 1 = permission denied, code 2 = unavailable)
             setLoadingLocation(false);
             setDevicePermissionGranted(false);
             setLocationEnabled(false);
@@ -201,15 +256,13 @@ export function LocationProvider({ children }) {
               );
             } else if (error.code === 2) {
               alert("📍 Location restricted. Please check your device GPS settings.");
-            } else if (error.code === 3) {
-              alert("📍 Location request timed out. Please try again.");
             }
           },
 
-          // OPTIONS — allow up to 5s cached position to get a quick initial fix
+          // OPTIONS — accept up to 10s cached position for a quicker first fix
           {
             enableHighAccuracy: true,
-            maximumAge: 5000,
+            maximumAge: 10000,
             timeout: 30000,
           }
         );

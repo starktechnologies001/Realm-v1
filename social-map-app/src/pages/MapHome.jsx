@@ -1409,6 +1409,9 @@ export default function MapHome() {
                             status_updated_at: updatedUser.status_updated_at,
                             avatar_url: updatedUser.avatar_url || prev.avatar_url,
                             username: updatedUser.username || prev.username,
+                            // 🔥 Sync visibility changes triggered from other tabs/devices
+                            visibility_mode: updatedUser.visibility_mode ?? prev.visibility_mode,
+                            is_ghost_mode: updatedUser.visibility_mode === 'ghost' || updatedUser.is_ghost_mode,
                         };
                     });
                     return; // Skip nearbyUsers update for self
@@ -2414,7 +2417,7 @@ export default function MapHome() {
 
     const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live', id = null) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
-        const isGhost = isSelf && currentUser?.is_ghost_mode;
+        const isGhost = isSelf && (currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode);
         // Prefix invalidates old cached icons when HTML template changes
         const cacheKey = `v6_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}`;
         
@@ -2526,7 +2529,7 @@ export default function MapHome() {
         }
 
         return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live', currentUser.id);
-    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, createAvatarIcon]);
+    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, currentUser?.visibility_mode, currentUser?.is_ghost_mode, createAvatarIcon]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -3598,8 +3601,8 @@ export default function MapHome() {
                                     <button 
                                         onClick={async () => {
                                             setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'public' }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'public' }).eq('id', currentUser.id);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'public', is_ghost_mode: false }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'public', is_ghost_mode: false }).eq('id', currentUser.id);
                                             showToast("🌍 Public Mode On");
                                             startLocation();
                                         }}
@@ -3614,8 +3617,8 @@ export default function MapHome() {
                                     <button 
                                         onClick={async () => {
                                             setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'friends' }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'friends' }).eq('id', currentUser.id);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'friends', is_ghost_mode: false }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'friends', is_ghost_mode: false }).eq('id', currentUser.id);
                                             showToast("👥 Friends Only");
                                             startLocation();
                                         }}
@@ -3630,8 +3633,8 @@ export default function MapHome() {
                                     <button 
                                         onClick={async () => {
                                             setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'ghost' }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'ghost' }).eq('id', currentUser.id);
+                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'ghost', is_ghost_mode: true }));
+                                            await supabase.from('profiles').update({ visibility_mode: 'ghost', is_ghost_mode: true }).eq('id', currentUser.id);
                                             showToast("👻 Ghost Mode On");
                                             startLocation();
                                         }}
@@ -3935,8 +3938,6 @@ export default function MapHome() {
                 />
             )}
 
-
-            <PokeNotifications currentUser={currentUser} />
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 
             {/* Report Modal */}

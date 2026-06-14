@@ -71,7 +71,7 @@ export default function PokeNotifications({ currentUser }) {
 
         // Real-time subscription for new pokes
         const channel = supabase
-            .channel('poke_notifications')
+            .channel(`poke_notifications_${currentUser.id}`)
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
