@@ -2768,28 +2768,28 @@ export default function MapHome() {
         return (
             <div className="map-container" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', zIndex: 10000 }}>
                 <style>{`
-                    .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; z-index: 999999; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-                    .onboarding-card { background: #121214; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; padding: 36px 28px; width: 100%; max-width: 400px; box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1); color: white; display: flex; flex-direction: column; gap: 24px; margin: auto; flex-shrink: 0; }
-                    .onboarding-card h2 { margin: 0; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; color: #fff; text-align: left; }
-                    .onboarding-card h2 span.wave { color: #0084ff; }
-                    .onboarding-card p.subtitle { margin: 0; font-size: 1rem; color: #a1a1aa; text-align: left; margin-top: -16px; }
-                    .ob-section { display: flex; flex-direction: column; gap: 10px; text-align: left; position: relative; }
-                    .ob-section label { font-size: 0.95rem; font-weight: 600; color: #f4f4f5; letter-spacing: -0.2px; }
-                    .ob-input { background: #1f1f22; border: 1.5px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 18px; color: white; font-size: 1.05rem; outline: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); width: 100%; box-sizing: border-box; }
+                    .onboarding-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; z-index: 999999; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                    .onboarding-card { background: linear-gradient(135deg, #141416 0%, #08080a 100%); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; padding: 24px 20px; width: 100%; max-width: 400px; box-shadow: 0 32px 64px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05); color: white; display: flex; flex-direction: column; gap: 16px; margin: auto; flex-shrink: 0; }
+                    .onboarding-card h2 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; color: #fff; text-align: center; }
+                    .onboarding-card h2 span.wave { color: #8B5CF6; }
+                    .onboarding-card p.subtitle { margin: 0; font-size: 0.9rem; color: #a1a1aa; text-align: center; margin-top: -10px; }
+                    .ob-section { display: flex; flex-direction: column; gap: 6px; text-align: left; position: relative; }
+                    .ob-section label { font-size: 0.85rem; font-weight: 600; color: #f4f4f5; letter-spacing: -0.2px; }
+                    .ob-input { background: rgba(255, 255, 255, 0.02); border: 1.5px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 11px 14px; color: white; font-size: 0.95rem; outline: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); width: 100%; box-sizing: border-box; }
                     .ob-input::placeholder { color: #52525b; }
-                    .ob-input:focus { border-color: #0084ff; background: #27272a; box-shadow: 0 0 0 4px rgba(0, 132, 255, 0.15); }
+                    .ob-input:focus { border-color: #8B5CF6; background: rgba(255, 255, 255, 0.05); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
                     .ob-input.error { border-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
                     .ob-input.error:focus { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15); }
                     
-                    .chip-group { display: flex; flex-wrap: wrap; gap: 10px; transition: all 0.2s; padding: 4px; border-radius: 22px; }
+                    .chip-group { display: flex; flex-wrap: wrap; gap: 8px; transition: all 0.2s; padding: 4px; border-radius: 22px; }
                     .chip-group.error { background: rgba(239, 68, 68, 0.1); border: 1px dashed #ef4444; margin: -5px; padding: 4px; }
-                    .chip { background: #1f1f22; border: 1.5px solid transparent; border-radius: 20px; padding: 10px 20px; color: #a1a1aa; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); user-select: none; }
-                    .chip:hover { background: #27272a; color: #f4f4f5; }
-                    .chip.selected { background: #0084ff; border-color: #0084ff; color: white; box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3); }
+                    .chip { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 7px 14px; color: #a1a1aa; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); user-select: none; }
+                    .chip:hover { background: rgba(255, 255, 255, 0.08); color: #f4f4f5; }
+                    .chip.selected { background: #8B5CF6; border-color: #8B5CF6; color: white; box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35); }
                     
-                    .complete-btn { background: #0084ff; color: white; border: none; border-radius: 16px; padding: 18px; font-size: 1.1rem; font-weight: 600; cursor: pointer; margin-top: 12px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 8px 20px rgba(0, 132, 255, 0.25); }
-                    .complete-btn:hover { background: #0073e6; transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 132, 255, 0.35); }
-                    .complete-btn:active { transform: scale(0.97); box-shadow: 0 4px 12px rgba(0, 132, 255, 0.2); }
+                    .complete-btn { background: #8B5CF6; color: white; border: none; border-radius: 12px; padding: 12px 16px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 4px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3); }
+                    .complete-btn:hover { background: #7C3AED; transform: translateY(-2px); box-shadow: 0 12px 28px rgba(139, 92, 246, 0.4); }
+                    .complete-btn:active { transform: scale(0.97); box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2); }
                     
                     .error-text { color: #ef4444; font-size: 0.85rem; font-weight: 500; margin-top: -4px; animation: slideDown 0.2s ease-out; display: flex; align-items: center; gap: 4px; }
                     @keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
@@ -2848,11 +2848,11 @@ export default function MapHome() {
                             {setupErrors.relationshipStatus && <span className="error-text" style={{marginTop: '2px'}}>⚠️ Please select a relationship status</span>}
                         </div>
 
-                        <div className="ob-section">
-                            <label>Your Avatar 👤</label>
-                            <div className="avatar-preview-box" style={{ position: 'relative', width: '100px', margin: '0 auto' }}>
+                        <div className="ob-section" style={{ alignItems: 'center' }}>
+                            <label style={{ alignSelf: 'flex-start' }}>Your Avatar 👤</label>
+                            <div className="avatar-preview-box" style={{ position: 'relative', width: '80px', margin: '0 auto' }}>
                                 <div style={{
-                                    width: '100px', height: '100px',
+                                    width: '80px', height: '80px',
                                     borderRadius: '50%', overflow: 'hidden',
                                     border: '3px solid rgba(255,255,255,0.2)',
                                     background: 'rgba(255,255,255,0.05)',
@@ -2880,9 +2880,9 @@ export default function MapHome() {
                                 <label
                                     htmlFor="modal-avatar-upload"
                                     style={{
-                                        position: 'absolute', bottom: '0', right: '0',
-                                        width: '32px', height: '32px',
-                                        background: 'var(--brand-blue, #0084ff)',
+                                        position: 'absolute', bottom: '-2px', right: '-2px',
+                                        width: '26px', height: '26px',
+                                        background: '#8B5CF6',
                                         borderRadius: '50%',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         cursor: 'pointer',
@@ -2891,7 +2891,7 @@ export default function MapHome() {
                                         zIndex: 10
                                     }}
                                 >
-                                    <span style={{ fontSize: '1.2rem', color: 'white', marginTop: '-2px' }}>+</span>
+                                    <span style={{ fontSize: '1rem', color: 'white', marginTop: '-2px' }}>+</span>
                                 </label>
                                 <input
                                     id="modal-avatar-upload"

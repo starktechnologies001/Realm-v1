@@ -17,7 +17,8 @@ const MessageBubble = ({
     onScrollToMessage,
     onMessageLongPress,
     onReactionToggle,
-    onReactionBadgeClick
+    onReactionBadgeClick,
+    onMediaLoad = () => {}
 }) => {
     const isMe = msg.sender_id === userId;
     const isImage = msg.message_type === 'image' || msg.type === 'image';
@@ -134,7 +135,7 @@ const MessageBubble = ({
         <React.Fragment>
             {dateHeader}
             <motion.div 
-                className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${isHighlighted ? 'message-highlight' : ''} ${msg.message_type === 'call_log' ? 'system-msg' : ''}`}
+                className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${isHighlighted ? 'message-highlight' : ''}`}
                 
                 // Drag Props
                 drag={isSelectionMode ? false : "x"}
@@ -282,6 +283,7 @@ const MessageBubble = ({
                                 playsInline
                                 className="sent-video" 
                                 onClick={() => onViewImage(imageUrl)}
+                                onLoadedData={onMediaLoad}
                                 style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '🎥 Video' && msg.content !== '📷 Photo' ? '6px' : '0', maxWidth: '100%', maxHeight: '300px' }}
                             />
                         ) : (
@@ -290,6 +292,7 @@ const MessageBubble = ({
                                 alt="Sent" 
                                 className="sent-image" 
                                 onClick={() => onViewImage(imageUrl)}
+                                onLoad={onMediaLoad}
                                 style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' ? '6px' : '0' }}
                             />
                         )}
@@ -366,9 +369,9 @@ const MessageBubble = ({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <div style={{ 
                                         width: '36px', height: '36px', borderRadius: '50%', 
-                                        background: isMissed ? 'rgba(255, 59, 48, 0.15)' : 'rgba(52, 199, 89, 0.15)',
+                                        background: isMissed ? 'rgba(255, 59, 48, 0.15)' : 'rgba(128, 128, 128, 0.15)',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        color: isMissed ? '#ff3b30' : '#34c759',
+                                        color: isMissed ? '#ff3b30' : '#000000',
                                         flexShrink: 0
                                     }}>
                                         {isVideo ? (
@@ -377,11 +380,18 @@ const MessageBubble = ({
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path></svg>
                                         )}
                                     </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: isMissed ? '#ff3b30' : 'inherit' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '120px' }}>
+                                        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: isMissed ? '#ff3b30' : 'inherit', wordBreak: 'break-word' }}>
                                             {mainText}
                                             {durationText && <span style={{ fontWeight: 400, marginLeft: '6px', opacity: 0.85 }}>{durationText}</span>}
                                         </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', opacity: 0.7, fontSize: '0.7rem', justifyContent: 'flex-end' }}>
+                                            <span style={{ fontSize: '0.95em' }}>{formatTime(msg.created_at)}</span>
+                                            <MessageStatusTick 
+                                                status={deliveryStatus} 
+                                                isSender={isMe} 
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             );

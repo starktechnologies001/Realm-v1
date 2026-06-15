@@ -49,14 +49,12 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                     src={nearoLogo}
                     alt="Logo"
                     style={{
-                        height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 2px',
-                        filter: 'drop-shadow(0 6px 16px rgba(255,106,0,0.18))',
-                        clipPath: 'inset(0 0 13% 0)',
+                        height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 12px',
                     }}
                 />
                 <h1 style={{
                     margin: 0,
-                    fontSize: 19,
+                    fontSize: 14,
                     fontWeight: 800,
                     letterSpacing: '-0.4px',
                     lineHeight: 1.25,
@@ -215,12 +213,12 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                         }}>{item.icon}</div>
                         <div style={{ flex: 1 }}>
                             <div style={{
-                                fontSize: 13.5, fontWeight: 700,
+                                fontSize: 12, fontWeight: 700,
                                 color: dark ? '#f3f3f5' : '#1e1b4b',
                                 letterSpacing: '-0.1px', margin: 0,
                             }}>{item.title}</div>
                             <div style={{
-                                fontSize: 11.5,
+                                fontSize: 10.5,
                                 color: dark ? '#9CA3AF' : '#5c5a77',
                                 marginTop: 2,
                                 fontWeight: 500,

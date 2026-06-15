@@ -1009,8 +1009,6 @@ export default function Login() {
           margin: 0 auto 8px auto;
           display: block;
           object-fit: contain;
-          filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.05));
-          clip-path: inset(0 0 13% 0);
         }
 
         .app-subtitle {

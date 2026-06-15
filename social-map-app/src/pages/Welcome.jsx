@@ -91,9 +91,7 @@ export default function Welcome() {
 
         {/* ── TOP: Logo & headline ── */}
         <div style={S.top}>
-          <div style={S.logoRing}>
-            <img src={nearoLogo} alt="Nearo" style={S.logoImg} />
-          </div>
+          <img src={nearoLogo} alt="Nearo" style={S.logoImg} />
           <h1 style={S.appName}>Nearo</h1>
           <h2 style={S.headline}>
             Discover People<br />
@@ -220,20 +218,9 @@ const S = {
     paddingBottom: 28,
   },
 
-  /* Logo */
-  logoRing: {
-    width: 88, height: 88, borderRadius: '50%',
-    background: 'linear-gradient(135deg, #F3E8FF 0%, #FEF3C7 100%)',
-    border: '2px solid rgba(139,92,246,0.2)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12,
-    boxShadow: '0 6px 28px rgba(139,92,246,0.18), 0 0 0 8px rgba(139,92,246,0.06)',
-  },
   logoImg: {
     width: 52, height: 52, objectFit: 'contain',
-    filter: 'drop-shadow(0 2px 8px rgba(139,92,246,0.22))',
-    clipPath: 'inset(0 0 13% 0)',
-    transform: 'translateY(3px)',
+    marginBottom: 12,
   },
   appName: {
     fontSize: '2.4rem', fontWeight: 900,

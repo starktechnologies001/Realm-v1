@@ -1704,6 +1704,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const chatMessagesRef = useRef(null);
     const messagesEndRef = useRef(null);
     const isInitialLoad = useRef(true);
+    
+    // Reset initial load state when targetUser changes
+    useEffect(() => {
+        isInitialLoad.current = true;
+    }, [targetUser?.id]);
+
     const fileInputRef = useRef(null);
     const [toastMsg, setToastMsg] = useState(null);
     const [hasPendingSentRequest, setHasPendingSentRequest] = useState(false);
@@ -2953,20 +2959,45 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         return () => clearInterval(interval);
     }, [currentUser.id, targetUser.id, blockStatus]);
 
-    useEffect(() => {
-        if (messages.length > 0 && chatMessagesRef.current) {
-            const container = chatMessagesRef.current;
-            if (isInitialLoad.current) {
-                container.scrollTop = container.scrollHeight;
-                isInitialLoad.current = false;
-            } else {
+    const scrollToBottom = useCallback((behavior = 'auto') => {
+        if (!chatMessagesRef.current) return;
+        const container = chatMessagesRef.current;
+        
+        const doScroll = () => {
+            if (behavior === 'smooth') {
                 container.scrollTo({
                     top: container.scrollHeight,
                     behavior: 'smooth'
                 });
+            } else {
+                container.scrollTop = container.scrollHeight;
+            }
+        };
+
+        // Scroll immediately
+        doScroll();
+
+        // Staggered scrolls to handle dynamic DOM resizing / layout shifts
+        const ticks = [50, 150, 300, 500];
+        ticks.forEach(delay => {
+            setTimeout(() => {
+                if (chatMessagesRef.current) {
+                    doScroll();
+                }
+            }, delay);
+        });
+    }, []);
+
+    useEffect(() => {
+        if (messages.length > 0) {
+            if (isInitialLoad.current) {
+                scrollToBottom('auto');
+                isInitialLoad.current = false;
+            } else {
+                scrollToBottom('smooth');
             }
         }
-    }, [messages]);
+    }, [messages, scrollToBottom]);
 
     const sendMessage = async (type = 'text', content = null, imageUrl = null) => {
         // Prevent sending if blocked
@@ -3972,7 +4003,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                     }}>
                                         {isThemeMsg ? (
                                             <>
-                                                <span style={{ fontWeight: 600, opacity: 1 }}>{senderName}</span>
+                                                <strong style={{ fontWeight: 600 }}>{senderName}</strong>
                                                 <span style={{ opacity: 0.9 }}> {msg.content}</span>
                                             </>
                                         ) : (
@@ -3984,66 +4015,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         );
                     }
 
-                    // Special rendering for Call Logs
-                    if (msg.message_type === 'call_log') {
-                        let callData;
-                        try {
-                            callData = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-                        } catch {
-                            // Fallback for old format
-                            callData = { status: 'unknown', call_type: 'audio' };
-                        }
 
-                        const getCallIcon = () => {
-                            // User prefers Type-based icons (🎥/📞) even for missed/declined
-                            return callData.call_type === 'video' ? '🎥' : '📞';
-                        };
-
-                        const getCallText = () => {
-                            const prefix = isMe ? 'Outgoing' : 'Incoming';
-                            const typeLabel = callData.call_type === 'video' ? 'Video' : 'Audio';
-                            const base = `${prefix} ${typeLabel} Call`;
-
-                            if (callData.status === 'missed') {
-                                // If I am the caller, it means they didn't answer -> "Not Answered"
-                                // If I am the receiver, I missed it -> "Missed"
-                                return isMe ? `${base} • Not Answered` : `${base} • Missed`;
-                            }
-                            
-                            if (callData.status === 'declined' || callData.status === 'rejected' || callData.status === 'busy') {
-                                return `${base} • Declined`;
-                            }
-                            
-                            if (callData.status === 'ended') {
-                                const duration = callData.duration || 0;
-                                const mins = Math.floor(duration / 60);
-                                const secs = duration % 60;
-                                const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                                return `${base} • ${timeStr}`;
-                            }
-                            
-                            // Active/Ringing
-                            if (callData.status === 'ringing' || callData.status === 'calling') {
-                                return `${base} • ${callData.status === 'calling' ? 'Calling...' : 'Ringing...'}`;
-                            }
-                            
-                            // Fallback
-                            return base;
-                        };
-
-                        return (
-                            <React.Fragment key={`call-${msg.id || msg.tempId || i}`}>
-                                {dateHeader}
-                                <div className={`call-log-entry ${callData.status}`}>
-                                    <span className="call-icon">{getCallIcon()}</span>
-                                    <div className="call-details">
-                                        <span className="call-text">{getCallText()}</span>
-                                        <span className="call-time">{formatTime(msg.created_at)}</span>
-                                    </div>
-                                </div>
-                            </React.Fragment>
-                        );
-                    }
 
                     const isImage = msg.message_type === 'image' || msg.type === 'image';
                     const imageUrl = msg.image_url || msg.media_url;
@@ -4145,6 +4117,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                     onMessageLongPress={handleMessageLongPress}
                                     onReactionToggle={handleReactionToggle}
                                     onReactionBadgeClick={(msgId, emoji) => setActiveRemoveReaction({ msgId, emoji })}
+                                    onMediaLoad={() => scrollToBottom('smooth')}
                                 />
                             </div>
                         </React.Fragment>
@@ -4328,14 +4301,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     </button>
 
                     <input
-                        ref={messageInputRef}
-                        className="msg-input"
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && sendMessage()}
-                        placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
-                        disabled={uploading || hasPendingSentRequest}
-                    />
+                                        ref={messageInputRef}
+                                        className="msg-input"
+                                        value={input}
+                                        onChange={e => setInput(e.target.value)}
+                                        onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                                        onFocus={() => scrollToBottom('smooth')}
+                                        placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
+                                        disabled={uploading || hasPendingSentRequest}
+                                    />
                     
                     <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading) || hasPendingSentRequest}>
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
@@ -4663,7 +4637,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     justify-content: center;
                 }
                 
-                .msg-system span {
+                .msg-system > span {
                     background: rgba(0, 0, 0, 0.2);
                     padding: 4px 12px;
                     border-radius: 12px;
@@ -4672,7 +4646,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     backdrop-filter: blur(4px);
                     border: 1px solid rgba(255, 255, 255, 0.05);
                 }
-                .chat-room-container[data-theme-type="light"] .msg-system span {
+                .chat-room-container[data-theme-type="light"] .msg-system > span {
                     background: rgba(0,0,0,0.1);
                     color: #555;
                 }
@@ -5452,53 +5426,87 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
                 .call-log-entry {
-                    width: 100%;
+                    align-self: center;
                     display: flex;
                     align-items: center;
-                    justify-content: center;
-                    margin: 12px 0;
-                    padding: 12px 16px;
-                    background: rgba(0, 0, 0, 0.03);
-                    border-radius: 12px;
-                    border-left: 3px solid rgba(0, 0, 0, 0.1);
-                }
-
-                .call-log-entry.missed {
-                    border-left-color: #f44336;
-                    background: rgba(244, 67, 54, 0.05);
-                }
-
-                .call-log-entry.declined {
-                    border-left-color: #ff9800;
-                    background: rgba(255, 152, 0, 0.05);
-                }
-
-                .call-log-entry.ended {
-                    border-left-color: #4caf50;
-                    background: rgba(76, 175, 80, 0.05);
+                    gap: 6px;
+                    margin: 8px 0;
+                    padding: 5px 12px;
+                    border-radius: 100px;
+                    font-size: 0.72rem;
+                    line-height: 1;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    background: rgba(255, 255, 255, 0.08);
+                    color: rgba(255, 255, 255, 0.75);
                 }
 
                 .call-icon {
-                    font-size: 1.2rem;
-                    margin-right: 12px;
+                    font-size: 0.85rem;
+                    margin-right: 0;
                 }
 
                 .call-details {
-                    flex: 1;
                     display: flex;
-                    flex-direction: column;
-                    gap: 4px;
+                    align-items: center;
+                    gap: 6px;
                 }
 
                 .call-text {
-                    font-size: 0.9rem;
-                    color: #1d1d1f;
+                    font-size: 0.72rem;
                     font-weight: 500;
+                    color: inherit;
                 }
 
                 .call-time {
-                    font-size: 0.75rem;
-                    color: #6e6e73;
+                    font-size: 0.65rem;
+                    opacity: 0.8;
+                    color: inherit;
+                }
+
+                /* Light Theme Adjustments */
+                .chat-room-container[data-theme-type="light"] .call-log-entry {
+                    background: rgba(0, 0, 0, 0.04);
+                    border-color: rgba(0, 0, 0, 0.04);
+                    color: rgba(0, 0, 0, 0.6);
+                }
+
+                /* Status variants (Light Theme) */
+                .chat-room-container[data-theme-type="light"] .call-log-entry.missed {
+                    background: rgba(255, 59, 48, 0.08);
+                    border-color: rgba(255, 59, 48, 0.12);
+                    color: #ff3b30;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-entry.declined,
+                .chat-room-container[data-theme-type="light"] .call-log-entry.rejected,
+                .chat-room-container[data-theme-type="light"] .call-log-entry.busy {
+                    background: rgba(255, 149, 0, 0.08);
+                    border-color: rgba(255, 149, 0, 0.12);
+                    color: #ff9500;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-entry.ended {
+                    background: rgba(52, 199, 89, 0.08);
+                    border-color: rgba(52, 199, 89, 0.12);
+                    color: #34c759;
+                }
+
+                /* Status variants (Dark Theme / Default Overrides) */
+                .chat-room-container[data-theme-type="dark"] .call-log-entry.missed {
+                    background: rgba(255, 69, 58, 0.12);
+                    border-color: rgba(255, 69, 58, 0.18);
+                    color: #ff453a;
+                }
+                .chat-room-container[data-theme-type="dark"] .call-log-entry.declined,
+                .chat-room-container[data-theme-type="dark"] .call-log-entry.rejected,
+                .chat-room-container[data-theme-type="dark"] .call-log-entry.busy {
+                    background: rgba(255, 159, 10, 0.12);
+                    border-color: rgba(255, 159, 10, 0.18);
+                    color: #ff9f0a;
+                }
+                .chat-room-container[data-theme-type="dark"] .call-log-entry.ended {
+                    background: rgba(48, 209, 88, 0.12);
+                    border-color: rgba(48, 209, 88, 0.18);
+                    color: #30d158;
                 }
 
                 .chat-date-header {
