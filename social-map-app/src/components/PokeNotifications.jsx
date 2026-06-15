@@ -73,95 +73,89 @@ export default function PokeNotifications({ currentUser }) {
         const channel = supabase
             .channel(`poke_notifications_${currentUser.id}`)
             .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'friendships',
-                filter: `receiver_id=eq.${currentUser.id}`
-            }, async (payload) => {
-                if (payload.new.status === 'pending') {
-                    // Fetch requester details
-                    const { data: requester } = await supabase
-                        .from('profiles')
-                        .select('id, full_name, username, avatar_url, gender')
-                        .eq('id', payload.new.requester_id)
-                        .maybeSingle();
-
-                    if (requester) {
-                        const newPoke = {
-                            ...payload.new,
-                            requester
-                        };
-                        setPendingPokes(prev => [newPoke, ...prev]);
-                        // A brand-new poke always shows the panel — clear dismissed flag
-                        sessionStorage.removeItem(dismissedKey);
-                        setShowNotifications(true);
-                        
-                        // Play notification sound
-                        const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-                        audio.play().catch(e => console.log(e));
-                    }
-                }
-            })
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'friendships',
-                filter: `receiver_id=eq.${currentUser.id}`
-            }, async (payload) => {
-                console.log('Poke Update Payload:', payload);
-                if (payload.new.status === 'pending') {
-                    // It's a new poke (re-poke via update)! 
-                    // Clear from seenIds so it alerts the user again
-                    setSeenIds(prev => prev.filter(id => id !== payload.new.id));
-                    try {
-                        const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
-                        const updatedSeen = currentSeen.filter(id => id !== payload.new.id);
-                        localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
-                    } catch (e) {
-                        console.error('Error updating seen pokes on update', e);
-                    }
-
-                    // Check if we already have it to avoid duplicates
-                    setPendingPokes(prev => {
-                        if (prev.find(p => p.id === payload.new.id)) return prev;
-                        return prev; // We need to fetch details first, so handled below
-                    });
-
-                    // Fetch requester details
-                    const { data: requester } = await supabase
-                        .from('profiles')
-                        .select('id, full_name, username, avatar_url, gender')
-                        .eq('id', payload.new.requester_id)
-                        .maybeSingle();
-
-                    if (requester) {
-                         const newPoke = { ...payload.new, requester };
-                         
-                         setPendingPokes(prev => {
-                             // Double check uniqueness
-                             if (prev.find(p => p.id === newPoke.id)) return prev;
-                             return [newPoke, ...prev];
-                         });
-                         // A re-poke always shows the panel — clear dismissed flag
-                         sessionStorage.removeItem(dismissedKey);
-                         setShowNotifications(true);
-                         
-                         // Play sound
-                         const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-                         audio.play().catch(e => console.log(e));
-                    }
-                } else {
-                    // Remove from list if accepted or declined
-                    setPendingPokes(prev => prev.filter(p => p.id !== payload.new.id));
-                }
-            })
-            .on('postgres_changes', {
-                event: 'DELETE',
+                event: '*',
                 schema: 'public',
                 table: 'friendships'
-            }, (payload) => {
-                // Remove from list if deleted (cancelled)
-                setPendingPokes(prev => prev.filter(p => p.id !== payload.old.id));
+            }, async (payload) => {
+                const { eventType, new: newRec, old: oldRec } = payload;
+
+                if (eventType === 'INSERT') {
+                    if (newRec.receiver_id === currentUser.id && newRec.status === 'pending') {
+                        // Fetch requester details
+                        const { data: requester } = await supabase
+                            .from('profiles')
+                            .select('id, full_name, username, avatar_url, gender')
+                            .eq('id', newRec.requester_id)
+                            .maybeSingle();
+
+                        if (requester) {
+                            const newPoke = {
+                                ...newRec,
+                                requester
+                            };
+                            setPendingPokes(prev => {
+                                if (prev.find(p => p.id === newPoke.id)) return prev;
+                                return [newPoke, ...prev];
+                            });
+                            // A brand-new poke always shows the panel — clear dismissed flag
+                            sessionStorage.removeItem(dismissedKey);
+                            setShowNotifications(true);
+                            
+                            // Play notification sound
+                            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+                            audio.play().catch(e => console.log(e));
+                        }
+                    }
+                }
+                else if (eventType === 'UPDATE') {
+                    if (newRec.receiver_id === currentUser.id) {
+                        if (newRec.status === 'pending') {
+                            // It's a new poke (re-poke via update)! 
+                            // Clear from seenIds so it alerts the user again
+                            setSeenIds(prev => prev.filter(id => id !== newRec.id));
+                            try {
+                                const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                                const updatedSeen = currentSeen.filter(id => id !== newRec.id);
+                                localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
+                            } catch (e) {
+                                console.error('Error updating seen pokes on update', e);
+                            }
+
+                            // Fetch requester details
+                            const { data: requester } = await supabase
+                                .from('profiles')
+                                .select('id, full_name, username, avatar_url, gender')
+                                .eq('id', newRec.requester_id)
+                                .maybeSingle();
+
+                            if (requester) {
+                                 const newPoke = { ...newRec, requester };
+                                 
+                                 setPendingPokes(prev => {
+                                     // Double check uniqueness
+                                     if (prev.find(p => p.id === newPoke.id)) return prev;
+                                     return [newPoke, ...prev];
+                                 });
+                                 // A re-poke always shows the panel — clear dismissed flag
+                                 sessionStorage.removeItem(dismissedKey);
+                                 setShowNotifications(true);
+                                 
+                                 // Play sound
+                                 const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+                                 audio.play().catch(e => console.log(e));
+                            }
+                        } else {
+                            // Remove from list if accepted or declined
+                            setPendingPokes(prev => prev.filter(p => p.id !== newRec.id));
+                        }
+                    }
+                }
+                else if (eventType === 'DELETE') {
+                    // Remove from list if deleted (cancelled)
+                    if (oldRec) {
+                        setPendingPokes(prev => prev.filter(p => p.id !== oldRec.id));
+                    }
+                }
             })
             .subscribe();
 

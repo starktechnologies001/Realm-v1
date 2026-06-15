@@ -22,6 +22,17 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                 return;
             }
 
+            // Check if they have chatted before
+            const { count: messageCount } = await supabase
+                .from('messages')
+                .select('id', { count: 'exact', head: true })
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${currentUser.id})`);
+
+            if (messageCount && messageCount > 0) {
+                setAccessStatus('allowed');
+                return;
+            }
+
             const { data: existingRequest } = await supabase
                 .from('message_requests')
                 .select('status')
@@ -61,6 +72,14 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
             const isFriend = friendshipsMapRef.current?.get(targetUserId)?.status === 'accepted';
 
             if (isFriend || accessStatus === 'allowed') {
+                // Check if they have chatted before
+                const { count: messageCount } = await supabase
+                    .from('messages')
+                    .select('id', { count: 'exact', head: true })
+                    .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${currentUser.id})`);
+
+                const hasChatted = (messageCount || 0) > 0;
+
                 // Check one more time if a prior accepted request exists
                 const { data: existingRequest } = await supabase
                     .from('message_requests')
@@ -72,7 +91,7 @@ export default function ReplyThoughtModal({ isOpen, onClose, currentUser, target
                     .maybeSingle();
 
                 const requestAccepted = existingRequest?.status === 'accepted';
-                const canChat = isFriend || requestAccepted;
+                const canChat = isFriend || requestAccepted || hasChatted;
 
                 if (canChat) {
                     // Send as normal chat message

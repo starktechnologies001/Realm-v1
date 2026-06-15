@@ -2,6 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
 import Toast from './Toast';
+import ImageCropper from './ImageCropper';
+
+const isVideo = (fileOrUrl) => {
+    if (!fileOrUrl) return false;
+    if (typeof fileOrUrl === 'string') {
+        const cleanUrl = fileOrUrl.split('?')[0].split('#')[0];
+        const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'quicktime'];
+        const ext = cleanUrl.split('.').pop().toLowerCase();
+        return videoExtensions.includes(ext);
+    }
+    if (fileOrUrl instanceof File || fileOrUrl instanceof Blob) {
+        return fileOrUrl.type.startsWith('video/');
+    }
+    return false;
+};
 
 export default function StatusView({ currentUser, friends, onSelectFriend, refreshTrigger }) {
     const [myStories, setMyStories] = useState([]);
@@ -106,6 +121,7 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
     const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState(null);
     const [caption, setCaption] = useState('');
+    const [isCropping, setIsCropping] = useState(false);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -217,7 +233,24 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
             {previewUrl && (
                 <div className="upload-preview-overlay">
                     <div className="preview-container">
-                        <img src={previewUrl} alt="Preview" className="preview-image" />
+                        {!isVideo(selectedFile) && (
+                            <button 
+                                className="crop-btn" 
+                                onClick={() => setIsCropping(true)} 
+                                title="Crop Photo"
+                                type="button"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '20px', height: '20px' }}>
+                                    <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
+                                    <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                                </svg>
+                            </button>
+                        )}
+                        {isVideo(selectedFile) ? (
+                            <video src={previewUrl} controls className="preview-video" style={{ flex: 1, width: '100%', objectFit: 'contain', background: '#000' }} />
+                        ) : (
+                            <img src={previewUrl} alt="Preview" className="preview-image" />
+                        )}
                         <input 
                             type="text" 
                             className="caption-input"
@@ -240,6 +273,23 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                 </div>
             )}
 
+            {/* Image Cropper Modal */}
+            {isCropping && previewUrl && (
+                <ImageCropper
+                    imageSrc={previewUrl}
+                    cropShape="rect"
+                    aspect={9/16}
+                    onCropComplete={(croppedBlob) => {
+                        const croppedFile = new File([croppedBlob], selectedFile.name || 'cropped-image.jpg', { type: 'image/jpeg' });
+                        setSelectedFile(croppedFile);
+                        setPreviewUrl(URL.createObjectURL(croppedBlob));
+                        setIsCropping(false);
+                    }}
+                    onCancel={() => setIsCropping(false)}
+                    zIndex={7000}
+                />
+            )}
+
             {/* Edit Caption Modal */}
             {editingStory && (
                 <div className="edit-caption-overlay" onClick={() => setEditingStory(null)}>
@@ -249,7 +299,11 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                             <button className="edit-caption-close" onClick={() => setEditingStory(null)}>✕</button>
                         </div>
                         {editingStory.media_url && (
-                            <img src={editingStory.media_url} alt="Story" className="edit-caption-preview" />
+                            isVideo(editingStory.media_url) ? (
+                                <video src={editingStory.media_url} className="edit-caption-preview" controls={false} autoPlay loop muted />
+                            ) : (
+                                <img src={editingStory.media_url} alt="Story" className="edit-caption-preview" />
+                            )
                         )}
                         <input
                             type="text"
@@ -285,7 +339,7 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                             <img src={getAvatarHeadshot(currentUser?.avatar_url, currentUser?.username)} alt="My Avatar" />
                         </div>
                         <label className="add-status-btn" onClick={(e) => e.stopPropagation()}>
-                            <input type="file" accept="image/*" onChange={handleFileSelect} disabled={uploading} hidden />
+                            <input type="file" accept="image/*,video/*" onChange={handleFileSelect} disabled={uploading} hidden />
                             {uploading ? '...' : '+'}
                         </label>
                     </div>
@@ -530,6 +584,33 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                     background: #0095f6; border: none; color: white; padding: 10px 24px; border-radius: 20px; font-weight: 600;
                 }
                 .post-btn:disabled { opacity: 0.7; }
+
+                .crop-btn {
+                    position: absolute;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(0,0,0,0.6);
+                    border: 1px solid rgba(255,255,255,0.25);
+                    border-radius: 50%;
+                    width: 44px;
+                    height: 44px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    cursor: pointer;
+                    z-index: 100;
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                    transition: all 0.2s ease;
+                }
+                .crop-btn:hover {
+                    background: rgba(0,0,0,0.85);
+                    transform: scale(1.05);
+                }
+                .crop-btn:active {
+                    transform: scale(0.95);
+                }
 
                 /* Edit Caption Modal */
                 .edit-caption-overlay {

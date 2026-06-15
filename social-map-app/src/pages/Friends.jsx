@@ -88,51 +88,45 @@ export default function Friends() {
             friendshipSub = supabase
                 .channel(`friendships_rt_${userId}`)
                 .on('postgres_changes', {
-                    event: 'INSERT',
+                    event: '*',
                     schema: 'public',
-                    table: 'friendships',
-                    filter: `receiver_id=eq.${userId}`
+                    table: 'friendships'
                 }, async (payload) => {
-                    const newRow = payload.new;
-                    if (newRow.status !== 'pending') return;
+                    const { eventType, new: newRow, old: oldRow } = payload;
 
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen')
-                        .eq('id', newRow.requester_id)
-                        .maybeSingle();
+                    if (eventType === 'INSERT') {
+                        if (newRow.receiver_id !== userId || newRow.status !== 'pending') return;
 
-                    if (profile) {
-                        setRequests(prev => {
-                            if (prev.some(r => r.friendship_id === newRow.id)) return prev;
-                            return [{ friendship_id: newRow.id, ...profile }, ...prev];
-                        });
-                        setActiveTab('requests');
+                        const { data: profile } = await supabase
+                            .from('profiles')
+                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen')
+                            .eq('id', newRow.requester_id)
+                            .maybeSingle();
+
+                        if (profile) {
+                            setRequests(prev => {
+                                if (prev.some(r => r.friendship_id === newRow.id)) return prev;
+                                return [{ friendship_id: newRow.id, ...profile }, ...prev];
+                            });
+                            setActiveTab('requests');
+                        }
                     }
-                })
-                .on('postgres_changes', {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'friendships',
-                    filter: `receiver_id=eq.${userId}`
-                }, (payload) => {
-                    const updated = payload.new;
-                    if (updated.status === 'accepted') {
-                        setRequests(prev => prev.filter(r => r.friendship_id !== updated.id));
-                        fetchFriendsData();
-                    } else if (updated.status === 'rejected') {
-                        setRequests(prev => prev.filter(r => r.friendship_id !== updated.id));
+                    else if (eventType === 'UPDATE') {
+                        if (newRow.receiver_id !== userId) return;
+                        if (newRow.status === 'accepted') {
+                            setRequests(prev => prev.filter(r => r.friendship_id !== newRow.id));
+                            fetchFriendsData();
+                        } else if (newRow.status === 'rejected') {
+                            setRequests(prev => prev.filter(r => r.friendship_id !== newRow.id));
+                        }
                     }
-                })
-                .on('postgres_changes', {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'friendships',
-                    filter: `receiver_id=eq.${userId}`
-                }, (payload) => {
-                    const deleted = payload.old;
-                    setRequests(prev => prev.filter(r => r.friendship_id !== deleted.id));
-                    setFriends(prev => prev.filter(f => f.friendship_id !== deleted.id));
+                    else if (eventType === 'DELETE') {
+                        const deleted = oldRow;
+                        if (deleted) {
+                            setRequests(prev => prev.filter(r => r.friendship_id !== deleted.id));
+                            setFriends(prev => prev.filter(f => f.friendship_id !== deleted.id));
+                        }
+                    }
                 })
                 .subscribe();
         });

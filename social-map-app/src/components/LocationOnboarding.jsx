@@ -8,19 +8,20 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
 
     return (
         <div style={{
-            height: '100dvh',
+            height: 'calc(100dvh - 60px - env(safe-area-inset-bottom))',
             width: '100vw',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'space-between',
-            overflow: 'hidden',
+            overflowY: 'auto',
+            overflowX: 'hidden',
             position: 'relative',
             fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
             background: dark
                 ? 'linear-gradient(160deg, #0a0a0f 0%, #13111a 100%)'
                 : 'linear-gradient(160deg, #f9f7ff 0%, #f0eeff 50%, #e8f0fe 100%)',
-            padding: 'max(20px, env(safe-area-inset-top)) 0 max(24px, env(safe-area-inset-bottom))',
+            padding: 'max(16px, env(safe-area-inset-top)) 0 16px',
         }}>
             {/* Ambient glows */}
             <div style={{
@@ -43,7 +44,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             }} />
 
             {/* ── TOP: Logo + Title ── */}
-            <div style={{ textAlign: 'center', width: '100%', paddingTop: 48, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ textAlign: 'center', width: '100%', paddingTop: 12, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <img
                     src={nearoLogo}
                     alt="Logo"
@@ -88,7 +89,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                 flex: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '100%', position: 'relative',
-                maxHeight: '38vh', minHeight: '200px',
+                maxHeight: '28vh', minHeight: '140px',
                 zIndex: 2,
             }}>
                 {/* Floating badges */}
@@ -149,7 +150,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             <div style={{
                 width: '100%', maxWidth: 400,
                 padding: '0 20px',
-                display: 'flex', flexDirection: 'column', gap: 10,
+                display: 'flex', flexDirection: 'column', gap: 8,
                 zIndex: 2,
                 animation: 'fadeSlideUp 0.7s ease both',
             }}>
@@ -203,7 +204,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             <div style={{
                 width: '100%', maxWidth: 400,
                 padding: '12px 20px',
-                paddingBottom: 'max(48px, calc(env(safe-area-inset-bottom) + 24px))',
+                paddingBottom: '16px',
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 zIndex: 2,
             }}>
@@ -211,7 +212,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                     onClick={onEnable}
                     style={{
                         width: '100%',
-                        padding: '17px 24px',
+                        padding: '14px 24px',
                         borderRadius: 100,
                         border: 'none',
                         background: 'linear-gradient(135deg, #FF6A00 0%, #FF9500 100%)',

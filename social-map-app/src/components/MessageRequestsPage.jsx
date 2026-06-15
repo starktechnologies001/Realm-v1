@@ -122,7 +122,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
         try {
             const { error } = await supabase
                 .from('message_requests')
-                .update({ status: 'rejected' })
+                .delete()
                 .eq('id', requestId);
 
             if (error) throw error;

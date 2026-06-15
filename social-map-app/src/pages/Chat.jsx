@@ -1538,6 +1538,14 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
 
 
+const isVideoUrl = (url) => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'quicktime'];
+    const ext = cleanUrl.split('.').pop().toLowerCase();
+    return videoExtensions.includes(ext);
+};
+
 function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: initialReplyToMessage, quickReplyText: initialQuickReplyText }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
@@ -1703,6 +1711,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [pendingRequest, setPendingRequest] = useState(null);
     const [rejectedRequest, setRejectedRequest] = useState(null);
     const [requestAccepted, setRequestAccepted] = useState(false);
+    const [hasChattedBefore, setHasChattedBefore] = useState(false);
     const [loadingAccess, setLoadingAccess] = useState(true);
 
     const checkChatAccess = async () => {
@@ -1721,6 +1730,24 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             // If they are friends, clear all message request state — friendship takes full precedence
             if (isFriend) {
+                setPendingRequest(null);
+                setRejectedRequest(null);
+                setRequestAccepted(false);
+                setHasPendingSentRequest(false);
+                setHasChattedBefore(false);
+                return;
+            }
+
+            // Check if they have chatted before (have messages in messages table)
+            const { count: messageCount } = await supabase
+                .from('messages')
+                .select('id', { count: 'exact', head: true })
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+
+            const hasChatted = (messageCount || 0) > 0;
+            setHasChattedBefore(hasChatted);
+
+            if (hasChatted) {
                 setPendingRequest(null);
                 setRejectedRequest(null);
                 setRequestAccepted(false);
@@ -3343,7 +3370,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
     // Friends can always chat. Message-request accepted users can chat only if they never had a friendship.
     // If they were friends and unfriended, canChat becomes false immediately via checkChatAccess.
-    const canChat = (friendshipStatus === 'accepted') || requestAccepted;
+    const canChat = (friendshipStatus === 'accepted') || requestAccepted || hasChattedBefore;
 
     return (
         <div 
@@ -4147,7 +4174,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 try {
                                     const { error } = await supabase
                                         .from('message_requests')
-                                        .update({ status: 'rejected' })
+                                        .delete()
                                         .eq('id', pendingRequest.id);
                                     if (error) throw error;
                                     Toast.show("Request declined");
@@ -4251,7 +4278,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         type="file"
                         ref={fileInputRef}
                         style={{ display: 'none' }}
-                        accept="image/*"
+                        accept="image/*,video/*"
                         multiple
                         onChange={handleFileSelect}
                     />
@@ -4334,9 +4361,19 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             {/* Image Viewer Modal */}
             {viewingImage && (
                 <div className="image-viewer-modal" onClick={(e) => { e.stopPropagation(); setViewingImage(null); }}>
+                    <button className="viewer-back-btn" onClick={() => setViewingImage(null)}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
                     <div className="image-viewer-content" onClick={(e) => e.stopPropagation()}>
                         <button className="close-viewer" onClick={() => setViewingImage(null)}>✕</button>
-                        <img src={viewingImage} alt="Full size" />
+                        {isVideoUrl(viewingImage) ? (
+                            <video src={viewingImage} controls autoPlay playsInline />
+                        ) : (
+                            <img src={viewingImage} alt="Full size" />
+                        )}
                     </div>
                 </div>
             )}
@@ -5055,7 +5092,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
 
-                .sent-image { max-width: 100%; max-height: 300px; border-radius: 10px; display: block; }
+                .sent-image, .sent-video { max-width: 100%; max-height: 300px; border-radius: 10px; display: block; }
 
                 /* Image Viewer Modal */
                 .image-viewer-modal {
@@ -5064,8 +5101,29 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     display: flex; align-items: center; justify-content: center;
                     animation: fadeIn 0.2s;
                 }
+                .viewer-back-btn {
+                    position: absolute;
+                    top: 20px;
+                    left: 20px;
+                    background: rgba(0, 0, 0, 0.5);
+                    color: white;
+                    border: none;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    z-index: 16000;
+                    backdrop-filter: blur(5px);
+                    transition: background 0.2s;
+                }
+                .viewer-back-btn:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                }
                 .image-viewer-content { position: relative; max-width: 90%; max-height: 90%; }
-                .image-viewer-content img { max-width: 100%; max-height: 90vh; object-fit: contain; }
+                .image-viewer-content img, .image-viewer-content video { max-width: 100%; max-height: 90vh; object-fit: contain; }
                 .close-viewer {
                     position: absolute; top: -40px; right: 0;
                     background: rgba(255,255,255,0.2); color: white;

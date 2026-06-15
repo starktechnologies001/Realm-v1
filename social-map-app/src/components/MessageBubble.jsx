@@ -24,6 +24,24 @@ const MessageBubble = ({
     const isVideoMsg = msg.message_type === 'video' || msg.type === 'video';
     const imageUrl = msg.image_url || msg.media_url;
     
+    // Helper to parse thought replies:
+    // Pattern 1: Replied to your thought "Mr tibf f": hhh
+    // Pattern 2: Replying to your thought: "helloo NN"\n\nHey
+    const parseThoughtReply = (content) => {
+        if (!content) return null;
+        const match1 = content.match(/^Replied to your thought "([\s\S]*?)": ([\s\S]*)$/);
+        if (match1) {
+            return { thought: match1[1], reply: match1[2] };
+        }
+        const match2 = content.match(/^Replying to your thought: "([\s\S]*?)"\s+([\s\S]*)$/);
+        if (match2) {
+            return { thought: match2[1], reply: match2[2] };
+        }
+        return null;
+    };
+
+    const parsedThoughtReply = parseThoughtReply(msg.content);
+    
     // Framer Motion Values
     const x = useMotionValue(0);
     const controls = useAnimation();
@@ -202,8 +220,18 @@ const MessageBubble = ({
                     </div>
                 )}
 
-                {/* Quoted Message */}
-                {msg.reply_to && (
+                {/* Quoted Message / Thought Reply */}
+                {parsedThoughtReply ? (
+                    <div className="quoted-message">
+                        <div className="quoted-message-header" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.9rem' }}>💭</span>
+                            {isMe ? 'Replied to thought' : `${partner.username || partner.full_name}'s thought`}
+                        </div>
+                        <div className="quoted-message-content">
+                            {parsedThoughtReply.thought}
+                        </div>
+                    </div>
+                ) : msg.reply_to ? (
                     <div 
                         className="quoted-message clickable" 
                         onClick={(e) => {
@@ -243,7 +271,7 @@ const MessageBubble = ({
                              msg.reply_to.content?.length > 50 ? msg.reply_to.content.substring(0, 50) + '...' : msg.reply_to.content}
                         </div>
                     </div>
-                )}
+                ) : null}
 
                 {isImage || isVideoMsg ? (
                     <div className="msg-image-container" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -251,8 +279,10 @@ const MessageBubble = ({
                             <video 
                                 src={imageUrl} 
                                 controls 
+                                playsInline
                                 className="sent-video" 
-                                style={{ borderRadius: '8px', marginBottom: msg.content && msg.content !== '🎥 Video' && msg.content !== '📷 Photo' ? '6px' : '0', maxWidth: '100%', maxHeight: '300px' }}
+                                onClick={() => onViewImage(imageUrl)}
+                                style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '🎥 Video' && msg.content !== '📷 Photo' ? '6px' : '0', maxWidth: '100%', maxHeight: '300px' }}
                             />
                         ) : (
                             <img 
@@ -264,7 +294,9 @@ const MessageBubble = ({
                             />
                         )}
                         {msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' && (
-                            <span className="msg-text" style={{ padding: '0 4px', wordBreak: 'break-word' }}>{msg.content}</span>
+                            <span className="msg-text" style={{ padding: '0 4px', wordBreak: 'break-word' }}>
+                                {parsedThoughtReply ? parsedThoughtReply.reply : msg.content}
+                            </span>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', padding: '4px 4px 0 0', marginTop: '2px' }}>
                             <span className="msg-time-inline" style={{ margin: 0, fontSize: '0.7em', opacity: 0.7 }}>{formatTime(msg.created_at)}</span>
@@ -357,7 +389,7 @@ const MessageBubble = ({
                     </div>
                 ) : (
                     <div className="msg-text-container">
-                        <span className="msg-text">{msg.content}</span>
+                        <span className="msg-text">{parsedThoughtReply ? parsedThoughtReply.reply : msg.content}</span>
                         <span className="msg-time-inline">{formatTime(msg.created_at)}</span>
                         <MessageStatusTick 
                             status={deliveryStatus} 

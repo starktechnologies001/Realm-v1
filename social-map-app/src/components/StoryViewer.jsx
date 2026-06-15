@@ -3,6 +3,14 @@ import { supabase } from '../supabaseClient';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
 import Toast from './Toast';
 
+const isVideo = (url) => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'quicktime'];
+    const ext = cleanUrl.split('.').pop().toLowerCase();
+    return videoExtensions.includes(ext);
+};
+
 export default function StoryViewer({ 
     userStories, // { user: {}, stories: [], latest: '' }
     currentUser, 
@@ -24,6 +32,8 @@ export default function StoryViewer({
     const [editCaption, setEditCaption] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [showOptions, setShowOptions] = useState(false);
+    
+    const videoRef = useRef(null);
 
     // Derived state
     const stories = userStories?.stories || [];
@@ -85,24 +95,51 @@ export default function StoryViewer({
         setProgress(0);
         startTimeRef.current = Date.now();
         
+        // Reset video time & check state
+        if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+            if (!isPaused && !showViewersList && !showOptions) {
+                videoRef.current.play().catch(err => console.log("Video restart failed:", err));
+            }
+        }
     }, [currentStory, isOwner, currentUser.id]);
 
-    // Timer Logic
+    // Timer & Video Play/Pause Logic
     useEffect(() => {
-        if (!currentStory || isPaused || showViewersList || showOptions) return;
+        if (!currentStory) return;
 
-        const interval = setInterval(() => {
-            const elapsed = Date.now() - startTimeRef.current;
-            const percentage = Math.min((elapsed / STORY_DURATION) * 100, 100);
-            
-            setProgress(percentage);
-
-            if (elapsed >= STORY_DURATION) {
-                handleNext();
+        // Sync HTML5 video play/pause
+        if (videoRef.current) {
+            if (isPaused || showViewersList || showOptions) {
+                videoRef.current.pause();
+            } else {
+                videoRef.current.play().catch(err => console.log("Video autoplay failed:", err));
             }
-        }, 50); // Fluid update
+        }
 
-        return () => clearInterval(interval);
+        if (isPaused || showViewersList || showOptions) return;
+
+        if (isVideo(currentStory.media_url)) {
+            const interval = setInterval(() => {
+                const video = videoRef.current;
+                if (video && video.duration) {
+                    const percentage = (video.currentTime / video.duration) * 100;
+                    setProgress(percentage);
+                }
+            }, 50);
+            return () => clearInterval(interval);
+        } else {
+            const interval = setInterval(() => {
+                const elapsed = Date.now() - startTimeRef.current;
+                const percentage = Math.min((elapsed / STORY_DURATION) * 100, 100);
+                setProgress(percentage);
+
+                if (elapsed >= STORY_DURATION) {
+                    handleNext();
+                }
+            }, 50);
+            return () => clearInterval(interval);
+        }
     }, [currentStory, currentIndex, isPaused, showViewersList, showOptions]);
 
     const handleNext = () => {
@@ -236,9 +273,7 @@ export default function StoryViewer({
                 </div>
 
                 {/* Header */}
-                <div className="story-header" style={{
-                    paddingTop: '60px' // Avoid notch overlap
-                }}>
+                <div className="story-header">
                     <div className="user-info">
                         <img src={getAvatarHeadshot(displayAvatar, displayUsername)} alt="Avatar" />
                         <div className="meta">
@@ -300,7 +335,20 @@ export default function StoryViewer({
                 </div>
                 
                 {/* Main Media */}
-                <img src={currentStory.media_url} className="story-image" alt="Story" />
+                {isVideo(currentStory.media_url) ? (
+                    <video 
+                        ref={videoRef}
+                        src={currentStory.media_url} 
+                        className="story-image" 
+                        playsInline
+                        autoPlay
+                        muted={false}
+                        onEnded={handleNext}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+                    />
+                ) : (
+                    <img src={currentStory.media_url} className="story-image" alt="Story" />
+                )}
                 
                 {/* Caption or Edit Input */}
                 {isEditing ? (
@@ -322,19 +370,15 @@ export default function StoryViewer({
                     currentStory.caption && <div className="story-caption">{currentStory.caption}</div>
                 )}
 
-                {/* Footer: Reply or Views */}
-                <div className="story-footer" 
-                    onClick={e => e.stopPropagation()}
-                    onMouseDown={e => e.stopPropagation()}
-                    onMouseUp={e => e.stopPropagation()}
-                    onTouchStart={e => e.stopPropagation()}
-                    onTouchEnd={e => e.stopPropagation()}
-                >
-                    {isOwner ? (
-                        <div className="viewers-list-snippet" onClick={() => setShowViewersList(true)}>
-                            <span className="eye-icon">👁️</span> {viewers.length} views
-                        </div>
-                    ) : (
+                {/* Footer: Reply (only if not owner) */}
+                {!isOwner && (
+                    <div className="story-footer" 
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        onMouseUp={e => e.stopPropagation()}
+                        onTouchStart={e => e.stopPropagation()}
+                        onTouchEnd={e => e.stopPropagation()}
+                    >
                         <form className="reply-form" onSubmit={handleReply}>
                             <input 
                                 type="text" 
@@ -353,8 +397,21 @@ export default function StoryViewer({
                                 {isSending ? '...' : 'Send'}
                             </button>
                         </form>
-                    )}
-                </div>
+                    </div>
+                )}
+
+                {/* Views snippet in bottom left (only if owner) */}
+                {isOwner && (
+                    <div 
+                        className="viewers-list-snippet" 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowViewersList(true);
+                        }}
+                    >
+                        <span className="eye-icon">👁️</span> {viewers.length} views
+                    </div>
+                )}
             </div>
 
             {/* Viewers List Modal */}
@@ -401,8 +458,9 @@ export default function StoryViewer({
                     max-width: 440px;
                     display: flex;
                     flex-direction: column;
-                    border-radius: 20px;
+                    background: #000;
                     overflow: hidden;
+                    border-radius: 20px;
                     box-shadow: 0 10px 40px rgba(0,0,0,0.5);
                 }
                 .nav-zone {
@@ -439,9 +497,10 @@ export default function StoryViewer({
                     top: 0; left: 0;
                     width: 100%;
                     height: 100%;
-                    object-fit: cover;
+                    object-fit: contain;
                     object-position: center;
                     z-index: 0;
+                    background: #000;
                 }
 
                 .story-header {
@@ -449,10 +508,10 @@ export default function StoryViewer({
                     top: 0; left: 0; right: 0;
                     display: flex;
                     justify-content: space-between;
-                    align-items: flex-start; /* Align for top padding */
+                    align-items: center;
                     z-index: 20;
                     background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, transparent 100%);
-                    padding: 24px 16px 40px;
+                    padding: 16px 16px 30px;
                 }
                 
                 .user-info {
@@ -568,7 +627,7 @@ export default function StoryViewer({
                 .story-footer {
                     position: absolute;
                     bottom: 0; left: 0; right: 0;
-                    padding: 20px 16px 24px;
+                    padding: 16px 16px 20px;
                     background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
                     z-index: 20;
                     display: flex;
@@ -596,17 +655,20 @@ export default function StoryViewer({
 
                 .story-caption {
                     position: absolute;
-                    bottom: 100px; /* Above the footer */
-                    left: 20px; right: 20px;
+                    bottom: 80px; /* Above the footer / viewers list */
+                    left: 50%;
+                    transform: translateX(-50%);
                     z-index: 25;
                     color: white;
-                    font-size: 16px;
+                    font-size: 15px;
                     text-align: center;
-                    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-                    padding: 10px;
-                    background: rgba(0,0,0,0.4);
+                    padding: 8px 16px;
+                    background: rgba(0, 0, 0, 0.65);
                     border-radius: 12px;
-                    backdrop-filter: blur(8px);
+                    max-width: 80%;
+                    box-sizing: border-box;
+                    backdrop-filter: blur(4px);
+                    -webkit-backdrop-filter: blur(4px);
                 }
                 
                 .caption-edit-input {
@@ -701,17 +763,27 @@ export default function StoryViewer({
                 }
 
                 .viewers-list-snippet {
+                    position: absolute;
+                    bottom: 20px;
+                    left: 20px;
+                    z-index: 30;
                     color: white; font-weight: 500; font-size: 14px;
                     display: flex; align-items: center; gap: 8px;
                     cursor: pointer;
-                    background: rgba(255, 255, 255, 0.1);
-                    padding: 10px 24px;
-                    border-radius: 30px;
-                    backdrop-filter: blur(12px);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    transition: background 0.2s;
+                    background: rgba(0, 0, 0, 0.55);
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                    border: 1px solid rgba(255,255,255,0.15);
+                    transition: all 0.2s ease;
                 }
-                .viewers-list-snippet:active { background: rgba(255, 255, 255, 0.2); }
+                .viewers-list-snippet:hover {
+                    background: rgba(0, 0, 0, 0.75);
+                }
+                .viewers-list-snippet:active {
+                    transform: scale(0.96);
+                }
 
                 .viewers-modal {
                     position: absolute;

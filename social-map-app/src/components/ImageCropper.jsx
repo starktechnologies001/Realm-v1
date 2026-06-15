@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import Cropper from 'react-easy-crop';
 import getCroppedImg from '../utils/cropUtils';
 
-const ImageCropper = ({ imageSrc, onCropComplete, onCancel, zIndex = 1000 }) => {
+const ImageCropper = ({ imageSrc, onCropComplete, onCancel, zIndex = 1000, cropShape = "round", aspect = 1 }) => {
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
@@ -84,11 +84,11 @@ const ImageCropper = ({ imageSrc, onCropComplete, onCancel, zIndex = 1000 }) => 
                         image={imageSrc}
                         crop={crop}
                         zoom={zoom}
-                        aspect={1}
+                        aspect={aspect}
                         onCropChange={onCropChange}
                         onCropComplete={onCropCompleteHandler}
                         onZoomChange={onZoomChange}
-                        cropShape="round" 
+                        cropShape={cropShape} 
                         showGrid={false}
                     />
                 </div>

@@ -91,6 +91,46 @@ export function LocationProvider({ children }) {
       return;
     }
 
+    // If tracking is already active and we have a location, just update visibility settings in the background
+    // without triggering a slow GPS lookup or showing the loading spinner.
+    if (locationEnabled && userLocation) {
+      localStorage.removeItem("manualLocationDisable");
+      
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+            let currentMode = data?.visibility_mode || 'public';
+            if (forcePublic && currentMode === 'ghost') {
+                currentMode = 'public';
+            }
+            const isGhost = currentMode === 'ghost';
+            
+            const fLoc = getCachedFuzzyLocation(userLocation, isStationaryRef.current, stationarySinceRef.current);
+            
+            supabase.from("profiles").update({
+              latitude: fLoc.latitude,
+              longitude: fLoc.longitude,
+              last_location: fLoc.last_location,
+              is_location_on: !isGhost,
+              is_ghost_mode: isGhost,
+              visibility_mode: currentMode,
+              activity_status: isGhost ? 'offline' : 'live',
+              last_seen: new Date().toISOString(),
+              is_stationary: isStationaryRef.current,
+              stationary_since: stationarySinceRef.current
+            }).eq("id", session.user.id).then(({ error }) => {
+              if (error) console.error("Location sync error in background:", error);
+            });
+          });
+        }
+      }).catch(err => console.warn("Session error during background location start:", err));
+
+      if (!watchIdRef.current) {
+          startWatching();
+      }
+      return;
+    }
+
     setLoadingLocation(true);
 
     // ✅ Clear manual disable flag since the user explicitly wants to turn it ON

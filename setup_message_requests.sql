@@ -35,9 +35,10 @@ CREATE POLICY "Receivers can update request status"
     WITH CHECK (auth.uid() = receiver_id);
 
 DROP POLICY IF EXISTS "Senders can delete their own pending requests" ON public.message_requests;
-CREATE POLICY "Senders can delete their own pending requests"
+DROP POLICY IF EXISTS "Senders and receivers can delete requests" ON public.message_requests;
+CREATE POLICY "Senders and receivers can delete requests"
     ON public.message_requests FOR DELETE
-    USING (auth.uid() = sender_id AND status = 'pending');
+    USING ((auth.uid() = sender_id AND status = 'pending') OR auth.uid() = receiver_id);
 
 -- RPC to accept a message request
 CREATE OR REPLACE FUNCTION accept_message_request(p_request_id UUID)

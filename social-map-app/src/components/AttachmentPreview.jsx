@@ -1,9 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatFileSize } from '../utils/fileUpload';
 import './AttachmentPreview.css';
 
 const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }) => {
     const [caption, setCaption] = useState('');
+    const [previewUrls, setPreviewUrls] = useState({});
+
+    useEffect(() => {
+        const urls = {};
+        files.forEach((file, index) => {
+            if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                urls[index] = URL.createObjectURL(file);
+            }
+        });
+        setPreviewUrls(urls);
+
+        return () => {
+            Object.values(urls).forEach(url => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch (e) {
+                    console.error("Error revoking URL:", e);
+                }
+            });
+        };
+    }, [files]);
 
     if (!files || files.length === 0) return null;
 
@@ -20,18 +41,28 @@ const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }
                 <div className="preview-gallery-container">
                     {files.map((file, index) => {
                         const isImage = file.type.startsWith('image/');
-                        const previewUrl = isImage ? URL.createObjectURL(file) : null;
+                        const isVideo = file.type.startsWith('video/');
+                        const previewUrl = previewUrls[index];
                         
                         return (
                             <div key={index} className={`preview-thumbnail-wrapper ${isMultiple ? 'multiple' : ''}`}>
-                                {isImage ? (
+                                {isImage && previewUrl ? (
                                     <img 
                                         src={previewUrl} 
                                         alt={`Preview ${index + 1}`}
                                     />
+                                ) : isVideo && previewUrl ? (
+                                    <video
+                                        src={previewUrl}
+                                        muted
+                                        playsInline
+                                        autoPlay
+                                        loop
+                                        style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', objectFit: 'contain' }}
+                                    />
                                 ) : (
                                     <div className="preview-file-icon-large">
-                                        {file.type.startsWith('video/') ? '🎥' : '📄'}
+                                        📄
                                         <div className="file-name-large">{file.name}</div>
                                         <div className="file-size-large">{formatFileSize(file.size)}</div>
                                     </div>

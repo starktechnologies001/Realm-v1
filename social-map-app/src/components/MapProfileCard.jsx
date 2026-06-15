@@ -121,9 +121,16 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                 .limit(1)
                 .maybeSingle();
 
+            const { count: messageCount } = await supabase
+                .from('messages')
+                .select('id', { count: 'exact', head: true })
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`);
+            
+            const hasChatted = (messageCount || 0) > 0;
+
             const isFriend = user.friendshipStatus === 'accepted';
             const requestAccepted = existingRequest?.status === 'accepted';
-            const canChat = isFriend || requestAccepted;
+            const canChat = isFriend || requestAccepted || hasChatted;
 
             if (canChat) {
                 // Insert into messages
