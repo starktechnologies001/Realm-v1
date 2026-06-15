@@ -232,6 +232,8 @@ const S = {
   logoImg: {
     width: 52, height: 52, objectFit: 'contain',
     filter: 'drop-shadow(0 2px 8px rgba(139,92,246,0.22))',
+    clipPath: 'inset(0 0 13% 0)',
+    transform: 'translateY(3px)',
   },
   appName: {
     fontSize: '2.4rem', fontWeight: 900,

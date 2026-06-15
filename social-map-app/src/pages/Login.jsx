@@ -1010,7 +1010,7 @@ export default function Login() {
           display: block;
           object-fit: contain;
           filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.05));
-          clip-path: inset(0 0 8% 0);
+          clip-path: inset(0 0 13% 0);
         }
 
         .app-subtitle {
@@ -1094,8 +1094,8 @@ export default function Login() {
 
         .login-container input:focus,
         .login-container select:focus {
-          border-color: #00C6FF !important;
-          box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15) !important;
+          border-color: #8B5CF6 !important;
+          box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15) !important;
         }
 
         .btn-primary {
@@ -1330,7 +1330,7 @@ export default function Login() {
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .glass-select option { background: #ffffff; color: #111827; }
-        .glass-select:focus { border-color: #00C6FF; box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15); }
+        .glass-select:focus { border-color: #8B5CF6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
         .select-arrow {
           position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
           color: #9CA3AF; pointer-events: none; font-size: 0.8rem;
@@ -1360,7 +1360,7 @@ export default function Login() {
           font-weight: 500;
           outline: none;
         }
-        .glass-input-small:focus { border-color: #00C6FF; box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15); }
+        .glass-input-small:focus { border-color: #8B5CF6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
         .btn-primary-small { 
           background: var(--brand-gradient);
           color: white;
@@ -1406,7 +1406,7 @@ export default function Login() {
           text-align: center; letter-spacing: 2px; font-family: inherit; font-weight: 600;
           transition: all 0.25s ease;
         }
-        .modal-content input:focus { border-color: #00C6FF; outline: none; box-shadow: 0 0 0 4px rgba(0, 198, 255, 0.15); }
+        .modal-content input:focus { border-color: #8B5CF6; outline: none; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
         .modal-footer { display: flex; gap: 12px; }
         .btn-sec, .btn-pri {
           flex: 1; padding: 16px; border-radius: 16px; border: none;

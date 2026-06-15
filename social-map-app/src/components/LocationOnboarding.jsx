@@ -51,16 +51,16 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                     style={{
                         height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 2px',
                         filter: 'drop-shadow(0 6px 16px rgba(255,106,0,0.18))',
-                        clipPath: 'inset(0 0 8% 0)',
+                        clipPath: 'inset(0 0 13% 0)',
                     }}
                 />
                 <h1 style={{
                     margin: 0,
-                    fontSize: 18,
-                    fontWeight: 700,
-                    letterSpacing: '-0.3px',
-                    lineHeight: 1.3,
-                    color: dark ? '#f1f1f3' : '#1a1a2e',
+                    fontSize: 19,
+                    fontWeight: 800,
+                    letterSpacing: '-0.4px',
+                    lineHeight: 1.25,
+                    color: dark ? '#ffffff' : '#1e1b4b',
                     padding: '0 32px',
                 }}>
                     Discover people around you
@@ -96,31 +96,47 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                 {/* Floating badges */}
                 <div style={{
                     position: 'absolute', top: '8%', left: '8%',
-                    width: 38, height: 38, borderRadius: '50%', fontSize: 18,
+                    width: 38, height: 38, borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: dark ? 'rgba(30,28,40,0.9)' : 'rgba(255,255,255,0.95)',
-                    border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.05)',
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
+                    background: dark ? 'rgba(120,80,255,0.15)' : 'rgba(255,255,255,0.85)',
+                    border: dark ? '1px solid rgba(120,80,255,0.3)' : '1px solid rgba(120,80,255,0.15)',
+                    boxShadow: dark ? '0 8px 24px rgba(120,80,255,0.2)' : '0 8px 20px rgba(120,80,255,0.08)',
+                    backdropFilter: 'blur(10px)',
                     animation: 'floatBadge1 4s ease-in-out infinite',
-                }}>💬</div>
+                }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={dark ? '#D6C7FF' : '#7850FF'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </div>
                 <div style={{
                     position: 'absolute', bottom: '5%', right: '8%',
-                    width: 38, height: 38, borderRadius: '50%', fontSize: 18,
+                    width: 38, height: 38, borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: dark ? 'rgba(30,28,40,0.9)' : 'rgba(255,255,255,0.95)',
-                    border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.05)',
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
+                    background: dark ? 'rgba(255,45,85,0.15)' : 'rgba(255,255,255,0.85)',
+                    border: dark ? '1px solid rgba(255,45,85,0.3)' : '1px solid rgba(255,45,85,0.15)',
+                    boxShadow: dark ? '0 8px 24px rgba(255,45,85,0.2)' : '0 8px 20px rgba(255,45,85,0.08)',
+                    backdropFilter: 'blur(10px)',
                     animation: 'floatBadge2 4.5s ease-in-out infinite',
-                }}>💖</div>
+                }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={dark ? '#FFB2C1' : '#FF2D55'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </div>
                 <div style={{
                     position: 'absolute', top: '12%', right: '6%',
-                    width: 38, height: 38, borderRadius: '50%', fontSize: 18,
+                    width: 38, height: 38, borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: dark ? 'rgba(30,28,40,0.9)' : 'rgba(255,255,255,0.95)',
-                    border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.05)',
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
+                    background: dark ? 'rgba(255,150,0,0.15)' : 'rgba(255,255,255,0.85)',
+                    border: dark ? '1px solid rgba(255,150,0,0.3)' : '1px solid rgba(255,150,0,0.15)',
+                    boxShadow: dark ? '0 8px 24px rgba(255,150,0,0.2)' : '0 8px 20px rgba(255,150,0,0.08)',
+                    backdropFilter: 'blur(10px)',
                     animation: 'floatBadge3 3.8s ease-in-out infinite',
-                }}>📍</div>
+                }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={dark ? '#FFC485' : '#FF9500'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                </div>
 
                 {/* Glow behind illustration */}
                 <div style={{
@@ -158,44 +174,57 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             }}>
                 {[
                     {
-                        emoji: '📍',
+                        icon: (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={dark ? '#FF9500' : '#FF6A00'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        ),
                         title: 'Real-time Connections',
-                        desc: 'See who is active near you and connect instantly.',
-                        color: 'rgba(255,106,0,0.1)',
+                        desc: 'Find people close by and connect instantly.',
+                        bgColor: dark ? 'rgba(255,106,0,0.15)' : 'rgba(255,106,0,0.08)',
                     },
                     {
-                        emoji: '🔒',
+                        icon: (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={dark ? '#9D7BFF' : '#7850FF'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                        ),
                         title: 'Privacy by Design',
-                        desc: 'Toggle Ghost Mode or limit your visibility anytime.',
-                        color: 'rgba(120,80,255,0.1)',
+                        desc: 'Control your visibility settings anytime.',
+                        bgColor: dark ? 'rgba(120,80,255,0.15)' : 'rgba(120,80,255,0.08)',
                     },
                 ].map((item, i) => (
                     <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: 14,
                         padding: '12px 16px',
                         borderRadius: 18,
-                        backdropFilter: 'blur(16px)',
-                        WebkitBackdropFilter: 'blur(16px)',
-                        background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)',
-                        border: dark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.9)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+                        border: dark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(108,71,255,0.08)',
                         boxShadow: dark
                             ? '0 4px 20px rgba(0,0,0,0.2)'
-                            : '0 4px 20px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.03)',
+                            : '0 4px 20px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.02)',
                     }}>
                         <div style={{
                             width: 36, height: 36, borderRadius: 12, flexShrink: 0,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 17, background: item.color,
-                        }}>{item.emoji}</div>
+                            background: item.bgColor,
+                        }}>{item.icon}</div>
                         <div style={{ flex: 1 }}>
                             <div style={{
                                 fontSize: 13.5, fontWeight: 700,
-                                color: dark ? '#f3f3f5' : '#111827',
-                                letterSpacing: '-0.2px', marginBottom: 2,
+                                color: dark ? '#f3f3f5' : '#1e1b4b',
+                                letterSpacing: '-0.1px', margin: 0,
                             }}>{item.title}</div>
                             <div style={{
-                                fontSize: 11.5, lineHeight: 1.45,
-                                color: dark ? '#9ca3af' : '#6b7280',
+                                fontSize: 11.5,
+                                color: dark ? '#9CA3AF' : '#5c5a77',
+                                marginTop: 2,
+                                fontWeight: 500,
+                                lineHeight: 1.3,
                             }}>{item.desc}</div>
                         </div>
                     </div>
