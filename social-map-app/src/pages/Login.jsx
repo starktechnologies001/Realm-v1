@@ -984,7 +984,7 @@ export default function Login() {
           max-width: 420px;
           background: #ffffff;
           border-radius: 32px;
-          padding: 32px 24px 28px;
+          padding: 24px 24px 28px;
           box-shadow: 0 24px 48px rgba(0, 0, 0, 0.04), 0 8px 16px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
@@ -1000,22 +1000,23 @@ export default function Login() {
         }
 
         @media (max-width: 480px) {
-          .login-card { padding: 24px 20px 20px; border-radius: 28px; }
+          .login-card { padding: 18px 20px 20px; border-radius: 28px; }
         }
 
         .app-title-logo {
-          height: 60px;
+          height: 46px;
           width: auto;
-          margin: 0 auto 12px auto;
+          margin: 0 auto 8px auto;
           display: block;
           object-fit: contain;
           filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.05));
+          clip-path: inset(0 0 8% 0);
         }
 
         .app-subtitle {
           color: #111827;
-          font-size: 1rem;
-          margin: 0 0 16px 0;
+          font-size: 0.88rem;
+          margin: 0 0 12px 0;
           font-weight: 500;
           letter-spacing: -0.2px;
         }

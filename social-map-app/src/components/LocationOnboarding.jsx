@@ -21,7 +21,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             background: dark
                 ? 'linear-gradient(160deg, #0a0a0f 0%, #13111a 100%)'
                 : 'linear-gradient(160deg, #f9f7ff 0%, #f0eeff 50%, #e8f0fe 100%)',
-            padding: 'max(16px, env(safe-area-inset-top)) 0 16px',
+            padding: 'max(10px, env(safe-area-inset-top)) 0 10px',
         }}>
             {/* Ambient glows */}
             <div style={{
@@ -44,13 +44,14 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             }} />
 
             {/* ── TOP: Logo + Title ── */}
-            <div style={{ textAlign: 'center', width: '100%', paddingTop: 12, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ textAlign: 'center', width: '100%', paddingTop: 12, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <img
                     src={nearoLogo}
                     alt="Logo"
                     style={{
-                        height: 52, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 2px',
+                        height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 2px',
                         filter: 'drop-shadow(0 6px 16px rgba(255,106,0,0.18))',
+                        clipPath: 'inset(0 0 8% 0)',
                     }}
                 />
                 <h1 style={{
@@ -89,7 +90,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                 flex: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '100%', position: 'relative',
-                maxHeight: '28vh', minHeight: '140px',
+                maxHeight: '22vh', minHeight: '140px',
                 zIndex: 2,
             }}>
                 {/* Floating badges */}
@@ -135,6 +136,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
                     alt="Map illustration"
                     style={{
                         width: '75%', maxWidth: 260,
+                        maxHeight: '100%',
                         objectFit: 'contain',
                         filter: dark
                             ? 'drop-shadow(0 24px 48px rgba(0,0,0,0.5)) brightness(0.92)'
@@ -203,8 +205,8 @@ export default function LocationOnboarding({ onEnable, isDarkMode }) {
             {/* ── BOTTOM: CTA ── */}
             <div style={{
                 width: '100%', maxWidth: 400,
-                padding: '12px 20px',
-                paddingBottom: '16px',
+                padding: '8px 20px',
+                paddingBottom: '12px',
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 zIndex: 2,
             }}>
