@@ -7,7 +7,7 @@ import { useTheme } from '../context/ThemeContext';
 export default function EnableLocation() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { startLocation, devicePermissionGranted, loadingLocation } = useLocationContext();
+    const { startLocation, devicePermissionGranted, loadingLocation, locationEnabled } = useLocationContext();
     const { theme } = useTheme();
 
     const isDarkMode = theme === 'dark';
@@ -19,7 +19,7 @@ export default function EnableLocation() {
             const destination = location.state?.from?.pathname || '/map';
             navigate(destination, { replace: true });
         }
-    }, [devicePermissionGranted, location.state, navigate]);
+    }, [devicePermissionGranted, locationEnabled, loadingLocation, location.state, navigate]);
 
     const handleEnableLocation = () => {
         startLocation();

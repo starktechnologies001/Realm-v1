@@ -52,8 +52,9 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                         height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 12px',
                     }}
                 />
-                <h1 className="onboarding-title" style={{
+                <h1 style={{
                     margin: 0,
+                    fontSize: 14,
                     fontWeight: 800,
                     letterSpacing: '-0.4px',
                     lineHeight: 1.25,
