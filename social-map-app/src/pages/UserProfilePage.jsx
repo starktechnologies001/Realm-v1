@@ -191,7 +191,7 @@ export default function UserProfilePage() {
     const handleAction = async (action) => {
         if (!user || !currentUser) return;
         if (action === 'message') {
-            navigate('/chat', { state: { openChatWith: user } });
+            navigate('/chat', { state: { targetUser: user } });
         } else if (action === 'call-audio') {
             startCall(user, 'audio');
         } else if (action === 'call-video') {
@@ -266,7 +266,7 @@ export default function UserProfilePage() {
             <div style={{ ...styles.heroBanner, backgroundImage: `url(${displayAvatar})` }}>
                 <div style={styles.heroBannerOverlay} />
                 {/* Back Button float */}
-                <button style={styles.backBtnTop} onClick={() => navigate(-1)}>
+                <button className="back-btn-top" style={styles.backBtnTop} onClick={() => navigate(-1)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="15 18 9 12 15 6"/>
                     </svg>
@@ -309,16 +309,16 @@ export default function UserProfilePage() {
             {/* Stats */}
             {canSeeFullProfile && (
                 <div style={styles.statsRow}>
-                    <div style={styles.statCard}>
+                    <div className="stat-card" style={styles.statCard}>
                         <span style={styles.statVal}>{details.mutuals}</span>
                         <span style={styles.statLabel}>Mutuals</span>
                     </div>
-                    <div style={styles.statCard}>
+                    <div className="stat-card" style={styles.statCard}>
                         <span style={styles.statVal}>{joinedDate}</span>
                         <span style={styles.statLabel}>Joined</span>
                     </div>
                     {birthday && (
-                        <div style={styles.statCard}>
+                        <div className="stat-card" style={styles.statCard}>
                             <span style={styles.statVal}>🎂 {birthday}</span>
                             <span style={styles.statLabel}>Birthday</span>
                         </div>
@@ -331,7 +331,7 @@ export default function UserProfilePage() {
 
                 {/* Bio */}
                 {canSeeFullProfile && (
-                    <div style={styles.card}>
+                    <div className="card" style={styles.card}>
                         <span style={styles.cardLabel}>About</span>
                         <p style={styles.bioText}>{details.bio}</p>
                     </div>
@@ -339,7 +339,7 @@ export default function UserProfilePage() {
 
                 {/* Interests */}
                 {canSeeFullProfile && details.interests.length > 0 && (
-                    <div style={styles.card}>
+                    <div className="card" style={styles.card}>
                         <span style={styles.cardLabel}>Interests</span>
                         <div style={styles.tagsRow}>
                             {details.interests.map((tag, i) => (
@@ -356,21 +356,21 @@ export default function UserProfilePage() {
                     {isFriend ? (
                         <div style={styles.actionRow}>
                             {/* Message — blue gradient */}
-                            <button style={styles.actionBtnMessage} onClick={() => handleAction('message')}>
+                            <button className="profile-action-btn" style={styles.actionBtnMessage} onClick={() => handleAction('message')}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                                     <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
                                 </svg>
                                 <span style={styles.actionLabel}>Message</span>
                             </button>
                             {/* Call — green */}
-                            <button style={styles.actionBtnCall} onClick={() => handleAction('call-audio')}>
+                            <button className="profile-action-btn" style={styles.actionBtnCall} onClick={() => handleAction('call-audio')}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                                     <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
                                 </svg>
                                 <span style={styles.actionLabel}>Call</span>
                             </button>
                             {/* Video — purple */}
-                            <button style={styles.actionBtnVideo} onClick={() => handleAction('call-video')}>
+                            <button className="profile-action-btn" style={styles.actionBtnVideo} onClick={() => handleAction('call-video')}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                                     <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
                                 </svg>
@@ -378,7 +378,7 @@ export default function UserProfilePage() {
                             </button>
                         </div>
                     ) : (
-                        <button style={styles.pokeBtn} onClick={() => handleAction('poke')}>
+                        <button className="poke-btn" style={styles.pokeBtn} onClick={() => handleAction('poke')}>
                             {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id
                                 ? <><span>⏳</span> Request Sent</>
                                 : <><span>👋</span> Add Friend</>}
@@ -390,7 +390,7 @@ export default function UserProfilePage() {
             <div style={styles.contentArea}>
                 {/* Shared Media */}
                 {isFriend && sharedMedia.length > 0 && (
-                    <div style={styles.card}>
+                    <div className="card" style={styles.card}>
                         <span style={styles.cardLabel}>Shared Media</span>
                         <div style={styles.mediaGrid}>
                             {sharedMedia.slice(0, 6).map((m, i) => (
@@ -407,19 +407,19 @@ export default function UserProfilePage() {
                     <div style={styles.footer}>
                         {isFriend && (
                             <>
-                                <button style={styles.dangerLink} onClick={() => handleAction('unfriend')}>
+                                <button className="danger-link" style={styles.dangerLink} onClick={() => handleAction('unfriend')}>
                                     <span style={{ marginRight: 5 }}>💔</span>
                                     Unfriend
                                 </button>
                                 <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 18 }}>|</span>
                             </>
                         )}
-                        <button style={styles.dangerLink} onClick={() => handleAction('block')}>
+                        <button className="danger-link" style={styles.dangerLink} onClick={() => handleAction('block')}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                             Block User
                         </button>
                         <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 18 }}>|</span>
-                        <button style={styles.dangerLink} onClick={() => handleAction('report')}>
+                        <button className="danger-link" style={styles.dangerLink} onClick={() => handleAction('report')}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                             Report User
                         </button>
@@ -437,6 +437,76 @@ export default function UserProfilePage() {
             <style>{`
                 @keyframes spin { to { transform: rotate(360deg); } }
                 @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+                
+                /* Premium iOS-style transitions and hover animations */
+                .profile-action-btn {
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                .profile-action-btn:hover {
+                    background: rgba(255, 255, 255, 0.12) !important;
+                    border-color: rgba(255, 255, 255, 0.2) !important;
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+                }
+                .profile-action-btn:active {
+                    transform: translateY(0) scale(0.96);
+                }
+
+                .back-btn-top {
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                .back-btn-top:hover {
+                    background: rgba(255, 255, 255, 0.15) !important;
+                    border-color: rgba(255, 255, 255, 0.25) !important;
+                    transform: scale(1.08);
+                }
+                .back-btn-top:active {
+                    transform: scale(0.95);
+                }
+
+                .stat-card {
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                .stat-card:hover {
+                    transform: translateY(-3px);
+                    background: rgba(255, 255, 255, 0.06) !important;
+                    border-color: rgba(255, 255, 255, 0.1) !important;
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+                }
+
+                .card {
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                .card:hover {
+                    transform: translateY(-2px);
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    border-color: rgba(255, 255, 255, 0.08) !important;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+                }
+
+                .poke-btn {
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                .poke-btn:hover {
+                    transform: translateY(-2px);
+                    filter: brightness(1.1);
+                    box-shadow: 0 10px 25px rgba(59, 130, 246, 0.45);
+                }
+                .poke-btn:active {
+                    transform: translateY(0) scale(0.97);
+                }
+
+                .danger-link {
+                    transition: all 0.2s ease !important;
+                }
+                .danger-link:hover {
+                    opacity: 1 !important;
+                    transform: translateY(-1px);
+                    filter: brightness(1.2);
+                }
+                .danger-link:active {
+                    transform: scale(0.96);
+                }
             `}</style>
         </div>
     );

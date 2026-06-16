@@ -249,6 +249,11 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                 className="avatar-large"
                                 style={{ filter: 'none', pointerEvents: 'none' }} 
                             />
+                            {distanceStr && (
+                                <div className="avatar-distance-badge">
+                                    📍 {distanceStr}
+                                </div>
+                            )}
 
 
                             {/* Context Menu Popup (Anchored to Avatar) */}
@@ -297,7 +302,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                         <div className="user-info-area">
                             <h2 style={{ cursor: 'default' }}>
-                                {user.username || user.name} 
+                                <span className="username-text">{user.username || user.name}</span>
                                 {user.email_verified && (
                                     <span className="verified-badge" title="Email Verified">
                                         ✔ Verified
@@ -434,7 +439,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                             <span className="label">Message</span>
                                         </button>
                                         <button 
-                                            className="action-btn secondary-action danger"
+                                            className="action-btn secondary-action unfriend-btn"
                                             onClick={() => onAction('unfriend', user)}
                                         >
                                             <span className="icon">💔</span>
@@ -495,17 +500,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                     <span className="icon">🚫</span>
                                     <span className="label">Block</span>
                                 </button>
-
-                                {distanceStr && (
-                                    <div
-                                        className="action-btn"
-                                        style={{ cursor: 'default', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.25)' }}
-                                    >
-                                        <span className="icon">📍</span>
-                                        <span className="label" style={{ color: '#FFD700', fontVariantNumeric: 'tabular-nums' }}>{distanceStr}</span>
-                                    </div>
-                                )}
-                            </>
+                             </>
                         )}
                     </div>
 
@@ -662,6 +657,24 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         box-shadow: none !important;
                     }
                     
+                    .avatar-distance-badge {
+                        position: absolute;
+                        bottom: -6px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background: rgba(255, 204, 0, 0.95);
+                        color: #000000;
+                        font-weight: 700;
+                        font-size: 10px;
+                        padding: 3px 8px;
+                        border-radius: 100px;
+                        white-space: nowrap;
+                        box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+                        z-index: 10;
+                        border: 1.5px solid #1e1e23;
+                        pointer-events: none;
+                    }
+                    
                     /* The Actual Ring - Pseudo Element */
                     .avatar-large-container::after {
                         content: '';
@@ -711,10 +724,26 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .status-dot.offline { background: #8e8e93; }
 
                     .user-info-area h2 {
-                        margin: 0; font-size: 1.5rem; color: #ffffff; font-weight: 700;
+                        margin: 0; font-size: 1.5rem;
                         display: flex; align-items: center; justify-content: center; gap: 6px;
                     }
-                    .user-info-area h2 span { color: rgba(255, 255, 255, 0.6); font-size: 1.2rem; }
+                    .username-text {
+                        font-weight: 800;
+                        letter-spacing: -0.025em;
+                        background: linear-gradient(135deg, #ffffff 40%, #00d4ff 100%);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                    }
+                    .verified-badge {
+                        background: rgba(0, 132, 255, 0.15);
+                        color: #0084ff;
+                        font-size: 0.75rem !important;
+                        padding: 3px 8px;
+                        border-radius: 100px;
+                        font-weight: 700;
+                        border: 1px solid rgba(0, 132, 255, 0.25);
+                        margin-left: 4px;
+                    }
 
                     .badges-row {
                         display: flex; justify-content: center; gap: 8px; margin-top: 24px;
@@ -810,16 +839,16 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         cursor: not-allowed;
                     }
 
-                    /* 4-Column Grid for Buttons */
+                    /* Flexible Grid for Buttons */
                     .action-grid {
-                        display: grid;
-                        grid-template-columns: repeat(4, 1fr);
+                        display: flex;
                         gap: 10px;
                         width: 100%;
                         margin-top: 8px;
                     }
 
                     .action-btn {
+                        flex: 1;
                         display: flex; flex-direction: column; align-items: center; justify-content: center;
                         aspect-ratio: 1;
                         border-radius: 20px;
@@ -860,6 +889,15 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         border-color: rgba(255, 59, 48, 0.25);
                         color: #ff453a;
                     }
+
+                    /* Unfriend - Warning Orange tint */
+                    .unfriend-btn {
+                        background: rgba(255, 159, 10, 0.12);
+                        border-color: rgba(255, 159, 10, 0.25);
+                        color: #ff9f0a;
+                    }
+                    .unfriend-btn .label { color: #ff9f0a; }
+                    .unfriend-btn .icon { color: #ff9f0a; }
                     .danger .label { color: #ff453a; }
                     .danger .icon { color: #ff453a; }
 

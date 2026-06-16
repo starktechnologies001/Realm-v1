@@ -671,7 +671,7 @@ export default function Chat() {
         initializePresence(user.id);
         
         // If navigated with a target user (from Map or Friends), open that chat immediately
-        const passedUser = location.state?.targetUser || location.state?.selectedUser;
+        const passedUser = location.state?.targetUser || location.state?.selectedUser || location.state?.openChatWith;
         if (passedUser) {
             setActiveChatUser(passedUser);
         }

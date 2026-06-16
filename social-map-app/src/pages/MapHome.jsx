@@ -89,7 +89,7 @@ const generateMockUsers = (centerLat, centerLng) => {
 };
 
 // Control to manually recenter map
-function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng }) {
+function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, onRecenter }) {
     const map = useMap();
     const controlRef = useRef(null);
 
@@ -111,31 +111,20 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng }
 
         if (!lat || !lng) return;
 
+        if (onRecenter) {
+            onRecenter(lat, lng);
+        }
+
         const currentCenter = map.getCenter();
         const targetLatLng = L.latLng(lat, lng);
         const distance = currentCenter.distanceTo(targetLatLng);
-        const currentZoom = map.getZoom();
 
-        if (currentZoom >= 18) {
-            // At high zooms, flyTo can act up or feel too slow.
-            // Just snap the view cleanly.
-            map.setView(targetLatLng, currentZoom, { animate: true });
-            return;
-        }
-
-        if (distance < 50) {
-            map.flyTo(targetLatLng, Math.max(17, currentZoom), { 
-                animate: true, 
-                duration: 0.8,
-                easeLinearity: 0.25
-            });
-        } else {
-            map.flyTo(targetLatLng, 17, { 
-                animate: true, 
-                duration: 1.8,
-                easeLinearity: 0.25
-            });
-        }
+        // Fly to zoom 17 to match the screenshot view
+        map.flyTo(targetLatLng, 17, { 
+            animate: true, 
+            duration: distance < 50 ? 0.8 : 1.5,
+            easeLinearity: 0.25
+        });
     };
 
     return (
@@ -415,6 +404,17 @@ export default function MapHome() {
     const [mapMode, setMapMode] = useState('street'); // 'street', 'hybrid', 'satellite'
     const [showMapViewMenu, setShowMapViewMenu] = useState(false);
 
+    // Circle center state initialized to last known location if available
+    const [circleCenter, setCircleCenter] = useState(() => {
+        try {
+            const stored = localStorage.getItem('lastKnownLocation');
+            const loc = stored ? JSON.parse(stored) : null;
+            return loc ? [loc.lat, loc.lng] : null;
+        } catch {
+            return null;
+        }
+    });
+
     // Theme & Location Context (Moved to top)
     const { theme } = useTheme();
     const { 
@@ -647,6 +647,10 @@ export default function MapHome() {
         animationRefs.current.set(id, requestAnimationFrame(animate));
     }, []);
 
+    const handleRecenterCallback = React.useCallback((lat, lng) => {
+        setCircleCenter([lat, lng]);
+    }, []);
+
     const [replyingToThought, setReplyingToThought] = useState(null); // { userId, thoughtText }
 
     // Global handler for replying to a thought directly from the map bubble
@@ -688,6 +692,9 @@ export default function MapHome() {
                     const newLat = pos.coords.latitude;
                     const newLng = pos.coords.longitude;
 
+                    // Update circle center state when new position is received
+                    setCircleCenter([newLat, newLng]);
+
                     // Only animate local marker if the user actually moved > 30 meters
                     const movedEnough = !lastAnimatedLat || getDistance(lastAnimatedLat, lastAnimatedLng, newLat, newLng) >= 30;
                     if (movedEnough) {
@@ -713,6 +720,13 @@ export default function MapHome() {
              }
         };
     }, [locationEnabled, currentUser, animateNativeMarker]);
+
+    // Sync circle center when userLocation updates from context
+    useEffect(() => {
+        if (userLocation?.lat && userLocation?.lng) {
+            setCircleCenter([userLocation.lat, userLocation.lng]);
+        }
+    }, [userLocation]);
 
     // Check Profile Completeness
     useEffect(() => {
@@ -3363,20 +3377,23 @@ export default function MapHome() {
                     currentUserId={currentUser?.id}
                     fallbackLat={userLocation?.lat}
                     fallbackLng={userLocation?.lng}
+                    onRecenter={handleRecenterCallback}
                 />
                 <UserSelectionController selectedUser={selectedUser} />
 
-                <Circle
-                    center={[userLocation.lat, userLocation.lng]}
-                    radius={300}
-                    pathOptions={{
-                        color: '#4285F4',
-                        fillColor: '#4285F4',
-                        fillOpacity: 0.1,
-                        weight: 1,
-                        dashArray: '5, 10'
-                    }}
-                />
+                {(circleCenter || (userLocation?.lat && userLocation?.lng)) && (
+                    <Circle
+                        center={circleCenter || [userLocation.lat, userLocation.lng]}
+                        radius={300}
+                        pathOptions={{
+                            color: '#3b82f6',
+                            fillColor: '#3b82f6',
+                            fillOpacity: 0.08,
+                            weight: 1.5,
+                            dashArray: '6, 6'
+                        }}
+                    />
+                )}
 
                 {/* 🔥 NATIVE MARKERS SYNC (No React Re-Renders for GPS Motion) */}
                 <NativeMarkerSync 
@@ -4314,7 +4331,7 @@ export default function MapHome() {
 
             <div className="map-ui-overlay">
                 <div className="stats-card">
-                    <span>All View</span>
+                    <span>{activeFilter === 'All' ? 'All View' : `${activeFilter} View`}</span>
                     <div className="stats-divider"></div>
                     <strong>{filteredUsers.length} Visible</strong>
                 </div>
@@ -4612,6 +4629,12 @@ export default function MapHome() {
                     opacity: 0.5;
                     filter: none !important;
                     -webkit-filter: none !important;
+                }
+
+                /* Self marker styling with a beautiful double border/outer ring */
+                .avatar-marker.self {
+                    border: 3.5px solid #FFFFFF !important;
+                    box-shadow: 0 0 0 3px #3b82f6, 0 4px 12px rgba(0,0,0,0.35) !important;
                 }
 
                 /* Catch-all: ensure Leaflet marker pane never dims avatars */
