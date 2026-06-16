@@ -8,6 +8,7 @@ import {
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
 import ImageCropper from '../components/ImageCropper';
+import nearoLogo from '../assets/logo.png';
 
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 
@@ -36,6 +37,8 @@ export default function OAuthProfileSetup() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
+  const [showWelcomePopup, setShowWelcomePopup] = useState(true);
+
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -43,6 +46,19 @@ export default function OAuthProfileSetup() {
       
       if (!user) {
         navigate('/login');
+        return;
+      }
+
+      // Check if user profile is already onboarded
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profile?.onboarding_completed) {
+        localStorage.removeItem('manualLocationDisable');
+        navigate('/enable-location', { replace: true });
         return;
       }
       
@@ -220,7 +236,8 @@ export default function OAuthProfileSetup() {
         interests: selectedInterests
       }));
 
-      navigate('/map');
+      localStorage.removeItem('manualLocationDisable');
+      navigate('/enable-location');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to save profile');
@@ -231,6 +248,24 @@ export default function OAuthProfileSetup() {
 
   return (
     <div className="oauth-setup-container">
+      {showWelcomePopup && (
+        <div className="welcome-popup-overlay">
+          <div className="welcome-popup-card">
+            <img src={nearoLogo} alt="Nearo Logo" style={{ height: '46px', width: 'auto', objectFit: 'contain', marginBottom: '20px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />
+            <h2 className="welcome-popup-title">Welcome to Nearo 🎉</h2>
+            <p className="welcome-popup-text">
+              Discover and connect with people around you. Complete your setup to enter the map.
+            </p>
+            <button 
+              type="button" 
+              className="welcome-popup-btn"
+              onClick={() => setShowWelcomePopup(false)}
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      )}
       <div className="oauth-setup-card">
         <h1 className="setup-title">Complete Your Profile</h1>
         <p className="setup-subtitle">Just a few more details to get started</p>
@@ -628,9 +663,94 @@ export default function OAuthProfileSetup() {
           opacity: 0.7;
           cursor: not-allowed;
         }
-      `}</style>
-      <style>{`
-        /* ... styles ... */
+
+        .welcome-popup-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(12px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeInWelcome 0.4s ease;
+          padding: 20px;
+        }
+
+        .welcome-popup-card {
+          width: 100%;
+          max-width: 400px;
+          background: #1c1c1e;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 24px;
+          padding: 40px 24px;
+          text-align: center;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          animation: scaleUpWelcome 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .welcome-popup-icon {
+          font-size: 4.5rem;
+          margin-bottom: 24px;
+          display: inline-block;
+          animation: bounceWelcome 2.5s infinite;
+        }
+
+        .welcome-popup-title {
+          font-size: 1.8rem;
+          font-weight: 800;
+          color: #fff;
+          margin: 0 0 12px 0;
+          letter-spacing: -0.5px;
+          background: linear-gradient(135deg, #fff 0%, #a78bfa 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-popup-text {
+          color: #a1a1aa;
+          font-size: 0.95rem;
+          line-height: 1.6;
+          margin: 0 0 32px 0;
+        }
+
+        .welcome-popup-btn {
+          width: 100%;
+          padding: 16px;
+          background: linear-gradient(135deg, #7c3aed 0%, #9061f9 100%);
+          border: none;
+          border-radius: 16px;
+          color: white;
+          font-size: 1rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .welcome-popup-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 32px rgba(124, 58, 237, 0.45), inset 0 2px 2px rgba(255, 255, 255, 0.28);
+        }
+
+        .welcome-popup-btn:active {
+          transform: scale(0.98);
+        }
+
+        @keyframes fadeInWelcome {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes scaleUpWelcome {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes bounceWelcome {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
       `}</style>
       
       {cropImage && (

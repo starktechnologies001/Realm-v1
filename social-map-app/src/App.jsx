@@ -55,6 +55,8 @@ const Landing = lazyWithRetry(() => import('./pages/Landing'));
 const Welcome = lazyWithRetry(() => import('./pages/Welcome'));
 const VisibilitySettings = lazyWithRetry(() => import('./pages/VisibilitySettings'));
 const MessageRequestsPage = lazyWithRetry(() => import('./components/MessageRequestsPage'));
+const EnableLocation = lazyWithRetry(() => import('./pages/EnableLocation'));
+import LocationGuard from './components/LocationGuard';
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
@@ -146,9 +148,11 @@ function App() {
                 <Route element={<Layout />}>
                   {/* Map gets its own Suspense so Layout/BottomNav render instantly */}
                   <Route path="/map" element={
-                    <Suspense fallback={<MapSkeleton />}>
-                      <MapHome />
-                    </Suspense>
+                    <LocationGuard>
+                      <Suspense fallback={<MapSkeleton />}>
+                        <MapHome />
+                      </Suspense>
+                    </LocationGuard>
                   } />
                   <Route path="/friends" element={<Friends />} />
                   <Route path="/chat" element={<Chat />} />
@@ -157,6 +161,7 @@ function App() {
                   <Route path="/message-requests" element={<MessageRequestsPage />} />
                 </Route>
 
+                <Route path="/enable-location" element={<EnableLocation />} />
                 <Route path="/confirm-email" element={<ConfirmEmail />} />
                 <Route path="/update-password" element={<UpdatePassword />} />
                 <Route path="/oauth-profile-setup" element={<OAuthProfileSetup />} />

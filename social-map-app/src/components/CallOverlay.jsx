@@ -233,45 +233,69 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
 
                 // 4. Create Call (If Caller)
                 if (!callData.isIncoming) {
-                    setStatus('Calling...'); // Explicit feedback
+                    if (!mounted) return;
                     
-                    const { data: insertedCall, error: insertError } = await supabase.from('calls').insert({
-                        caller_id: currentUser.id,
-                        receiver_id: callData.partner.id,
-                        type: callData.type,
-                        status: 'pending',
-                        channel_name: channelName
-                    }).select().maybeSingle();
+                    // Check if there is already an active pending call row for this channel to prevent duplicates
+                    const { data: existingCall } = await supabase.from('calls')
+                        .select('*')
+                        .eq('channel_name', channelName)
+                        .eq('status', 'pending')
+                        .maybeSingle();
 
-                    if (insertedCall) {
-                        callDbId.current = insertedCall.id;
+                    if (!mounted) return;
 
-                        // RACE CONDITION FIX: 
-                        // If user clicked "Hang Up" while we were awaiting the insert, 
-                        // endCall() might have run but missed the row (since it didn't exist).
-                        // We must check if we are stopping, and if so, cancel this new row immediately.
-                        if (isStoppingRef.current) {
-                            console.log("🛑 Call was cancelled during initialization. Marking as cancelled now.");
-                            await supabase.from('calls').update({ 
-                                status: 'cancelled',
-                                ended_at: new Date().toISOString(),
-                                duration_seconds: 0
-                            }).eq('id', insertedCall.id);
-                            return; // Stop init
-                        }
+                    if (existingCall) {
+                        console.log("🛡️ Found existing pending call, using it instead of inserting new one:", existingCall.id);
+                        callDbId.current = existingCall.id;
+                    } else {
+                        setStatus('Calling...'); // Explicit feedback
                         
-                        // Play outgoing ringtone for caller
-                        const ringtone = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869.wav');
-                        ringtone.loop = true;
-                        outgoingRingtoneRef.current = ringtone;
-                        // Store promise so we can await it before pausing (browser race fix)
-                        outgoingPlayPromiseRef.current = ringtone.play().catch(e => {
-                            console.log('Outgoing ringtone blocked:', e);
-                            outgoingPlayPromiseRef.current = null;
-                        });
+                        const { data: insertedCall, error: insertError } = await supabase.from('calls').insert({
+                            caller_id: currentUser.id,
+                            receiver_id: callData.partner.id,
+                            type: callData.type,
+                            status: 'pending',
+                            channel_name: channelName
+                        }).select().maybeSingle();
 
-                    } else if (insertError) {
-                        console.error("Error creating call row:", insertError);
+                        if (!mounted) {
+                            // If unmounted while inserting, clean up the row
+                            if (insertedCall) {
+                                await supabase.from('calls').update({ status: 'cancelled' }).eq('id', insertedCall.id);
+                            }
+                            return;
+                        }
+
+                        if (insertedCall) {
+                            callDbId.current = insertedCall.id;
+
+                            // RACE CONDITION FIX: 
+                            // If user clicked "Hang Up" while we were awaiting the insert, 
+                            // endCall() might have run but missed the row (since it didn't exist).
+                            // We must check if we are stopping, and if so, cancel this new row immediately.
+                            if (isStoppingRef.current) {
+                                console.log("🛑 Call was cancelled during initialization. Marking as cancelled now.");
+                                await supabase.from('calls').update({ 
+                                    status: 'cancelled',
+                                    ended_at: new Date().toISOString(),
+                                    duration_seconds: 0
+                                }).eq('id', insertedCall.id);
+                                return; // Stop init
+                            }
+                            
+                            // Play outgoing ringtone for caller
+                            const ringtone = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869.wav');
+                            ringtone.loop = true;
+                            outgoingRingtoneRef.current = ringtone;
+                            // Store promise so we can await it before pausing (browser race fix)
+                            outgoingPlayPromiseRef.current = ringtone.play().catch(e => {
+                                console.log('Outgoing ringtone blocked:', e);
+                                outgoingPlayPromiseRef.current = null;
+                            });
+
+                        } else if (insertError) {
+                            console.error("Error creating call row:", insertError);
+                        }
                     }
                 } else {
                     if (callData.id) callDbId.current = callData.id;
@@ -296,11 +320,6 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 // Only publish video if track exists AND it is enabled (not strictly required as track can be disabled later, but good practice)
                 if (localVideoTrackRef.current) tracksToPublish.push(localVideoTrackRef.current);
                 
-                if (tracksToPublish.length > 0) {
-                    await client.publish(tracksToPublish);
-                    console.log('Published local tracks');
-                }
-
                 if (tracksToPublish.length > 0) {
                     await client.publish(tracksToPublish);
                     console.log('Published local tracks');
@@ -693,13 +712,26 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         user-select: none;
                     }
 
-                    .mini-video-container {
-                        width: 56px; height: 56px;
+                    .mini-faces-container {
+                        display: flex;
+                        gap: 6px;
+                        flex-shrink: 0;
+                    }
+
+                    .mini-face-box {
+                        width: 56px;
+                        height: 56px;
                         border-radius: 14px;
                         overflow: hidden;
-                        background: #000;
+                        background: #1a1a1c;
+                        position: relative;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                        border: 2px solid rgba(255, 255, 255, 0.15);
                         flex-shrink: 0;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    }
+
+                    .mini-face-box.self {
+                        border-color: rgba(52, 199, 89, 0.4);
                     }
                     
                     .mini-video-track {
@@ -709,23 +741,9 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         object-fit: cover !important;
                     }
 
-                    .mini-avatar-cover {
+                    .mini-avatar-img {
                         width: 100%; height: 100%; object-fit: cover;
                     }
-
-                    .mini-audio-avatars {
-                        display: flex; align-items: center;
-                        width: 56px; height: 56px;
-                        position: relative;
-                    }
-
-                    .mini-avatar-ring {
-                        width: 36px; height: 36px; border-radius: 50%;
-                        border: 2px solid #2c2c2e;
-                        position: absolute;
-                    }
-                    .mini-avatar-ring.partner { left: 0; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-                    .mini-avatar-ring.self { right: 0; z-index: 1; filter: brightness(0.8); }
 
                     .mini-info {
                         display: flex; flex-direction: column;
@@ -736,7 +754,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                     .mini-name {
                         color: white; font-weight: 600; font-size: 14px;
                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                        max-width: 100px;
+                        max-width: 120px;
                     }
 
                     .mini-timer {

@@ -3,12 +3,12 @@ import './LocationOnboarding.css';
 import locationIllustration from '../assets/location_onboarding.png';
 import nearoLogo from '../assets/logo.png';
 
-export default function LocationOnboarding({ onEnable, isDarkMode }) {
+export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = false }) {
     const dark = isDarkMode;
 
     return (
         <div style={{
-            height: 'calc(100dvh - 60px - env(safe-area-inset-bottom))',
+            height: fullHeight ? '100dvh' : 'calc(100dvh - 60px - env(safe-area-inset-bottom))',
             width: '100vw',
             display: 'flex',
             flexDirection: 'column',

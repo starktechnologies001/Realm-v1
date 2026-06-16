@@ -454,8 +454,6 @@ export default function Friends() {
                 )}
             </div>
 
-
-
             {/* Unfriend Confirmation Modal */}
             {showUnfriendModal && (
                 <div className="modal-overlay">
@@ -473,29 +471,29 @@ export default function Friends() {
             <style>{`
                 .modal-overlay {
                     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0,0,0,0.85);
-                    backdrop-filter: blur(12px);
-                    -webkit-backdrop-filter: blur(12px);
+                    background: rgba(0,0,0,0.45);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
                     display: flex; justify-content: center; align-items: center;
                     z-index: 2000;
                 }
                 .modal-content {
-                    background: linear-gradient(135deg, rgba(30, 30, 35, 0.98) 0%, rgba(20, 20, 25, 0.98) 100%);
+                    background: #ffffff;
                     padding: 32px 28px;
                     border-radius: 24px;
                     width: 90%; max-width: 400px; text-align: center;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 8px 20px rgba(0,0,0,0.4);
+                    border: 1px solid rgba(0,0,0,0.08);
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 8px 16px rgba(0, 0, 0, 0.05);
                 }
                 .modal-content h3 {
                     margin: 0 0 16px 0;
-                    color: white;
+                    color: #1d1d1f;
                     font-size: 1.5rem;
                     font-weight: 700;
                     letter-spacing: -0.02em;
                 }
                 .modal-content p {
-                    color: rgba(255,255,255,0.7);
+                    color: #515154;
                     font-size: 0.95rem;
                     margin-bottom: 28px;
                     line-height: 1.6;
@@ -512,21 +510,23 @@ export default function Friends() {
                     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
                 .btn-cancel {
-                    background: rgba(255,255,255,0.08);
-                    color: white;
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: #f5f5f7;
+                    color: #1d1d1f;
+                    border: 1px solid rgba(0,0,0,0.06);
                 }
                 .btn-cancel:hover {
-                    background: rgba(255,255,255,0.12);
+                    background: #e8e8ed;
+                    color: #000;
                     transform: translateY(-2px);
                 }
                 .btn-confirm.danger {
-                    background: linear-gradient(135deg, #ff453a 0%, #d32f2f 100%);
+                    background: #ff3b30;
                     color: white;
-                    box-shadow: 0 8px 20px rgba(255, 69, 58, 0.3);
+                    box-shadow: 0 8px 20px rgba(255, 59, 48, 0.2);
                 }
                 .btn-confirm.danger:hover {
-                    box-shadow: 0 12px 28px rgba(255, 69, 58, 0.4);
+                    background: #ff453a;
+                    box-shadow: 0 12px 28px rgba(255, 59, 48, 0.3);
                     transform: translateY(-2px);
                 }
                 .btn-cancel:active, .btn-confirm:active {

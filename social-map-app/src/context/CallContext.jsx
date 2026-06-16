@@ -36,6 +36,7 @@ export const CallProvider = ({ children }) => {
     const endCallSessionRef = useRef(null);
     const incomingCallIdRef = useRef(null); // Synchronous ID tracking for race conditions
     const ignorableCallIds = useRef(new Set()); // Tombstones for out-of-order events
+    const activeNotificationRef = useRef(null);
 
     useEffect(() => {
         incomingCallRef.current = incomingCall;
@@ -104,6 +105,30 @@ export const CallProvider = ({ children }) => {
         const interval = setInterval(checkExpiry, 60000);
         return () => clearInterval(interval);
     }, [currentUser?.mute_settings, currentUser?.id]);
+
+    const dismissCallNotifications = (channelName) => {
+        if (activeNotificationRef.current) {
+            try {
+                activeNotificationRef.current.close();
+            } catch (err) {
+                console.warn('Error closing local notification:', err);
+            }
+            activeNotificationRef.current = null;
+        }
+        if ('serviceWorker' in navigator && channelName) {
+            navigator.serviceWorker.ready.then(registration => {
+                registration.getNotifications({ tag: `call-${channelName}` }).then(notifications => {
+                    notifications.forEach(notification => {
+                        try {
+                            notification.close();
+                        } catch (err) {
+                            console.warn('Error closing SW notification:', err);
+                        }
+                    });
+                });
+            }).catch(err => console.log('Error closing SW notifications:', err));
+        }
+    };
 
     // Global Realtime Listeners (Filtered by ID for Robustness)
     useEffect(() => {
@@ -174,10 +199,18 @@ export const CallProvider = ({ children }) => {
                 await supabase.from('calls').update({ status: 'ringing' }).eq('id', callDataPayload.id);
                 
                 if (document.hidden && Notification.permission === 'granted') {
-                     new Notification('Incoming Call', { body: `${callerProfile.username} calling...` });
+                     const title = callerProfile.full_name || callerProfile.username || 'Incoming Call';
+                     const body = callDataPayload.type === 'video' ? '📹 Incoming Video Call' : '📞 Incoming Audio Call';
+                     const notification = new Notification(title, { 
+                         body: body,
+                         tag: `call-${callDataPayload.channel_name}`,
+                         icon: callerProfile.avatar_url || '/pwa-192x192.png'
+                     });
+                     activeNotificationRef.current = notification;
                 }
 
                 const timer = setTimeout(() => {
+                    dismissCallNotifications(callInfo.channel_name);
                     supabase.from('calls').update({ status: 'missed' }).eq('id', callInfo.id).then(() => {
                         setIncomingCall(null);
                         setToastMessage('Missed Call');
@@ -216,6 +249,9 @@ export const CallProvider = ({ children }) => {
                          if (currentIncoming && payload.new.id === currentIncoming) {
                              console.log(`🔕 Call ${payload.new.status} remotely. Dismissing popup.`);
                              if (autoDeclineTimerRef.current) clearTimeout(autoDeclineTimerRef.current);
+                             
+                             dismissCallNotifications(payload.new.channel_name);
+
                              incomingCallIdRef.current = null;
                              setIncomingCall(null);
                              
@@ -375,6 +411,7 @@ export const CallProvider = ({ children }) => {
             if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
             
             if (incomingCall) {
+                dismissCallNotifications(incomingCall.channel_name);
                 // Update status to active and set start time
                 await supabase.from('calls').update({ 
                     status: 'active',
@@ -401,6 +438,10 @@ export const CallProvider = ({ children }) => {
         try {
             if (autoDeclineTimer) clearTimeout(autoDeclineTimer);
             
+            if (incomingCall) {
+                dismissCallNotifications(incomingCall.channel_name);
+            }
+
             const idToReject = callId || (incomingCall ? incomingCall.id : null);
             const partnerId = incomingCall ? incomingCall.caller_id : null;
             const type = incomingCall ? incomingCall.type : 'audio';
@@ -442,6 +483,8 @@ export const CallProvider = ({ children }) => {
         processingAction.current = true;
         
         try {
+            dismissCallNotifications(incomingCall.channel_name);
+
             // 1. Find the Call Log to reply to (Visual Threading) with Retry
             console.log("🔍 [rejectWithMessage] Finding call log to reply to...");
             let replyToId = null;

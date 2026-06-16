@@ -845,13 +845,23 @@ export default function MapHome() {
                 // CASE 1: DELETE (Unfriend / Decline Request)
                 if (eventType === 'DELETE') {
                     const deletedId = oldRec.id;
-                    const partnerId = friendshipsRef.current.get(deletedId);
+                    let partnerId = friendshipsRef.current.get(deletedId);
+
+                    if (!partnerId && friendshipsMapRef.current) {
+                        for (const [pId, fData] of friendshipsMapRef.current.entries()) {
+                            if (fData.id === deletedId) {
+                                partnerId = pId;
+                                break;
+                            }
+                        }
+                    }
 
                     if (partnerId) {
                         friendshipsRef.current.delete(deletedId);
                         friendshipsMapRef.current.delete(partnerId);
                         // Reset status in UI and filter out if they have visibility_mode = 'friends' / 'friend'
                         setSelectedUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null, friendshipId: null, requesterId: null } : prev);
+                        setFullProfileUser(prev => prev && prev.id === partnerId ? { ...prev, friendshipStatus: null, friendshipId: null, requesterId: null } : prev);
                         setNearbyUsers(prev => prev
                             .map(u => u.id === partnerId ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u)
                             .filter(u => {
@@ -2263,6 +2273,86 @@ export default function MapHome() {
                 showToast("Failed to cancel request");
             }
         }
+        else if (action === 'unfriend') {
+            try {
+                if (window.confirm(`Are you sure you want to unfriend ${targetUser.name || targetUser.username}?`)) {
+                    let friendshipId = targetUser.friendshipId;
+                    if (!friendshipId && friendshipsMapRef.current) {
+                        const fData = friendshipsMapRef.current.get(targetUser.id);
+                        if (fData) {
+                            friendshipId = fData.id;
+                        }
+                    }
+                    if (!friendshipId) {
+                        const { data } = await supabase
+                            .from('friendships')
+                            .select('id')
+                            .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
+                            .eq('status', 'accepted')
+                            .maybeSingle();
+                        if (data) {
+                            friendshipId = data.id;
+                        }
+                    }
+
+                    if (friendshipId) {
+                        if (friendshipsRef.current) {
+                            friendshipsRef.current.delete(friendshipId);
+                        }
+                        if (friendshipsMapRef.current) {
+                            friendshipsMapRef.current.delete(targetUser.id);
+                        }
+                        const { error } = await supabase
+                            .from('friendships')
+                            .delete()
+                            .eq('id', friendshipId);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await supabase
+                            .from('friendships')
+                            .delete()
+                            .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+                        if (error) throw error;
+                    }
+
+                    // Also clear message requests
+                    await supabase
+                        .from('message_requests')
+                        .delete()
+                        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`);
+
+                    showToast(`💔 Unfriended ${targetUser.name || targetUser.username}`);
+
+                    // Update UI immediately (change status to Poke/null)
+                    setSelectedUser(prev => prev && prev.id === targetUser.id ? {
+                        ...prev,
+                        friendshipStatus: null,
+                        friendshipId: null,
+                        requesterId: null
+                    } : prev);
+
+                    setFullProfileUser(prev => prev && prev.id === targetUser.id ? {
+                        ...prev,
+                        friendshipStatus: null,
+                        friendshipId: null,
+                        requesterId: null
+                    } : prev);
+
+                    setNearbyUsers(prev => prev
+                        .map(u => u.id === targetUser.id ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u)
+                        .filter(u => {
+                            if (u.id === targetUser.id && (u.visibility_mode === 'friends' || u.visibility_mode === 'friend')) {
+                                    return false; // Remove if they are no longer friends
+                            }
+                            return true;
+                        })
+                    );
+                }
+            } catch (err) {
+                console.error('Unfriend error:', err);
+                showToast("Failed to unfriend");
+            }
+        }
         else if (action === 'block') {
             try {
                 // Insert into blocked_users table
@@ -2982,15 +3072,7 @@ export default function MapHome() {
         );
     }
 
-    // 2️⃣ Location disabled — permission screen
-    if (!locationEnabled) {
-        return (
-            <LocationOnboarding 
-                onEnable={startLocation} 
-                isDarkMode={isDarkMode} 
-            />
-        );
-    }
+    // Removed: Location disabled onboarding screen is now handled by Route Guard and dedicated EnableLocation page.
 
 
 

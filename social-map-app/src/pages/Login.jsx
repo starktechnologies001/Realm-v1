@@ -44,7 +44,7 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
-      const siteUrl = import.meta.env.VITE_SITE_URL;
+      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -52,7 +52,7 @@ export default function Login() {
             access_type: 'offline',
             prompt: 'consent',
           },
-          redirectTo: `${siteUrl}/map`
+          redirectTo: `${siteUrl}/oauth-profile-setup`
         }
       });
     } catch (err) {
@@ -84,10 +84,16 @@ export default function Login() {
 
     checkExistingSession();
 
+    // Trigger Google login automatically if redirected with social query param
+    const params = new URLSearchParams(location.search);
+    if (params.get('social') === 'google' && mounted) {
+      handleGoogleLogin();
+    }
+
     return () => {
       mounted = false;
     };
-  }, [navigate]);
+  }, [navigate, location.search]);
 
   const [error, setError] = useState('');
   const [messageType, setMessageType] = useState('error'); // 'error' | 'success'
@@ -429,6 +435,8 @@ export default function Login() {
               status: userMeta.status || 'Online',
               relationship_status: userMeta.relationship_status
             }));
+            localStorage.removeItem('manualLocationDisable');
+            navigate('/enable-location');
           } else {
             localStorage.setItem('currentUser', JSON.stringify({
               id: profile.id,
@@ -442,12 +450,12 @@ export default function Login() {
               interests: profile.interests
             }));
 
-            navigate('/map', { state: { preloadedAvatar: profile.avatar_url } });
+            localStorage.removeItem('manualLocationDisable');
+            navigate('/enable-location', { state: { preloadedAvatar: profile.avatar_url } });
 
             // Mark setup as complete since they are logging in with a valid profile
             localStorage.setItem('setup_complete', 'true');
           }
-          navigate('/map');
         }
       }
     } catch (err) {

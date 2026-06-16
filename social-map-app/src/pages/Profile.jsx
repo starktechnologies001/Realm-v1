@@ -835,14 +835,14 @@ export default function Profile() {
                             </div>
                             <h3>Go Public?</h3>
                         </div>
-                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                        <p style={{ color: 'rgba(0,0,0,0.6)', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
                             Everyone can see your profile and status.
                         </p>
                         <div className="modal-footer">
                             <button className="btn-sec" onClick={() => setShowPublicConfirm(false)}>Cancel</button>
                             <button className="btn-pri" onClick={async () => {
-                                await updateProfile({ is_public: true });
-                                setShowPublicConfirm(false);
+                                  await updateProfile({ is_public: true });
+                                  setShowPublicConfirm(false);
                             }}>Public</button>
                         </div>
                     </div>
@@ -854,7 +854,7 @@ export default function Profile() {
                 <div className="modal-backdrop" onClick={(e) => {
                     if (e.target === e.currentTarget) setActiveModal(null);
                 }}>
-                    <div className="modal-content">
+                    <div className={`modal-content ${(activeModal === 'delete' || activeModal === 'logout-confirm') ? 'modal-confirm-layout' : ''}`}>
                         {activeModal === 'edit-name' && (
                             <>
                                 <div className="modal-header">
@@ -962,7 +962,7 @@ export default function Profile() {
                         {activeModal === 'delete' && (
                             <>
                                 <div className="icon-warn">⚠️</div>
-                                <h3 style={{ color: 'white' }}>Delete Account?</h3>
+                                <h3>Delete Account?</h3>
                                 <p>This action is permanent and cannot be undone.</p>
                                 <div className="modal-footer">
                                     <button onClick={() => setActiveModal(null)} className="btn-sec">Keep</button>
@@ -973,7 +973,7 @@ export default function Profile() {
                         {activeModal === 'logout-confirm' && (
                             <>
                                 <div className="icon-warn">⚠️</div>
-                                <h3 style={{ color: 'white' }}>Log Out?</h3>
+                                <h3>Log Out?</h3>
                                 <p>Are you sure you want to log out?</p>
                                 <div className="modal-footer">
                                     <button onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
@@ -1044,26 +1044,15 @@ export default function Profile() {
                                         <select 
                                             name="relationship"
                                             defaultValue={user.relationship_status || ''}
-                                            style={{
-                                                width: '100%',
-                                                padding: '14px 40px 14px 14px',
-                                                borderRadius: '12px',
-                                                border: '1px solid rgba(255,255,255,0.1)',
-                                                background: 'rgba(0,0,0,0.3)',
-                                                color: 'white',
-                                                fontSize: '1rem',
-                                                appearance: 'none',
-                                                outline: 'none',
-                                                cursor: 'pointer'
-                                            }}
+                                            className="modal-select"
                                         >
-                                            <option value="" disabled style={{ color: 'rgba(255,255,255,0.5)' }}>Select Status</option>
-                                            <option value="Single" style={{ background: '#1c1c1e', color: 'white' }}>Single</option>
-                                            <option value="Committed" style={{ background: '#1c1c1e', color: 'white' }}>Committed</option>
-                                            <option value="Open to Date" style={{ background: '#1c1c1e', color: 'white' }}>Open to Date</option>
-                                            <option value="Married" style={{ background: '#1c1c1e', color: 'white' }}>Married</option>
+                                            <option value="" disabled>Select Status</option>
+                                            <option value="Single">Single</option>
+                                            <option value="Committed">Committed</option>
+                                            <option value="Open to Date">Open to Date</option>
+                                            <option value="Married">Married</option>
                                         </select>
-                                        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
+                                        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'rgba(0, 0, 0, 0.4)', fontSize: '0.8rem' }}>
                                             ▼
                                         </div>
                                     </div>
@@ -1124,9 +1113,9 @@ export default function Profile() {
                                                     position: 'absolute',
                                                     top: '12px',
                                                     right: '12px',
-                                                    background: 'rgba(255, 255, 255, 0.1)',
+                                                    background: 'rgba(0, 0, 0, 0.06)',
                                                     border: 'none',
-                                                    color: 'rgba(255, 255, 255, 0.6)',
+                                                    color: 'rgba(0, 0, 0, 0.4)',
                                                     width: '24px',
                                                     height: '24px',
                                                     borderRadius: '50%',
@@ -1138,12 +1127,12 @@ export default function Profile() {
                                                     padding: 0
                                                 }}
                                                 onMouseEnter={e => { 
-                                                    e.currentTarget.style.background = 'rgba(255, 69, 58, 0.2)';
-                                                    e.currentTarget.style.color = '#ff453a';
+                                                    e.currentTarget.style.background = 'rgba(255, 59, 48, 0.15)';
+                                                    e.currentTarget.style.color = '#ff3b30';
                                                 }}
                                                 onMouseLeave={e => { 
-                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                                    e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+                                                    e.currentTarget.style.background = 'rgba(0, 0, 0, 0.06)';
+                                                    e.currentTarget.style.color = 'rgba(0, 0, 0, 0.4)';
                                                 }}
                                                 onClick={(e) => {
                                                     const textarea = e.currentTarget.previousElementSibling;
@@ -1261,7 +1250,7 @@ export default function Profile() {
                                             type="date" 
                                             name="bday" 
                                             defaultValue={user.birth_date} 
-                                            style={{ colorScheme: 'dark' }} // Force dark calendar
+                                            style={{ colorScheme: 'light' }} // Force light calendar
                                             onClick={(e) => e.target.showPicker && e.target.showPicker()} // Force open
                                         />
                                     </div>
@@ -1336,14 +1325,14 @@ export default function Profile() {
                                     {/* Mute All Toggle */}
                                     <div className="menu-item" style={{ 
                                         padding: '12px 0', 
-                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                        borderBottom: '1px solid rgba(0,0,0,0.06)',
                                         background: 'transparent'
                                     }}>
                                         <div className="menu-content">
                                             <span className="menu-label" style={{ 
                                                 fontSize: '1rem', 
                                                 fontWeight: '600',
-                                                color: user.mute_settings?.mute_all ? '#FF453A' : 'white'
+                                                color: user.mute_settings?.mute_all ? '#ff3b30' : '#1d1d1f'
                                             }}>
                                                 Do Not Disturb
                                             </span>

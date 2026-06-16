@@ -33,6 +33,7 @@ const formatJoinDate = (dateStr) => {
 export default function UserProfileCard({ user, onClose, onAction, currentUser }) {
     if (!user) return null;
 
+    const isOwner = currentUser?.id === user?.id;
     const [sharedMedia, setSharedMedia] = React.useState([]);
     const [previewImage, setPreviewImage] = React.useState(null);
     const [details, setDetails] = React.useState({
@@ -296,41 +297,45 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     )}
 
                     {/* Actions */}
-                    <div className="action-buttons-container">
-                        {user.friendshipStatus === 'accepted' ? (
-                            <div className="action-row-icons">
-                                <button className="btn-icon-action primary" onClick={() => onAction('message', user)} title="Message">
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    {!isOwner && (
+                        <div className="action-buttons-container">
+                            {user.friendshipStatus === 'accepted' ? (
+                                <div className="action-row-icons">
+                                    <button className="btn-icon-action primary" onClick={() => onAction('message', user)} title="Message">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    </button>
+                                    <button className="btn-icon-action secondary" onClick={() => onAction('call-audio', user)} title="Voice Call">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                    </button>
+                                    <button className="btn-icon-action secondary" onClick={() => onAction('call-video', user)} title="Video Call">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                                    </button>
+                                </div>
+                            ) : (
+                                <button 
+                                    className={`btn-message-large ${user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? 'requested' : ''}`}
+                                    onClick={() => {
+                                        if (user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id) {
+                                            onAction('cancel-poke', user);
+                                        } else {
+                                            onAction('poke', user);
+                                        }
+                                    }}
+                                >
+                                    {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? '⏳ Requested' : '👋 Poke'}
                                 </button>
-                                <button className="btn-icon-action secondary" onClick={() => onAction('call-audio', user)} title="Voice Call">
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                </button>
-                                <button className="btn-icon-action secondary" onClick={() => onAction('call-video', user)} title="Video Call">
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                                </button>
-                            </div>
-                        ) : (
-                            <button 
-                                className={`btn-message-large ${user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? 'requested' : ''}`}
-                                onClick={() => {
-                                    if (user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id) {
-                                        onAction('cancel-poke', user);
-                                    } else {
-                                        onAction('poke', user);
-                                    }
-                                }}
-                            >
-                                {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? '⏳ Requested' : '👋 Poke'}
-                            </button>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Footer Actions */}
-                    <div className="footer-links">
-                        <button className="text-link danger" onClick={() => onAction('block', user)}>Block User</button>
-                        <span className="divider">•</span>
-                        <button className="text-link danger" onClick={() => onAction('report', user)}>Report User</button>
-                    </div>
+                    {!isOwner && (
+                        <div className="footer-links">
+                            <button className="text-link danger" onClick={() => onAction('block', user)}>Block User</button>
+                            <span className="divider">•</span>
+                            <button className="text-link danger" onClick={() => onAction('report', user)}>Report User</button>
+                        </div>
+                    )}
 
                 </motion.div>
 

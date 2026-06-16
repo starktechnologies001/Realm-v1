@@ -85,14 +85,14 @@ export default function UserProfilePage() {
             // 4. Friendship status
             const { data: friendship } = await supabase
                 .from('friendships')
-                .select('status, requester_id')
+                .select('id, status, requester_id')
                 .or(`and(requester_id.eq.${meId},receiver_id.eq.${userId}),and(requester_id.eq.${userId},receiver_id.eq.${meId})`)
                 .maybeSingle();
 
             const friendshipStatus = friendship?.status || 'none';
             const requesterId = friendship?.requester_id || null;
 
-            setUser({ ...profile, name: profile.username || profile.full_name, friendshipStatus, requesterId });
+            setUser({ ...profile, name: profile.username || profile.full_name, friendshipStatus, requesterId, friendshipId: friendship?.id || null });
 
             // 5. Mutuals
             const { data: myFriends } = await supabase.from('friendships')
@@ -140,6 +140,54 @@ export default function UserProfilePage() {
         fetchAll();
     }, [userId, navigate]);
 
+    useEffect(() => {
+        if (!currentUser?.id || !userId) return;
+
+        const channel = supabase
+            .channel(`user_profile_friendship_${userId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'friendships'
+            }, (payload) => {
+                const { eventType, new: newRec, old: oldRec } = payload;
+                
+                const isMyFriendship = (rec) => 
+                    rec && (
+                        (rec.requester_id === currentUser.id && rec.receiver_id === userId) ||
+                        (rec.requester_id === userId && rec.receiver_id === currentUser.id)
+                    );
+
+                if (eventType === 'DELETE') {
+                    const deletedId = oldRec.id;
+                    setUser(u => {
+                        if (u && (u.friendshipId === deletedId || u.friendshipStatus !== 'none')) {
+                            return { ...u, friendshipStatus: 'none', requesterId: null, friendshipId: null };
+                        }
+                        return u;
+                    });
+                    setSharedMedia([]);
+                } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                    if (isMyFriendship(newRec)) {
+                        setUser(u => ({
+                            ...u,
+                            friendshipStatus: newRec.status,
+                            requesterId: newRec.requester_id,
+                            friendshipId: newRec.id
+                        }));
+                        if (newRec.status !== 'accepted') {
+                            setSharedMedia([]);
+                        }
+                    }
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, userId]);
+
     const handleAction = async (action) => {
         if (!user || !currentUser) return;
         if (action === 'message') {
@@ -157,6 +205,24 @@ export default function UserProfilePage() {
                 // Send Poke
                 await supabase.from('friendships').insert({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
                 setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+            }
+        } else if (action === 'unfriend') {
+            if (window.confirm(`Are you sure you want to unfriend ${user.username || user.name}?`)) {
+                try {
+                    await supabase.from('friendships')
+                        .delete()
+                        .or(`and(requester_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(requester_id.eq.${user.id},receiver_id.eq.${currentUser.id})`);
+
+                    await supabase.from('message_requests')
+                        .delete()
+                        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`);
+
+                    setUser(u => ({ ...u, friendshipStatus: 'none', requesterId: null, friendshipId: null }));
+                    setSharedMedia([]);
+                } catch (err) {
+                    console.error("Error unfriending user:", err);
+                    alert("Failed to unfriend user.");
+                }
             }
         } else if (action === 'block') {
             await supabase.from('blocked_users').insert({ blocker_id: currentUser.id, blocked_id: user.id });
@@ -285,39 +351,41 @@ export default function UserProfilePage() {
             </div>
 
             {/* Action Buttons — BELOW bio */}
-            <div style={styles.actionsWrap}>
-                {isFriend ? (
-                    <div style={styles.actionRow}>
-                        {/* Message — blue gradient */}
-                        <button style={styles.actionBtnMessage} onClick={() => handleAction('message')}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-                            </svg>
-                            <span style={styles.actionLabel}>Message</span>
+            {currentUser?.id !== user?.id && (
+                <div style={styles.actionsWrap}>
+                    {isFriend ? (
+                        <div style={styles.actionRow}>
+                            {/* Message — blue gradient */}
+                            <button style={styles.actionBtnMessage} onClick={() => handleAction('message')}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                                </svg>
+                                <span style={styles.actionLabel}>Message</span>
+                            </button>
+                            {/* Call — green */}
+                            <button style={styles.actionBtnCall} onClick={() => handleAction('call-audio')}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                    <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                                </svg>
+                                <span style={styles.actionLabel}>Call</span>
+                            </button>
+                            {/* Video — purple */}
+                            <button style={styles.actionBtnVideo} onClick={() => handleAction('call-video')}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                    <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                                </svg>
+                                <span style={styles.actionLabel}>Video</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <button style={styles.pokeBtn} onClick={() => handleAction('poke')}>
+                            {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id
+                                ? <><span>⏳</span> Request Sent</>
+                                : <><span>👋</span> Add Friend</>}
                         </button>
-                        {/* Call — green */}
-                        <button style={styles.actionBtnCall} onClick={() => handleAction('call-audio')}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
-                            </svg>
-                            <span style={styles.actionLabel}>Call</span>
-                        </button>
-                        {/* Video — purple */}
-                        <button style={styles.actionBtnVideo} onClick={() => handleAction('call-video')}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
-                            </svg>
-                            <span style={styles.actionLabel}>Video</span>
-                        </button>
-                    </div>
-                ) : (
-                    <button style={styles.pokeBtn} onClick={() => handleAction('poke')}>
-                        {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id
-                            ? <><span>⏳</span> Request Sent</>
-                            : <><span>👋</span> Add Friend</>}
-                    </button>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
             {/* Post-action content */}
             <div style={styles.contentArea}>
                 {/* Shared Media */}
@@ -335,17 +403,28 @@ export default function UserProfilePage() {
                 )}
 
                 {/* Footer */}
-                <div style={styles.footer}>
-                    <button style={styles.dangerLink} onClick={() => handleAction('block')}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                        Block User
-                    </button>
-                    <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 18 }}>|</span>
-                    <button style={styles.dangerLink} onClick={() => handleAction('report')}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                        Report User
-                    </button>
-                </div>
+                {currentUser?.id !== user?.id && (
+                    <div style={styles.footer}>
+                        {isFriend && (
+                            <>
+                                <button style={styles.dangerLink} onClick={() => handleAction('unfriend')}>
+                                    <span style={{ marginRight: 5 }}>💔</span>
+                                    Unfriend
+                                </button>
+                                <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 18 }}>|</span>
+                            </>
+                        )}
+                        <button style={styles.dangerLink} onClick={() => handleAction('block')}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                            Block User
+                        </button>
+                        <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 18 }}>|</span>
+                        <button style={styles.dangerLink} onClick={() => handleAction('report')}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                            Report User
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Lightbox */}

@@ -409,91 +409,103 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         </div>
                     )}
 
-                    <div className="action-grid">
-                        {user.friendshipStatus === 'accepted' ? (
-                            <>
-                                <button 
-                                    className="action-btn primary-action"
-                                    onClick={() => onAction('message', user)}
-                                >
-                                    <span className="icon">💬</span>
-                                    <span className="label">Message</span>
-                                </button>
-                            </>
+                    <div className="action-grid" style={isOwner ? { display: 'flex', justifyContent: 'center' } : {}}>
+                        {isOwner ? (
+                            <button 
+                                className="action-btn primary-action"
+                                onClick={() => {
+                                    onClose();
+                                    navigate(`/profile/${user.id}`);
+                                }}
+                                style={{ flex: 1, height: '54px', borderRadius: '16px', flexDirection: 'row', gap: '8px', aspectRatio: 'auto' }}
+                            >
+                                <span className="icon" style={{ fontSize: '20px' }}>👤</span>
+                                <span className="label" style={{ fontSize: '14px', color: 'white' }}>View Profile</span>
+                            </button>
                         ) : (
                             <>
-                                {(() => {
-                                    if (user.friendshipStatus === 'pending') {
-                                         const isRequester = user.requesterId === currentUser?.id;
-                                         if (isRequester) {
-                                             return (
-                                                <button 
-                                                    className="action-btn"
-                                                    onClick={() => onAction('cancel-poke', user)}
-                                                    style={{ 
-                                                        background: 'rgba(255, 149, 0, 0.15)', 
-                                                        color: '#FF9500', 
-                                                        border: '1px solid rgba(255, 149, 0, 0.3)' 
-                                                    }}
-                                                >
-                                                    <span className="icon">⏳</span>
-                                                    <span className="label">Requested</span>
-                                                </button>
-                                             );
-                                         } else {
-                                             return (
+                                {user.friendshipStatus === 'accepted' ? (
+                                    <>
+                                        <button 
+                                            className="action-btn primary-action"
+                                            onClick={() => onAction('message', user)}
+                                        >
+                                            <span className="icon">💬</span>
+                                            <span className="label">Message</span>
+                                        </button>
+                                        <button 
+                                            className="action-btn secondary-action danger"
+                                            onClick={() => onAction('unfriend', user)}
+                                        >
+                                            <span className="icon">💔</span>
+                                            <span className="label">Unfriend</span>
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        {(() => {
+                                            if (user.friendshipStatus === 'pending') {
+                                                 const isRequester = user.requesterId === currentUser?.id;
+                                                 if (isRequester) {
+                                                     return (
+                                                        <button 
+                                                            className="action-btn"
+                                                            onClick={() => onAction('cancel-poke', user)}
+                                                            style={{ 
+                                                                background: 'rgba(255, 149, 0, 0.15)', 
+                                                                color: '#FF9500', 
+                                                                border: '1px solid rgba(255, 149, 0, 0.3)' 
+                                                            }}
+                                                        >
+                                                            <span className="icon">⏳</span>
+                                                            <span className="label">Requested</span>
+                                                        </button>
+                                                     );
+                                                 }
+                                            }
+                                            
+                                            return (
                                                 <button 
                                                     className="action-btn primary-action"
                                                     onClick={() => onAction('poke', user)}
-                                                    style={{ background: 'linear-gradient(135deg, #34c759 0%, #30b350 100%)' }}
                                                 >
-                                                    <span className="icon">🤝</span>
-                                                    <span className="label">Accept Poke</span>
+                                                    <span className="icon">👋</span>
+                                                    <span className="label">Poke</span>
                                                 </button>
-                                             );
-                                         }
-                                    }
-                                    
-                                    return (
-                                        <button 
-                                            className="action-btn primary-action"
-                                            onClick={() => onAction('poke', user)}
-                                        >
-                                            <span className="icon">👋</span>
-                                            <span className="label">Poke</span>
-                                        </button>
-                                    );
-                                })()}
+                                            );
+                                        })()}
+                                    </>
+                                )}
+
+                                <button 
+                                    className="action-btn"
+                                    onClick={() => {
+                                        onClose();
+                                        navigate(`/profile/${user.id}`);
+                                    }}
+                                >
+                                    <span className="icon">👤</span>
+                                    <span className="label">Profile</span>
+                                </button>
+                                
+                                 <button 
+                                    className="action-btn secondary-action danger"
+                                    onClick={() => onAction('block', user)}
+                                >
+                                    <span className="icon">🚫</span>
+                                    <span className="label">Block</span>
+                                </button>
+
+                                {distanceStr && (
+                                    <div
+                                        className="action-btn"
+                                        style={{ cursor: 'default', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.25)' }}
+                                    >
+                                        <span className="icon">📍</span>
+                                        <span className="label" style={{ color: '#FFD700', fontVariantNumeric: 'tabular-nums' }}>{distanceStr}</span>
+                                    </div>
+                                )}
                             </>
-                        )}
-
-                        <button 
-                            className="action-btn"
-                            onClick={() => {
-                                onClose();
-                                navigate(`/profile/${user.id}`);
-                            }}
-                        >
-                            <span className="icon">👤</span>
-                            <span className="label">Profile</span>
-                        </button>
-                        
-                         <button 
-                            className="action-btn secondary-action danger"
-                            onClick={() => onAction('block', user)}
-                        >
-                            <span className="icon">🚫</span>
-                            <span className="label">Block</span>
-                        </button>
-
-                        {distanceStr && (
-                            <div
-                                className="action-btn"
-                                style={{ cursor: 'default', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.25)' }}
-                            >
-                                <span className="icon">📍</span>
-                                <span className="label" style={{ color: '#FFD700', fontVariantNumeric: 'tabular-nums' }}>{distanceStr}</span>
-                            </div>
                         )}
                     </div>
 

@@ -49,11 +49,8 @@ export default function PokeNotifications({ currentUser }) {
                 // Check if there is any poke that hasn't been seen/dismissed yet
                 const hasUnseen = data.some(poke => !storedSeen.includes(poke.id));
 
-                if (hasUnseen) {
-                    setShowNotifications(true);
-                } else {
-                    setShowNotifications(false);
-                }
+                // Do not auto-show remaining poke requests popup on initial load / login
+                setShowNotifications(false);
 
                 // Self-clean localStorage seen_poke_ids to keep only active pending IDs
                 try {
@@ -236,21 +233,18 @@ export default function PokeNotifications({ currentUser }) {
             {/* Notification Panel */}
             {showNotifications && (
                 <div className="poke-notifications-panel" ref={panelRef}>
-                    <div className="panel-header">
-                        <h3>👋 Poke Requests</h3>
-                        <button onClick={() => {
-                            // Mark all current pending pokes as seen/dismissed in localStorage
-                            try {
-                                const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
-                                const newSeen = Array.from(new Set([...currentSeen, ...pendingPokes.map(p => p.id)]));
-                                localStorage.setItem('seen_poke_ids', JSON.stringify(newSeen));
-                                setSeenIds(newSeen);
-                            } catch (e) {
-                                console.error('Error saving seen pokes', e);
-                            }
-                            setShowNotifications(false);
-                        }}>✕</button>
-                    </div>
+                    <button className="close-panel-btn-absolute" onClick={() => {
+                        // Mark all current pending pokes as seen/dismissed in localStorage
+                        try {
+                            const currentSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
+                            const newSeen = Array.from(new Set([...currentSeen, ...pendingPokes.map(p => p.id)]));
+                            localStorage.setItem('seen_poke_ids', JSON.stringify(newSeen));
+                            setSeenIds(newSeen);
+                        } catch (e) {
+                            console.error('Error saving seen pokes', e);
+                        }
+                        setShowNotifications(false);
+                    }} title="Dismiss">✕</button>
                     <div className="poke-list">
                         {unseenPokes.slice(0, 1).map(poke => (
                             <div key={poke.id} className="poke-item">
@@ -269,24 +263,21 @@ export default function PokeNotifications({ currentUser }) {
                                     }}
                                 />
                                 <div className="poke-info">
+                                    <span className="poke-title-label">
+                                        {unseenPokes.length > 1 ? `👋 Poke Request (+${unseenPokes.length - 1})` : '👋 Poke Request'}
+                                    </span>
                                     <strong>{poke.requester.username || poke.requester.full_name}</strong>
-                                    <span>sent you a poke!</span>
                                 </div>
                                 <div className="poke-actions">
-                                    <button className="accept-btn" onClick={() => handleAccept(poke)}>
-                                        ✓
+                                    <button className="accept-btn" onClick={() => handleAccept(poke)} title="Accept">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                     </button>
-                                    <button className="decline-btn" onClick={() => handleDecline(poke)}>
-                                        ✗
+                                    <button className="decline-btn" onClick={() => handleDecline(poke)} title="Decline">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                     </button>
                                 </div>
                             </div>
                         ))}
-                        {unseenPokes.length > 1 && (
-                            <div style={{ textAlign: 'center', padding: '8px', color: '#aaa', fontSize: '0.8rem' }}>
-                                + {unseenPokes.length - 1} more in queue
-                            </div>
-                        )}
                     </div>
                 </div>
             )}
@@ -315,173 +306,161 @@ export default function PokeNotifications({ currentUser }) {
 
                 .poke-notifications-panel {
                     position: fixed;
-                    top: 70px;
+                    top: 75px;
                     right: 20px;
-                    width: 320px;
-                    max-width: 90vw; /* Prevent overflow on tiny screens */
-                    max-height: 400px;
-                    background: rgba(30, 30, 30, 0.98);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 15px;
-                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+                    width: 295px;
+                    max-width: 90vw;
+                    background: rgba(22, 22, 26, 0.96);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 18px;
+                    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
                     z-index: 9998;
                     overflow: hidden;
-                    animation: slideIn 0.3s ease-out;
+                    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    padding: 10px 38px 10px 12px;
                 }
 
                 @keyframes slideIn {
-                    from { opacity: 0; transform: translateY(-20px); }
+                    from { opacity: 0; transform: translateY(-10px); }
                     to { opacity: 1; transform: translateY(0); }
                 }
 
-                .panel-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 15px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                    background: rgba(255, 105, 180, 0.1);
-                }
-
-                .panel-header h3 {
-                    margin: 0;
-                    font-size: 1rem;
-                    color: white;
-                }
-
-                .panel-header button {
-                    background: none;
+                .close-panel-btn-absolute {
+                    position: absolute;
+                    top: 8px;
+                    right: 10px;
+                    background: rgba(255, 255, 255, 0.08);
                     border: none;
-                    color: #aaa;
-                    font-size: 1.2rem;
+                    color: rgba(255, 255, 255, 0.7);
+                    font-size: 0.75rem;
                     cursor: pointer;
-                    width: 30px;
-                    height: 30px;
+                    width: 20px;
+                    height: 20px;
                     border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    transition: all 0.2s;
+                    z-index: 10;
                 }
 
-                .panel-header button:hover {
-                    background: rgba(255, 255, 255, 0.1);
+                .close-panel-btn-absolute:hover {
+                    background: rgba(255, 255, 255, 0.18);
                     color: white;
                 }
 
                 .poke-list {
-                    max-height: 340px;
-                    overflow-y: auto;
+                    overflow: hidden;
                 }
 
                 .poke-item {
                     display: flex;
                     align-items: center;
-                    gap: 12px;
-                    padding: 12px 15px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                    transition: background 0.2s;
-                }
-
-                .poke-item:hover {
-                    background: rgba(255, 255, 255, 0.05);
+                    gap: 10px;
+                    border-bottom: none;
                 }
 
                 .poke-avatar {
-                    width: 45px;
-                    height: 45px;
+                    width: 36px;
+                    height: 36px;
                     border-radius: 50%;
-                    border: 2px solid #FF69B4;
+                    border: 1.5px solid rgba(255, 105, 180, 0.6);
+                    box-shadow: 0 0 8px rgba(255, 105, 180, 0.2);
+                    object-fit: cover;
+                    flex-shrink: 0;
                 }
 
                 .poke-info {
                     flex: 1;
+                    min-width: 0;
                     display: flex;
                     flex-direction: column;
-                    gap: 2px;
+                    gap: 1px;
+                }
+
+                .poke-title-label {
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    color: #ff69b4;
+                    letter-spacing: 0.5px;
+                    text-transform: uppercase;
+                    margin-bottom: 1px;
                 }
 
                 .poke-info strong {
                     color: white;
-                    font-size: 0.95rem;
-                }
-
-                .poke-info span {
-                    color: #aaa;
-                    font-size: 0.8rem;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .poke-actions {
                     display: flex;
-                    gap: 8px;
+                    gap: 6px;
+                    align-items: center;
+                    flex-shrink: 0;
                 }
 
                 .accept-btn, .decline-btn {
-                    width: 35px;
-                    height: 35px;
+                    width: 28px;
+                    height: 28px;
                     border: none;
                     border-radius: 50%;
-                    font-size: 1.1rem;
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    transition: all 0.2s;
+                    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
                 }
 
                 .accept-btn {
-                    background: linear-gradient(135deg, #00ff99, #00cc77);
+                    background: #34c759;
                     color: white;
-                    box-shadow: 0 2px 10px rgba(0, 255, 153, 0.3);
+                    box-shadow: 0 2px 8px rgba(52, 199, 89, 0.2);
                 }
 
                 .accept-btn:hover {
-                    transform: scale(1.1);
-                    box-shadow: 0 4px 15px rgba(0, 255, 153, 0.5);
+                    background: #2ed573;
+                    color: white;
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(52, 199, 89, 0.4);
+                }
+
+                .accept-btn:active {
+                    transform: translateY(0) scale(0.95);
                 }
 
                 .decline-btn {
-                    background: linear-gradient(135deg, #ff5555, #cc0000);
+                    background: #ff3b30;
                     color: white;
-                    box-shadow: 0 2px 10px rgba(255, 85, 85, 0.3);
+                    box-shadow: 0 2px 8px rgba(255, 59, 48, 0.2);
                 }
 
                 .decline-btn:hover {
-                    transform: scale(1.1);
-                    box-shadow: 0 4px 15px rgba(255, 85, 85, 0.5);
+                    background: #ff4757;
+                    color: white;
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+                }
+
+                .decline-btn:active {
+                    transform: translateY(0) scale(0.95);
                 }
 
                 /* Mobile Optimizations */
                 @media (max-width: 480px) {
                     .poke-notifications-panel {
-                        width: auto;
+                        top: 75px;
                         left: 16px;
                         right: 16px;
-                        max-width: 340px; /* Ensure it doesn't get too wide on larger mobiles */
-                        margin: 0 auto; /* Center if constrained by max-width */
-                    }
-
-                    .poke-item {
-                        padding: 10px 12px;
-                        gap: 10px;
-                    }
-
-                    .poke-avatar {
-                        width: 38px;
-                        height: 38px;
-                    }
-
-                    .poke-info strong {
-                        font-size: 0.9rem;
-                    }
-                    
-                    .poke-info span {
-                        font-size: 0.75rem;
-                    }
-
-                    .accept-btn, .decline-btn {
-                        width: 32px;
-                        height: 32px;
-                        font-size: 1rem;
+                        width: auto;
+                        max-width: 320px;
+                        margin: 0 auto;
+                        padding: 10px 38px 10px 12px;
                     }
                 }
             `}</style>

@@ -279,12 +279,12 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                                         onAction('poke', user);
                                     }
                                 }}
-                                style={user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? { background: 'rgba(255, 149, 0, 0.2)', color: '#FF9500', borderColor: 'rgba(255, 149, 0, 0.4)' } : user.friendshipStatus === 'pending' ? { background: 'rgba(52, 199, 89, 0.2)', color: '#34c759', borderColor: 'rgba(52, 199, 89, 0.4)' } : {}}
+                                style={user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? { background: 'rgba(255, 149, 0, 0.2)', color: '#FF9500', borderColor: 'rgba(255, 149, 0, 0.4)' } : {}}
                             >
                                 <span style={{ marginRight: '6px' }}>
-                                    {user.friendshipStatus === 'pending' ? (user.requesterId === currentUser?.id ? '⏳' : '🤝') : '👋'}
+                                    {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? '⏳' : '👋'}
                                 </span> 
-                                {user.friendshipStatus === 'pending' ? (user.requesterId === currentUser?.id ? 'Requested' : 'Accept Poke') : 'Poke'}
+                                {user.friendshipStatus === 'pending' && user.requesterId === currentUser?.id ? 'Requested' : 'Poke'}
                             </button>
                         )}
 
@@ -371,15 +371,25 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                     )}
 
                     {/* Footer Actions */}
-                    <div className="fp-footer-actions">
-                         <button className="fp-text-btn danger" onClick={() => onAction('block', user)}>
-                            <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚫</span> Block
-                         </button>
-                         <span className="separator">•</span>
-                         <button className="fp-text-btn danger" onClick={() => onAction('report', user)}>
-                            <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚩</span> Report
-                         </button>
-                    </div>
+                    {!isOwner && (
+                        <div className="fp-footer-actions">
+                             {isFriend && (
+                                 <>
+                                     <button className="fp-text-btn danger" onClick={() => onAction('unfriend', user)}>
+                                         <span style={{ fontSize: '1.1em', marginRight: '4px' }}>💔</span> Unfriend
+                                     </button>
+                                     <span className="separator">•</span>
+                                 </>
+                             )}
+                             <button className="fp-text-btn danger" onClick={() => onAction('block', user)}>
+                                <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚫</span> Block
+                             </button>
+                             <span className="separator">•</span>
+                             <button className="fp-text-btn danger" onClick={() => onAction('report', user)}>
+                                <span style={{ fontSize: '1.1em', marginRight: '4px' }}>🚩</span> Report
+                             </button>
+                        </div>
+                    )}
 
                 </motion.div>
 

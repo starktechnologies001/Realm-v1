@@ -19,6 +19,7 @@ export function LocationProvider({ children }) {
 
   // Device permission (OS GPS)
   const [devicePermissionGranted, setDevicePermissionGranted] = useState(false);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const [loadingLocation, setLoadingLocation] = useState(false);
 
@@ -299,11 +300,11 @@ export function LocationProvider({ children }) {
             }
           },
 
-          // OPTIONS — accept up to 10s cached position for a quicker first fix
+          // OPTIONS — fast first-fix options (non-high-accuracy & large maximumAge)
           {
-            enableHighAccuracy: true,
-            maximumAge: 10000,
-            timeout: 30000,
+            enableHighAccuracy: false,
+            maximumAge: 300000,
+            timeout: 10000,
           }
         );
     } catch (e) {
@@ -392,8 +393,10 @@ export function LocationProvider({ children }) {
             // If we lose tracking mid-way, stop gracefully
             if (err.code === 1) { // 1 = PERMISSION_DENIED
                // This will handle the OS-level revocation edge case
+               setDevicePermissionGranted(false);
                internalStopLocation(false);
             } else if (err.code === 2) { // 2 = POSITION_UNAVAILABLE (often happens incorrectly on mobile app wake)
+               setDevicePermissionGranted(false);
                internalStopLocation(false);
                // Try to restart tracking after a 5-second buffer (app wakes, GPS needs time)
                setTimeout(() => {
@@ -502,7 +505,10 @@ export function LocationProvider({ children }) {
   // 🔹 PERMISSIONS API LISTENER (Auto Handlers)
   // ----------------------------------------
   useEffect(() => {
-    if (!navigator.permissions) return;
+    if (!navigator.permissions) {
+      setCheckingPermission(false);
+      return;
+    }
 
     let permissionStatus = null;
 
@@ -516,10 +522,11 @@ export function LocationProvider({ children }) {
            if (!isManuallyDisabled) {
                startLocation();
            }
-       } else if (state === "denied") {
-           // Rule 2 & 4: Stop everything. GPS is totally blocked.
+       } else {
            setDevicePermissionGranted(false);
-           internalStopLocation(false); // Not a manual toggle override, forced by OS
+           if (state === "denied") {
+               internalStopLocation(false); // Not a manual toggle override, forced by OS
+           }
        }
     };
 
@@ -531,7 +538,11 @@ export function LocationProvider({ children }) {
       
       // Listen for future toggles
       status.onchange = handlePermissionChange;
-    }).catch(err => console.error("Permission query failed:", err));
+      setCheckingPermission(false);
+    }).catch(err => {
+      console.error("Permission query failed:", err);
+      setCheckingPermission(false);
+    });
 
     return () => {
        if (permissionStatus) {
@@ -556,6 +567,7 @@ export function LocationProvider({ children }) {
         userLocation,
         locationEnabled,
         devicePermissionGranted,
+        checkingPermission,
         loadingLocation,
         toggleLocationService,
         startLocation,
