@@ -697,7 +697,6 @@ export default function Profile() {
                                         stopLocation();
                                         // 2️⃣ Update profile DB
                                         await updateProfile({
-                                            is_ghost_mode: true,
                                             is_location_on: false
                                         });
                                     }

@@ -438,7 +438,7 @@ export function LocationProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
-            const isGhost = data?.visibility_mode === 'ghost' || data?.is_ghost_mode;
+            const isGhost = data?.visibility_mode === 'ghost';
             
             // Clear stationary refs when stopped
             isStationaryRef.current = false;
@@ -447,7 +447,7 @@ export function LocationProvider({ children }) {
             supabase.from("profiles").update({
               is_location_on: false,
               is_ghost_mode: isGhost,
-              visibility_mode: isGhost ? 'ghost' : (data?.visibility_mode || 'public'),
+              visibility_mode: data?.visibility_mode || 'public',
               activity_status: isGhost ? 'offline' : 'recently_active',
               last_seen: new Date().toISOString(),
               is_stationary: false,
