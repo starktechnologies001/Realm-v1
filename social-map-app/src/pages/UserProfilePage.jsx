@@ -430,7 +430,7 @@ export default function UserProfilePage() {
             {/* Lightbox */}
             {previewImage && (
                 <div style={styles.lightbox} onClick={() => setPreviewImage(null)}>
-                    <img src={previewImage} alt="Preview" style={styles.lightboxImg} />
+                    <img src={previewImage} alt="Preview" style={styles.lightboxImg} loading="lazy" decoding="async" />
                 </div>
             )}
 

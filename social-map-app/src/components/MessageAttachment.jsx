@@ -13,14 +13,14 @@ const MessageAttachment = ({ attachment }) => {
         return (
             <>
                 <div className="message-attachment image-attachment" onClick={() => setLightboxOpen(true)}>
-                    <img src={attachment.file_url} alt={attachment.file_name} />
+                    <img src={attachment.file_url} alt={attachment.file_name} loading="lazy" decoding="async" />
                 </div>
 
                 {lightboxOpen && (
                     <div className="lightbox-overlay" onClick={() => setLightboxOpen(false)}>
                         <div className="lightbox-content">
                             <button className="lightbox-close" onClick={() => setLightboxOpen(false)}>✕</button>
-                            <img src={attachment.file_url} alt={attachment.file_name} />
+                            <img src={attachment.file_url} alt={attachment.file_name} loading="lazy" decoding="async" />
                             <div className="lightbox-info">
                                 <span>{attachment.file_name}</span>
                                 <button className="lightbox-download" onClick={handleDownload}>

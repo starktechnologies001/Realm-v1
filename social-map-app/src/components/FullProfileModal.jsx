@@ -330,7 +330,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                                         onClick={() => media.message_type === 'image' ? setViewingMedia(media.image_url) : window.open(media.image_url, '_blank')}
                                     >
                                         {media.message_type === 'image' ? (
-                                            <img src={media.image_url} alt="Shared" loading="lazy" />
+                                            <img src={media.image_url} alt="Shared" loading="lazy" decoding="async" />
                                         ) : (
                                             <div className="fp-file-placeholder">
                                                 <span style={{ fontSize: '24px' }}>📄</span>
@@ -396,7 +396,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 {/* Simple Image Viewer Overlay */}
                 {viewingMedia && (
                     <div className="fp-media-viewer" onClick={() => setViewingMedia(null)}>
-                        <img src={viewingMedia} alt="Full size" onClick={e => e.stopPropagation()} />
+                        <img src={viewingMedia} alt="Full size" onClick={e => e.stopPropagation()} loading="lazy" decoding="async" />
                         <button className="fp-viewer-close" onClick={() => setViewingMedia(null)}>×</button>
                     </div>
                 )}

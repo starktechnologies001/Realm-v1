@@ -52,14 +52,10 @@ export default defineConfig({
           // Framer Motion — animation library, changes rarely
           'vendor-framer': ['framer-motion'],
 
-          // 3D Engine — huge, only needed on profile
-          'vendor-3d': ['three', '@react-three/fiber', '@react-three/drei'],
-
           // WebRTC — huge, only needed for calls
           'vendor-rtc': ['agora-rtc-sdk-ng'],
 
-          // ML Face Auth — huge, only needed on face login
-          'vendor-ml': ['face-api.js'],
+          // ML Face Auth — huge, only needed on face login (removed)
 
           // Extra Heavy UI — dynamically loaded
           'vendor-emoji': ['emoji-picker-react'],
@@ -73,6 +69,6 @@ export default defineConfig({
 
   // Optimise deps pre-bundling
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'leaflet', 'react-leaflet', 'framer-motion', 'three', '@react-three/fiber', '@react-three/drei', 'agora-rtc-sdk-ng', 'face-api.js'],
+    include: ['react', 'react-dom', 'react-router-dom', 'leaflet', 'react-leaflet', 'framer-motion', 'three', '@react-three/fiber', '@react-three/drei', 'agora-rtc-sdk-ng'],
   },
 })

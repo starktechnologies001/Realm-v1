@@ -332,13 +332,13 @@ export function LocationProvider({ children }) {
                 ? distanceMetres(lastSyncLoc.current.lat, lastSyncLoc.current.lng, newLoc.lat, newLoc.lng)
                 : Infinity;
 
-            // 2. Throttled DB update (Update every 10-15s ONLY IF moved 10-20m)
+            // 2. Throttled DB update (Update every 15s ONLY IF moved 15m)
             const timeSinceSync = now - lastSyncTime.current;
             
-            // Check threshold: 10s AND 10 meters, OR forced after 30s to keep 'live' status fresh
+            // Check threshold: 15s AND 15 meters, OR forced after 45s to keep 'live' status fresh
             const shouldSync = !lastSyncTime.current || 
-                (timeSinceSync > 10000 && localDistMeters > 10) || 
-                (timeSinceSync > 30000);
+                (timeSinceSync > 15000 && localDistMeters > 15) || 
+                (timeSinceSync > 45000);
 
             setUserLocation(newLoc);
             // 🔥 Persist for instant restore on next session load
@@ -348,8 +348,8 @@ export function LocationProvider({ children }) {
                 lastSyncTime.current = now;
                 lastSyncLoc.current = newLoc;
 
-                // Stationary logic: if movement is <= 10m since last sync, we are stationary
-                if (localDistMeters <= 10) {
+                // Stationary logic: if movement is <= 15m since last sync, we are stationary
+                if (localDistMeters <= 15) {
                     if (!isStationaryRef.current) {
                         isStationaryRef.current = true;
                         stationarySinceRef.current = new Date().toISOString();

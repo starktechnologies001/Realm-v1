@@ -16,7 +16,6 @@
     "agora-rtc-sdk-ng": "^4.24.2",
     "dotenv": "^17.2.3",
     "emoji-picker-react": "^4.16.1",
-    "face-api.js": "^0.22.2",
     "framer-motion": "^12.23.26",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.564.0",

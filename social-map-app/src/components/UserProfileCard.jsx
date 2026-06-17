@@ -150,7 +150,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     onClick={() => setPreviewImage(null)}
                 >
-                    <img src={previewImage} alt="Full view" className="lightbox-img" />
+                    <img src={previewImage} alt="Full view" className="lightbox-img" loading="lazy" decoding="async" />
                     <button className="lightbox-close">✕</button>
                     <style>{`
                         .lightbox-overlay {
@@ -284,7 +284,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                             <div className="media-grid">
                                 {sharedMedia.slice(0, 4).map((media, i) => (
                                     <div key={i} className="media-item" onClick={() => handleMediaClick(media, i)}>
-                                        <img src={media.image_url} alt="Shared" />
+                                        <img src={media.image_url} alt="Shared" loading="lazy" decoding="async" />
                                         {i === 3 && sharedMedia.length > 4 && (
                                             <div className="media-overlay">
                                                 <span>+More</span>
