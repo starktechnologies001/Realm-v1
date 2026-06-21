@@ -220,7 +220,7 @@ function RecenterAutomatically({ lat, lng, mapMode }) {
 }
 
 // 📍 NATIVE MARKERS SYNC COMPONENT (Bypasses React Re-renders)
-function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, createAvatarIcon, markerRefs, handleMarkerClick, animateNativeMarker, setSelectedUser }) {
+function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, createAvatarIcon, markerRefs, handleMarkerClick, animateNativeMarker, setSelectedUser, expandedThoughtId }) {
     const map = useMap();
 
     // Sync remote users
@@ -272,7 +272,9 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 moodUpdatedAt,
                 0, // no stagger delay needed natively
                 u.activity_status, // PASS ACTIVITY STATUS
-                u.id // PASS ID
+                u.id, // PASS ID
+                thoughtUpdatedAt, // PASS THOUGHT_UPDATED_AT
+                expandedThoughtId === u.id // PASS isExpanded
             );
 
             if (!marker) {
@@ -295,7 +297,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 }
             }
         });
-    }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs, animateNativeMarker]);
+    }, [users, map, currentUser?.id, createAvatarIcon, handleMarkerClick, markerRefs, animateNativeMarker, expandedThoughtId]);
 
     // Sync local user marker visually (initial creation and icon changes)
     useEffect(() => {
@@ -625,6 +627,250 @@ export default function MapHome() {
     const [myThought, setMyThought] = useState('');
     const [selectedColor, setSelectedColor] = useState('#f3d9fa'); // Lavender by default
     const [selectedPrivacy, setSelectedPrivacy] = useState('everyone');
+
+    const [thoughtReactions, setThoughtReactions] = useState({});
+    const [expandedThoughtId, setExpandedThoughtId] = useState(null);
+
+    // Fetch initial thought reactions
+    const fetchReactions = async (userIds) => {
+        if (!userIds || userIds.length === 0) return;
+        try {
+            const { data, error } = await supabase
+                .from('thought_reactions')
+                .select(`
+                    id,
+                    thought_id,
+                    user_id,
+                    reaction_type,
+                    created_at,
+                    user:profiles!user_id(id, username, full_name, avatar_url, gender)
+                `)
+                .in('thought_id', userIds);
+
+            if (!error && data) {
+                const grouped = {};
+                data.forEach(r => {
+                    if (!grouped[r.thought_id]) grouped[r.thought_id] = [];
+                    grouped[r.thought_id].push(r);
+                });
+                setThoughtReactions(grouped);
+            }
+        } catch (err) {
+            console.error('Error fetching reactions:', err);
+        }
+    };
+
+    // Trigger initial reactions fetch when visible user set changes
+    useEffect(() => {
+        if (!currentUser) return;
+        const visibleUserIds = [currentUser.id, ...nearbyUsers.map(u => u.id)];
+        fetchReactions(visibleUserIds);
+    }, [nearbyUsers.map(u => u.id).join(','), currentUser?.id]);
+
+    // Subscribe to thought reactions realtime changes
+    useEffect(() => {
+        if (!currentUser) return;
+
+        const channel = supabase
+            .channel('public:thought_reactions')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'thought_reactions'
+            }, async (payload) => {
+                const { eventType, new: newRec, old: oldRec } = payload;
+                console.log('Realtime thought reaction event:', eventType, newRec, oldRec);
+
+                if (eventType === 'INSERT') {
+                    const reactorId = newRec.user_id;
+                    let reactorUser = nearbyUsers.find(u => u.id === reactorId) || (currentUser.id === reactorId ? currentUser : null);
+                    if (!reactorUser) {
+                        const { data } = await supabase
+                            .from('profiles')
+                            .select('id, username, full_name, avatar_url, gender')
+                            .eq('id', reactorId)
+                            .maybeSingle();
+                        if (data) reactorUser = data;
+                    }
+
+                    const reactionObj = {
+                        ...newRec,
+                        user: reactorUser ? {
+                            id: reactorUser.id,
+                            username: reactorUser.username || reactorUser.name,
+                            full_name: reactorUser.full_name,
+                            avatar_url: reactorUser.avatar || reactorUser.avatar_url
+                        } : null
+                    };
+
+                    setThoughtReactions(prev => {
+                        const currentList = prev[newRec.thought_id] ? [...prev[newRec.thought_id]] : [];
+                        if (currentList.some(r => r.user_id === newRec.user_id)) return prev;
+                        return {
+                            ...prev,
+                            [newRec.thought_id]: [...currentList, reactionObj]
+                        };
+                    });
+
+                    // Toast notification for incoming reactions on our thought
+                    if (newRec.thought_id === currentUser.id && newRec.user_id !== currentUser.id) {
+                        const reactorName = reactorUser?.username || reactorUser?.name || 'Someone';
+                        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+                        const emoji = emojiMap[newRec.reaction_type] || '❤️';
+                        
+                        showToast({
+                            text: `🔔 ${reactorName} reacted ${emoji} to your thought`,
+                            onClick: () => {
+                                const selfUser = {
+                                    ...currentUser,
+                                    lat: currentUser.latitude || userLocation?.lat,
+                                    lng: currentUser.longitude || userLocation?.lng,
+                                    thought: currentUser.thought || currentUser.status_message,
+                                    friendshipStatus: null // self
+                                };
+                                setSelectedUser(selfUser);
+                            }
+                        });
+                    }
+                } else if (eventType === 'UPDATE') {
+                    setThoughtReactions(prev => {
+                        const currentList = prev[newRec.thought_id] ? [...prev[newRec.thought_id]] : [];
+                        const index = currentList.findIndex(r => r.user_id === newRec.user_id);
+                        if (index !== -1) {
+                            currentList[index] = {
+                                ...currentList[index],
+                                ...newRec
+                            };
+                        }
+                        return {
+                            ...prev,
+                            [newRec.thought_id]: currentList
+                        };
+                    });
+                } else if (eventType === 'DELETE') {
+                    const targetId = oldRec.id;
+                    setThoughtReactions(prev => {
+                        const updated = {};
+                        Object.keys(prev).forEach(key => {
+                            updated[key] = prev[key].filter(r => r.id !== targetId);
+                        });
+                        return updated;
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, nearbyUsers, currentUser, userLocation]);
+
+    const handleToggleReaction = async (thoughtUserId, reactionType) => {
+        if (!currentUser) return;
+        const currentUserId = currentUser.id;
+        const existingList = thoughtReactions[thoughtUserId] || [];
+        const existing = existingList.find(r => r.user_id === currentUserId);
+
+        let updatedList = [];
+        let dbPromise = null;
+
+        if (existing) {
+            if (existing.reaction_type === reactionType) {
+                // Remove reaction
+                updatedList = existingList.filter(r => r.user_id !== currentUserId);
+                dbPromise = supabase
+                    .from('thought_reactions')
+                    .delete()
+                    .eq('id', existing.id);
+            } else {
+                // Update reaction
+                updatedList = existingList.map(r => {
+                    if (r.user_id === currentUserId) {
+                        return { ...r, reaction_type: reactionType };
+                    }
+                    return r;
+                });
+                dbPromise = supabase
+                    .from('thought_reactions')
+                    .update({ reaction_type: reactionType })
+                    .eq('id', existing.id);
+            }
+        } else {
+            // Add reaction
+            const tempId = `temp-${Date.now()}`;
+            const tempReaction = {
+                id: tempId,
+                thought_id: thoughtUserId,
+                user_id: currentUserId,
+                reaction_type: reactionType,
+                created_at: new Date().toISOString(),
+                user: {
+                    id: currentUser.id,
+                    username: currentUser.username || currentUser.name,
+                    full_name: currentUser.full_name,
+                    avatar_url: currentUser.avatar || currentUser.avatar_url
+                }
+            };
+            updatedList = [...existingList, tempReaction];
+            dbPromise = supabase
+                .from('thought_reactions')
+                .insert({
+                    thought_id: thoughtUserId,
+                    user_id: currentUserId,
+                    reaction_type: reactionType
+                })
+                .select();
+        }
+
+        // Apply optimistic update
+        setThoughtReactions(prev => ({
+            ...prev,
+            [thoughtUserId]: updatedList
+        }));
+
+        try {
+            const { data, error } = await dbPromise;
+            if (error) {
+                console.error('Failed to sync reaction to db:', error);
+                // Rollback optimistic update
+                setThoughtReactions(prev => ({
+                    ...prev,
+                    [thoughtUserId]: existingList
+                }));
+            } else if (data && data[0]) {
+                // Update with actual database record if we just inserted
+                if (!existing) {
+                    setThoughtReactions(prev => {
+                        const current = prev[thoughtUserId] || [];
+                        return {
+                            ...prev,
+                            [thoughtUserId]: current.map(r => r.id === tempId ? { ...r, id: data[0].id } : r)
+                        };
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Error toggling reaction:', err);
+            // Rollback
+            setThoughtReactions(prev => ({
+                ...prev,
+                [thoughtUserId]: existingList
+            }));
+        }
+    };
+
+    useEffect(() => {
+        window.handleThoughtClick = (id) => {
+            setExpandedThoughtId(prev => prev === id ? null : id);
+        };
+        window.handleThoughtReact = (id, type) => {
+            handleToggleReaction(id, type);
+        };
+        return () => {
+            delete window.handleThoughtClick;
+            delete window.handleThoughtReact;
+        };
+    }, [handleToggleReaction]);
 
     const handleOpenThoughtInput = () => {
         if (currentUser) {
@@ -1943,7 +2189,6 @@ export default function MapHome() {
 
     const showToast = (msg) => {
         setToastMsg(msg);
-        setTimeout(() => setToastMsg(null), 3000);
     };
 
     const startCamera = async () => {
@@ -2562,11 +2807,14 @@ export default function MapHome() {
 
     const iconCache = useRef(new Map());
 
-    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live', id = null) => {
+    const createAvatarIcon = React.useCallback((url, isSelf = false, thought = null, name = '', status = null, mood = null, moodUpdatedAt = null, animationDelay = 0, activityStatus = 'live', id = null, thoughtUpdatedAt = null, isExpanded = false) => {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && (currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode);
+        
+        const reactionsList = (id && thoughtReactions[id]) || [];
+        const reactionsKey = reactionsList.map(r => `${r.user_id}:${r.reaction_type}`).sort().join(',');
         // Prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v6_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}`;
+        const cacheKey = `v7_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}_${thoughtUpdatedAt}_${reactionsKey}_${isExpanded}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -2610,13 +2858,63 @@ export default function MapHome() {
         };
         const bubbleBorderColor = getDarkerBorderColor(bubbleColor);
 
+        let expiryHTML = '';
+        if (thoughtText && thoughtUpdatedAt) {
+            const diffMs = Date.now() - new Date(thoughtUpdatedAt).getTime();
+            const diffHours = diffMs / (1000 * 60 * 60);
+            const remainingHours = Math.max(0, 3 - diffHours);
+            if (remainingHours > 0) {
+                let timeStr = '';
+                if (remainingHours < 1) {
+                    const mins = Math.round(remainingHours * 60);
+                    timeStr = `${mins}m`;
+                } else {
+                    timeStr = `${Math.round(remainingHours)}h`;
+                }
+                expiryHTML = `<span class="thought-expiry" style="font-size: 0.65rem; color: #8e8e93; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px;">⏱️ ${timeStr}</span>`;
+            }
+        }
+
+        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+        const reactionCounts = {};
+        reactionsList.forEach(r => {
+            const type = r.reaction_type;
+            reactionCounts[type] = (reactionCounts[type] || 0) + 1;
+        });
+
+        const countsStr = Object.keys(reactionCounts)
+            .map(type => {
+                const emoji = emojiMap[type] || '❤️';
+                return `<span style="margin-right: 6px;">${emoji} ${reactionCounts[type]}</span>`;
+            })
+            .join('');
+
+        const reactionsHTML = countsStr
+            ? `<div class="thought-reactions-compact" style="margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; font-size: 0.7rem; gap: 2px;">
+                 ${countsStr}
+               </div>`
+            : '';
+
+        const expandedBarHTML = isExpanded && !isSelf ? `
+            <div class="thought-reaction-bar-map" style="display: flex; gap: 12px; margin-top: 8px; justify-content: center; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 8px;">
+                <button onclick="event.stopPropagation(); window.handleThoughtReact('${id}', 'love')" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 4px; transition: transform 0.2s;">❤️</button>
+                <button onclick="event.stopPropagation(); window.handleThoughtReact('${id}', 'fire')" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 4px; transition: transform 0.2s;">🔥</button>
+                <button onclick="event.stopPropagation(); window.handleThoughtReact('${id}', 'laugh')" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 4px; transition: transform 0.2s;">😂</button>
+                <button onclick="event.stopPropagation(); window.handleThoughtReact('${id}', 'clap')" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 4px; transition: transform 0.2s;">👏</button>
+            </div>
+        ` : '';
+
         const thoughtHTML = thoughtText
-            ? `<div class="thought-bubble" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 24px;">
-                 <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem;">${name}</div>
+            ? `<div class="thought-bubble" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 12px; pointer-events: auto !important; cursor: pointer;">
+                 <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem; display: flex; align-items: center; justify-content: space-between;">
+                     <span>${name}</span>
+                     ${expiryHTML}
+                 </div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
                     ${thoughtText}
                  </div>
-                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thoughtText.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
+                 ${reactionsHTML}
+                 ${expandedBarHTML}
                </div>`
             : '';
 
@@ -2669,7 +2967,7 @@ export default function MapHome() {
 
         iconCache.current.set(cacheKey, icon);
         return icon;
-    }, [currentUser]);
+    }, [currentUser, thoughtReactions]);
 
     // Memoize the icon separately so location updates don't destroy the DOM node and break CSS transitions
     const currentUserIcon = useMemo(() => {
@@ -2693,8 +2991,8 @@ export default function MapHome() {
             }
         }
 
-        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live', currentUser.id);
-    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, currentUser?.visibility_mode, currentUser?.is_ghost_mode, createAvatarIcon]);
+        return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live', currentUser.id, thoughtTime, false);
+    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, currentUser?.visibility_mode, currentUser?.is_ghost_mode, createAvatarIcon, thoughtReactions]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -3467,6 +3765,7 @@ export default function MapHome() {
                     handleMarkerClick={handleMarkerClick}
                     animateNativeMarker={animateNativeMarker}
                     setSelectedUser={setSelectedUser}
+                    expandedThoughtId={expandedThoughtId}
                 />
             </MapContainer>
             ) : null}
@@ -4078,6 +4377,8 @@ export default function MapHome() {
                 onClose={() => setSelectedUser(null)}
                 onAction={handleUserAction}
                 showToast={showToast}
+                reactions={selectedUser ? (thoughtReactions[selectedUser.id] || []) : []}
+                onToggleReaction={handleToggleReaction}
             />
 
             <PokeNotifications currentUser={currentUser} />
@@ -4098,7 +4399,13 @@ export default function MapHome() {
                 />
             )}
 
-            {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
+            {toastMsg && (
+                <Toast
+                    message={typeof toastMsg === 'object' ? toastMsg.text : toastMsg}
+                    onClick={typeof toastMsg === 'object' ? toastMsg.onClick : undefined}
+                    onClose={() => setToastMsg(null)}
+                />
+            )}
 
             {/* Report Modal */}
             {showReportModal && reportTarget && (

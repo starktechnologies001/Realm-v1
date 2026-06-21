@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 
-export default function Toast({ message, onClose, duration = 3000 }) {
+export default function Toast({ message, onClose, onClick, duration = 3000 }) {
     useEffect(() => {
         const timer = setTimeout(() => {
             onClose();
@@ -10,7 +10,12 @@ export default function Toast({ message, onClose, duration = 3000 }) {
 
     return (
         <>
-            <div className="toast-notification" onClick={onClose}>
+            <div className="toast-notification" onClick={(e) => {
+                if (onClick) {
+                    onClick();
+                }
+                onClose();
+            }}>
                 {message}
             </div>
             <style>{`

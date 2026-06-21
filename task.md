@@ -1,0 +1,2 @@
+- [x] Fix MapHome.jsx thought reaction UI to show emoji reaction picker inline when the floating thought bubble on the map is clicked.
+- [x] Fix ReferenceError: expandedThoughtId is not defined by passing it to NativeMarkerSync component props in MapHome.jsx

@@ -1,13 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR } from '../utils/avatarUtils';
 import { calculateDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 import { nearbyLabel, parseThought } from '../utils/locationPrivacy';
 
 
-export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast }) {
+export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast, reactions = [], onToggleReaction }) {
     if (!user) return null;
     const navigate = useNavigate();
 
@@ -55,6 +55,14 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const [isReplyingToThought, setIsReplyingToThought] = useState(false);
     const [replyText, setReplyText] = useState('');
     const [isSendingReply, setIsSendingReply] = useState(false);
+
+    // Thought Reactions States
+    const [showReactorsList, setShowReactorsList] = useState(false);
+    const [selectedReactorTab, setSelectedReactorTab] = useState('all');
+
+    const filteredReactors = selectedReactorTab === 'all'
+        ? reactions
+        : reactions.filter(r => r.reaction_type === selectedReactorTab);
 
     // Long Press Logic
     const longPressTimer = useRef(null);
@@ -386,6 +394,47 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                     </button>
                                 )}
                             </div>
+
+                            {/* Reaction Counts Row */}
+                            {reactions.length > 0 && (
+                                <div className="thought-reactions-summary" onClick={() => setShowReactorsList(true)}>
+                                    {Object.entries(
+                                        reactions.reduce((acc, r) => {
+                                            acc[r.reaction_type] = (acc[r.reaction_type] || 0) + 1;
+                                            return acc;
+                                        }, {})
+                                    ).map(([type, count]) => {
+                                        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+                                        return (
+                                            <span key={type} className="reaction-summary-pill">
+                                                {emojiMap[type] || '❤️'} {count}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Reaction Bar */}
+                            <div className="thought-reaction-bar">
+                                {[
+                                    { type: 'love', emoji: '❤️', label: 'Love' },
+                                    { type: 'fire', emoji: '🔥', label: 'Fire' },
+                                    { type: 'laugh', emoji: '😂', label: 'Laugh' },
+                                    { type: 'clap', emoji: '👏', label: 'Clap' }
+                                ].map(({ type, emoji, label }) => {
+                                    const hasReacted = reactions.some(r => r.user_id === currentUser?.id && r.reaction_type === type);
+                                    return (
+                                        <button
+                                            key={type}
+                                            className={`reaction-pill-btn ${hasReacted ? 'active' : ''}`}
+                                            onClick={() => onToggleReaction && onToggleReaction(user.id, type)}
+                                        >
+                                            <span className="reaction-emoji">{emoji}</span>
+                                            <span className="reaction-label">{label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                             
                             <AnimatePresence>
                                 {isReplyingToThought && (
@@ -503,10 +552,108 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                     <span className="label">Block</span>
                                 </button>
                              </>
-                        )}
+                         )}
                     </div>
 
                 </motion.div>
+
+                {/* Reactors List Bottom Sheet Modal */}
+                <AnimatePresence>
+                    {showReactorsList && (
+                        <motion.div
+                            className="reactors-bottom-sheet glass-panel"
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="sheet-drag-handle" />
+                            <div className="sheet-header">
+                                <h3>Reactions ({reactions.length})</h3>
+                                <button className="sheet-close-btn" onClick={() => setShowReactorsList(false)}>✕</button>
+                            </div>
+
+                            {/* Tab Bar */}
+                            <div className="sheet-tab-bar">
+                                {['all', 'love', 'fire', 'laugh', 'clap'].map(tab => {
+                                    const emojiMap = { all: 'All', love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+                                    const tabCount = tab === 'all' 
+                                        ? reactions.length 
+                                        : reactions.filter(r => r.reaction_type === tab).length;
+                                    return (
+                                        <button
+                                            key={tab}
+                                            className={`sheet-tab-btn ${selectedReactorTab === tab ? 'active' : ''}`}
+                                            onClick={() => setSelectedReactorTab(tab)}
+                                        >
+                                            {emojiMap[tab]} <span className="tab-count">{tabCount}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Reactors List */}
+                            <div className="reactors-list">
+                                {filteredReactors.length === 0 ? (
+                                    <div className="empty-reactors">No reactions yet</div>
+                                ) : (
+                                    filteredReactors.map(reactor => {
+                                        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+                                        const emoji = emojiMap[reactor.reaction_type] || '❤️';
+                                        const reactorProfile = reactor.user || {};
+                                        const reactorAvatar = getAvatar2D(reactorProfile.avatar_url || (reactorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : DEFAULT_FEMALE_AVATAR));
+                                        const name = reactorProfile.full_name || reactorProfile.username || 'Unknown User';
+                                        
+                                        // Calculate time elapsed
+                                        const timeElapsedStr = (() => {
+                                            if (!reactor.created_at) return '';
+                                            const diff = Date.now() - new Date(reactor.created_at).getTime();
+                                            const mins = Math.floor(diff / 60000);
+                                            if (mins < 1) return 'just now';
+                                            if (mins < 60) return `${mins}m ago`;
+                                            const hours = Math.floor(mins / 60);
+                                            if (hours < 24) return `${hours}h ago`;
+                                            return `${Math.floor(hours / 24)}d ago`;
+                                        })();
+
+                                        const isSelfReactor = reactorProfile.id === currentUser?.id;
+
+                                        return (
+                                            <div key={reactor.id} className="reactor-item">
+                                                <img src={reactorAvatar} alt={name} className="reactor-avatar" />
+                                                <div className="reactor-info">
+                                                    <div className="reactor-name-row">
+                                                        <span className="reactor-name">{name}</span>
+                                                        <span className="reactor-emoji-badge">{emoji}</span>
+                                                    </div>
+                                                    <span className="reactor-time">{timeElapsedStr}</span>
+                                                </div>
+                                                {!isSelfReactor && (
+                                                    <button
+                                                        className="reactor-msg-btn"
+                                                        onClick={() => {
+                                                            setShowReactorsList(false);
+                                                            onClose(); // Close the profile card
+                                                            onAction('message', {
+                                                                id: reactorProfile.id,
+                                                                username: reactorProfile.username,
+                                                                full_name: reactorProfile.full_name,
+                                                                avatar_url: reactorProfile.avatar_url
+                                                            });
+                                                        }}
+                                                    >
+                                                        Message
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
                 
                 {/* Full Screen Photo Overlay */}
                 <AnimatePresence>
@@ -926,6 +1073,232 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         .action-btn .label { font-size: 10px; }
                         .badge-pill { font-size: 0.72rem; padding: 4px 12px; }
                         .thought-bubble-large { padding: 10px 14px; font-size: 0.88rem; }
+                    }
+
+                    /* Thought Reactions Styling */
+                    .thought-reactions-summary {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        margin-top: 8px;
+                        cursor: pointer;
+                        padding: 6px 12px;
+                        border-radius: 12px;
+                        background: rgba(255, 255, 255, 0.04);
+                        border: 1px solid rgba(255, 255, 255, 0.06);
+                        transition: all 0.2s;
+                    }
+                    .thought-reactions-summary:hover {
+                        background: rgba(255, 255, 255, 0.08);
+                    }
+                    .reaction-summary-pill {
+                        font-size: 0.8rem;
+                        font-weight: 700;
+                        color: var(--text-primary);
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+
+                    .thought-reaction-bar {
+                        display: flex;
+                        justify-content: center;
+                        gap: 10px;
+                        width: 100%;
+                        margin-top: 12px;
+                    }
+                    .reaction-pill-btn {
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 8px 16px;
+                        border-radius: 20px;
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        background: rgba(255, 255, 255, 0.05);
+                        color: var(--text-primary);
+                        font-weight: 600;
+                        font-size: 0.85rem;
+                        cursor: pointer;
+                        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    }
+                    .reaction-pill-btn:hover {
+                        background: rgba(255, 255, 255, 0.12);
+                        transform: translateY(-1px);
+                    }
+                    .reaction-pill-btn.active {
+                        background: rgba(138, 43, 226, 0.25);
+                        border-color: rgba(138, 43, 226, 0.5);
+                        box-shadow: 0 0 12px rgba(138, 43, 226, 0.2);
+                    }
+                    .reaction-pill-btn.active .reaction-emoji {
+                        transform: scale(1.2);
+                    }
+                    .reaction-emoji {
+                        font-size: 1.1rem;
+                        transition: transform 0.2s ease;
+                    }
+                    .reaction-label {
+                        font-size: 0.8rem;
+                        opacity: 0.8;
+                    }
+
+                    /* Bottom Sheet styling */
+                    .reactors-bottom-sheet {
+                        position: absolute;
+                        bottom: 0;
+                        left: 0;
+                        right: 0;
+                        background: linear-gradient(135deg, rgba(30, 30, 40, 0.98), rgba(15, 15, 20, 0.99));
+                        border-radius: 24px 24px 0 0;
+                        border-top: 1px solid rgba(255, 255, 255, 0.1);
+                        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+                        z-index: 3100;
+                        max-height: 75vh;
+                        display: flex;
+                        flex-direction: column;
+                        padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
+                    }
+
+                    .sheet-drag-handle {
+                        width: 32px;
+                        height: 4px;
+                        background: rgba(255, 255, 255, 0.2);
+                        border-radius: 2px;
+                        margin: 0 auto 12px;
+                    }
+
+                    .sheet-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 16px;
+                    }
+
+                    .sheet-header h3 {
+                        margin: 0;
+                        font-size: 1.1rem;
+                        font-weight: 700;
+                        color: var(--text-primary);
+                    }
+
+                    .sheet-close-btn {
+                        background: none;
+                        border: none;
+                        color: var(--text-secondary);
+                        font-size: 1.1rem;
+                        cursor: pointer;
+                        padding: 4px;
+                    }
+
+                    .sheet-tab-bar {
+                        display: flex;
+                        gap: 8px;
+                        overflow-x: auto;
+                        padding-bottom: 12px;
+                        margin-bottom: 12px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    }
+
+                    .sheet-tab-btn {
+                        background: rgba(255, 255, 255, 0.05);
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        color: var(--text-secondary);
+                        padding: 6px 12px;
+                        border-radius: 16px;
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        cursor: pointer;
+                        white-space: nowrap;
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                        transition: all 0.2s;
+                    }
+
+                    .sheet-tab-btn.active {
+                        background: #8a2be2;
+                        border-color: #8a2be2;
+                        color: white;
+                    }
+
+                    .tab-count {
+                        opacity: 0.6;
+                        font-size: 0.75rem;
+                    }
+
+                    .reactors-list {
+                        flex: 1;
+                        overflow-y: auto;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                    }
+
+                    .empty-reactors {
+                        text-align: center;
+                        color: var(--text-secondary);
+                        padding: 20px;
+                        font-size: 0.9rem;
+                    }
+
+                    .reactor-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        padding: 8px 0;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+                    }
+
+                    .reactor-avatar {
+                        width: 44px;
+                        height: 44px;
+                        border-radius: 50%;
+                        object-fit: cover;
+                        border: 1.5px solid rgba(255, 255, 255, 0.1);
+                    }
+
+                    .reactor-info {
+                        flex: 1;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2px;
+                    }
+
+                    .reactor-name-row {
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                    }
+
+                    .reactor-name {
+                        font-weight: 600;
+                        font-size: 0.9rem;
+                        color: var(--text-primary);
+                    }
+
+                    .reactor-emoji-badge {
+                        font-size: 0.95rem;
+                    }
+
+                    .reactor-time {
+                        font-size: 0.75rem;
+                        color: var(--text-secondary);
+                    }
+
+                    .reactor-msg-btn {
+                        background: #8a2be2;
+                        color: white;
+                        border: none;
+                        border-radius: 12px;
+                        padding: 6px 12px;
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    }
+
+                    .reactor-msg-btn:hover {
+                        background: #9b42f5;
                     }
                     
                 `}</style>
