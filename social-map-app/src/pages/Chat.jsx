@@ -22,6 +22,7 @@ import StoryViewer from '../components/StoryViewer';
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 import { mapEventChannel } from './MapHome'; // Instant map updates
+import { parseThought } from '../utils/locationPrivacy';
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID; // Moved to environment variable for security
 
@@ -488,125 +489,121 @@ export default function Chat() {
         const channelName = `chat_list_updates_${currentUser.id}`;
         console.log('🔌 [ChatList] Subscribing to channel:', channelName);
 
-        const channel = supabase.channel(channelName)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-                // Client-side filter: Only care about messages sent TO me
-                if (String(payload.new.receiver_id) !== String(currentUser.id)) return;
+        const handleNewMessageListUpdate = async (newMessage) => {
+            // Client-side filter: Only care about messages sent TO me
+            if (String(newMessage.receiver_id) !== String(currentUser.id)) return;
 
-                console.log('🔔 [ChatList] NEW MESSAGE:', payload.new);
+            console.log('🔔 [ChatList] NEW MESSAGE (Realtime):', newMessage);
 
-                const senderId = payload.new.sender_id;
+            const senderId = newMessage.sender_id;
 
+            // Format message content based on type
+            let newContent;
+            if (newMessage.message_type === 'system') {
+                if (newMessage.content.includes('changed the theme')) {
+                    const senderName = String(newMessage.sender_id) === String(currentUser.id) ? 'You' : null;
+                    newContent = senderName ? `${senderName} ${newMessage.content}` : newMessage.content;
+                } else {
+                    newContent = newMessage.content;
+                }
+            } else if (newMessage.message_type === 'call_log' || (typeof newMessage.content === 'string' && newMessage.content.trim().startsWith('{') && newMessage.content.includes('"status"'))) {
+                try {
+                    const callData = typeof newMessage.content === 'string' ? JSON.parse(newMessage.content) : newMessage.content;
+                    const status = callData.status;
+                    const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
+                    const typeStr = `${callType} call`;
 
-                
-                // Format message content based on type
-                let newContent;
-                if (payload.new.message_type === 'system') {
-                    // Handle system messages (like theme changes)
-                    if (payload.new.content.includes('changed the theme')) {
-                        const senderName = String(payload.new.sender_id) === String(currentUser.id) ? 'You' : null;
-                        // If sender is current user, show "You", otherwise we'll fetch the sender's name below
-                        newContent = senderName ? `${senderName} ${payload.new.content}` : payload.new.content;
+                    if (status === 'missed' || status === 'busy') {
+                        newContent = `📞 Missed ${typeStr.toLowerCase()}`;
+                    } else if (status === 'declined' || status === 'rejected') {
+                        newContent = `${typeStr} • Declined`;
+                    } else if (status === 'calling' || status === 'ringing') {
+                         const isMyCall = newMessage.sender_id === currentUser.id;
+                         newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${typeStr}...`;
                     } else {
-                        newContent = payload.new.content;
+                        const direction = newMessage.sender_id === currentUser.id ? 'Outgoing' : 'Incoming';
+                        newContent = `${direction} ${typeStr}`;
                     }
-                } else if (payload.new.message_type === 'call_log' || (typeof payload.new.content === 'string' && payload.new.content.trim().startsWith('{') && payload.new.content.includes('"status"'))) {
-                    try {
-                        const callData = typeof payload.new.content === 'string' ? JSON.parse(payload.new.content) : payload.new.content;
+                } catch (e) {
+                     newContent = '📞 Call log';
+                }
+            } else if (newMessage.message_type === 'image') {
+                newContent = '📷 Photo';
+            } else if (newMessage.message_type === 'attachment') {
+                newContent = '📎 Attachment';
+            } else {
+                if (typeof newMessage.content === 'string' && newMessage.content.trim().startsWith('{') && newMessage.content.includes('"status"')) {
+                     try {
+                        const callData = JSON.parse(newMessage.content);
                         const status = callData.status;
                         const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
-                        const typeStr = `${callType} call`;
-
-                        if (status === 'missed' || status === 'busy') {
-                            newContent = `📞 Missed ${typeStr.toLowerCase()}`;
-                        } else if (status === 'declined' || status === 'rejected') {
-                            newContent = `${typeStr} • Declined`;
-                        } else if (status === 'calling' || status === 'ringing') {
-                             const isMyCall = payload.new.sender_id === currentUser.id;
-                             newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${typeStr}...`;
+                        
+                        if (status === 'calling' || status === 'ringing') {
+                            const isMyCall = newMessage.sender_id === currentUser.id;
+                            newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${callType} call...`;
+                        } else if (status === 'missed') {
+                            newContent = `📞 Missed ${callType.toLowerCase()} call`;
                         } else {
-                            // Accepted/Ended
-                            const direction = payload.new.sender_id === currentUser.id ? 'Outgoing' : 'Incoming';
-                            newContent = `${direction} ${typeStr}`;
+                            newContent = `📞 ${callType} call`;
                         }
-                    } catch (e) {
-                         newContent = '📞 Call log';
-                    }
-                } else if (payload.new.message_type === 'image') {
-                    newContent = '📷 Photo';
-                } else if (payload.new.message_type === 'attachment') {
-                    newContent = '📎 Attachment';
+                     } catch (e) {
+                        newContent = newMessage.content;
+                     }
                 } else {
-                    // Fallback: Check if it's a raw JSON string (Call Log) that slipped through
-                    if (typeof payload.new.content === 'string' && payload.new.content.trim().startsWith('{') && payload.new.content.includes('"status"')) {
-                         try {
-                            const callData = JSON.parse(payload.new.content);
-                            const status = callData.status;
-                            const callType = (callData.call_type === 'video' || callData.call_type === 'video_call') ? 'Video' : 'Audio';
-                            
-                            if (status === 'calling' || status === 'ringing') {
-                                const isMyCall = payload.new.sender_id === currentUser.id;
-                                newContent = isMyCall ? `📞 Calling...` : `📞 Incoming ${callType} call...`;
-                            } else if (status === 'missed') {
-                                newContent = `📞 Missed ${callType.toLowerCase()} call`;
-                            } else {
-                                newContent = `📞 ${callType} call`;
-                            }
-                         } catch (e) {
-                            newContent = payload.new.content;
-                         }
-                    } else {
-                        newContent = payload.new.content;
+                    newContent = newMessage.content;
+                }
+            }
+            
+            const date = new Date(newMessage.created_at);
+            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            setChats(prev => {
+                const existingChatIndex = prev.findIndex(chat => String(chat.id) === String(senderId));
+                
+                if (newMessage.message_type === 'system' && 
+                    newMessage.content.includes('changed the theme') &&
+                    String(newMessage.sender_id) !== String(currentUser.id)) {
+                    if (existingChatIndex !== -1) {
+                        const chatName = prev[existingChatIndex].name;
+                        const senderName = chatName || 'Friend';
+                        newContent = `${senderName} ${newMessage.content}`;
                     }
                 }
                 
-                // Format time string
-                const date = new Date(payload.new.created_at);
-                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                if (existingChatIndex !== -1) {
+                    const updatedChats = [...prev];
+                    const chat = updatedChats[existingChatIndex];
+                    
+                    updatedChats[existingChatIndex] = {
+                        ...chat,
+                        lastMsg: newContent,
+                        time: timeString,
+                        rawTime: newMessage.created_at,
+                        unread: chat.unread + 1
+                    };
+                    
+                    const movedChat = updatedChats.splice(existingChatIndex, 1)[0];
+                    updatedChats.unshift(movedChat);
+                    return updatedChats;
+                } else {
+                    fetchProfileAndAddChat(senderId, newContent, timeString, newMessage.created_at);
+                    return prev;
+                }
+            });
+        };
 
-                setChats(prev => {
-                    const existingChatIndex = prev.findIndex(chat => String(chat.id) === String(senderId));
-                    
-                    // For system messages from others, prepend their name
-                    if (payload.new.message_type === 'system' && 
-                        payload.new.content.includes('changed the theme') &&
-                        String(payload.new.sender_id) !== String(currentUser.id)) {
-                        if (existingChatIndex !== -1) {
-                            const chatName = prev[existingChatIndex].name;
-                            const senderName = chatName || 'Friend';
-                            newContent = `${senderName} ${payload.new.content}`;
-                        }
-                    }
-                    
-                    if (existingChatIndex !== -1) {
-                        // Update existing chat
-                        const updatedChats = [...prev];
-                        const chat = updatedChats[existingChatIndex];
-                        
-                        updatedChats[existingChatIndex] = {
-                            ...chat,
-                            lastMsg: newContent,
-                            time: timeString,
-                            rawTime: payload.new.created_at,
-                            unread: chat.unread + 1
-                        };
-                        
-                        // Move to top
-                        const movedChat = updatedChats.splice(existingChatIndex, 1)[0];
-                        updatedChats.unshift(movedChat);
-                        return updatedChats;
-                    } else {
-                        // New conversation - fetch profile
-                        fetchProfileAndAddChat(senderId, newContent, timeString, payload.new.created_at);
-                        return prev;
-                    }
-                });
+        const channel = supabase.channel(channelName)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+                await handleNewMessageListUpdate(payload.new);
+            })
+            .on('broadcast', { event: 'new_message' }, async ({ payload }) => {
+                if (payload && payload.message) {
+                    await handleNewMessageListUpdate(payload.message);
+                }
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
                  // Check if it's a read status update for a message sent TO me
                  if (String(payload.new.receiver_id) === String(currentUser.id)) {
-                     // Since payload.old is empty by default unless REPLICA IDENTITY FULL is enabled on postgres,
-                     // we cannot check !payload.old.is_read. We just check if it's newly marked as read.
                      if (payload.new.is_read) {
                          setChats(prev => prev.map(chat => {
                              if (String(chat.id) === String(payload.new.sender_id)) {
@@ -1697,6 +1694,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     // I will use 'messagesStateRef' to be safe.
     const messagesStateRef = useRef(messages);
     useEffect(() => { messagesStateRef.current = messages; }, [messages]);
+    const activeChatChannelRef = useRef(null);
 
     const [input, setInput] = useState('');
     const [showMenu, setShowMenu] = useState(false);
@@ -2646,7 +2644,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         id: req.id,
                         sender_id: req.sender_id,
                         receiver_id: req.receiver_id,
-                        content: `💭 Replied to thought "${req.thought_text}":\n\n${req.content}`,
+                        content: `💭 Replied to thought "${parseThought(req.thought_text).text}":\n\n${req.content}`,
                         message_type: 'text',
                         created_at: req.created_at,
                         is_request: true
@@ -2676,112 +2674,108 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
         fetchMessages();
 
+        const roomId = [currentUser.id, targetUser.id].sort().join('_');
+        
+        const handleNewMessage = async (msgObj) => {
+            // Client-side Filter:
+            // 1. Check if blocked
+            if (blockStatus.blockedByMe && String(msgObj.sender_id) === String(targetUser.id)) {
+                // Only ignore if created AFTER block
+                const msgTime = new Date(msgObj.created_at).getTime();
+                const blockTime = blockStatus.blockedAt ? new Date(blockStatus.blockedAt).getTime() : 0;
+                
+                if (msgTime > blockTime) {
+                    console.log('🚫 [Chat] Ignoring message from blocked user (time check)');
+                    return;
+                }
+            }
+
+            // Check if message belongs to this conversation
+            const isIncoming = String(msgObj.receiver_id) === String(currentUser.id) && String(msgObj.sender_id) === String(targetUser.id);
+            const isOutgoingProxy = String(msgObj.sender_id) === String(currentUser.id) && String(msgObj.receiver_id) === String(targetUser.id);
+
+            if (isIncoming || isOutgoingProxy) {
+                
+                // Supabase realtime doesn't return joined data, so we must manually fetch or find reply_to context
+                let replyToData = msgObj.reply_to || null;
+                
+                if (msgObj.reply_to_message_id && !replyToData) {
+                     // 1. Try finding in local state ref (fastest & synchronous)
+                     const found = messagesStateRef.current.find(m => m.id === msgObj.reply_to_message_id);
+                     if (found) {
+                         replyToData = {
+                             id: found.id,
+                             sender_id: found.sender_id,
+                             content: found.content,
+                             message_type: found.message_type,
+                             image_url: found.image_url
+                         };
+                     }
+
+                     // 2. If not found locally, fetch single
+                     if (!replyToData) {
+                         const { data: fetchedReply } = await supabase
+                             .from('messages')
+                             .select('id, sender_id, content, message_type, image_url')
+                             .eq('id', msgObj.reply_to_message_id)
+                             .maybeSingle();
+                         if (fetchedReply) replyToData = fetchedReply;
+                     }
+                }
+
+                const newMessage = { ...msgObj, reply_to: replyToData };
+
+                setMessages(prev => {
+                    // Check if already applied (duplicate event protection)
+                    if (prev.some(m => m.id === newMessage.id)) return prev;
+                    
+                    const isSentByMe = String(newMessage.sender_id) === String(currentUser.id);
+                    if (isSentByMe) return prev;
+                    
+                    return [...prev, newMessage];
+                });
+                
+                // Set delivered_at for sender (skip system messages)
+                if (msgObj.message_type !== 'system') {
+                    // If I am the receiver and I'm currently looking at this chat, mark as SEEN
+                    if (String(msgObj.receiver_id) === String(currentUser.id)) {
+                         const now = new Date().toISOString();
+                         await supabase
+                            .from('messages')
+                            .update({ 
+                                is_read: true, 
+                                delivery_status: 'seen', 
+                                seen_at: now,
+                                delivered_at: now 
+                            })
+                            .eq('id', msgObj.id);
+                    } else {
+                        // Just mark as delivered
+                        await supabase
+                            .from('messages')
+                            .update({ 
+                                delivery_status: 'delivered', 
+                                delivered_at: new Date().toISOString() 
+                            })
+                            .eq('id', msgObj.id);
+                    }
+                }
+            }
+        };
+
         const channel = supabase
-            .channel(`chat_room_${currentUser.id}_${targetUser.id}_${Date.now()}`)
+            .channel(`chat_room_${roomId}`)
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
                 table: 'messages'
             }, async (payload) => {
-                // Client-side Filter:
-                // 1. Check if blocked
-                if (blockStatus.blockedByMe && String(payload.new.sender_id) === String(targetUser.id)) {
-                    // Only ignore if created AFTER block
-                    const msgTime = new Date(payload.new.created_at).getTime();
-                    const blockTime = blockStatus.blockedAt ? new Date(blockStatus.blockedAt).getTime() : 0;
-                    
-                    if (msgTime > blockTime) {
-                        console.log('🚫 [Chat] Ignoring message from blocked user (time check)');
-                        return;
-                    }
-                }
-
-                // Check if message belongs to this conversation
-                // 1. Incoming: From Target -> Me
-                // 2. Outgoing (sent from elsewhere): From Me -> Target
-                const isIncoming = String(payload.new.receiver_id) === String(currentUser.id) && String(payload.new.sender_id) === String(targetUser.id);
-                const isOutgoingProxy = String(payload.new.sender_id) === String(currentUser.id) && String(payload.new.receiver_id) === String(targetUser.id);
-
-                if (isIncoming || isOutgoingProxy) {
-                    
-                    // Supabase realtime doesn't return joined data, so we must manually fetch or find reply_to context
-                    let replyToData = null;
-                    
-                    if (payload.new.reply_to_message_id) {
-                         // 1. Try finding in local state ref (fastest & synchronous)
-                         const found = messagesStateRef.current.find(m => m.id === payload.new.reply_to_message_id);
-                         if (found) {
-                             replyToData = {
-                                 id: found.id,
-                                 sender_id: found.sender_id,
-                                 content: found.content,
-                                 message_type: found.message_type,
-                                 image_url: found.image_url
-                             };
-                         }
-
-                         // 2. If not found locally, fetch single
-                         if (!replyToData) {
-                             const { data: fetchedReply } = await supabase
-                                 .from('messages')
-                                 .select('id, sender_id, content, message_type, image_url')
-                                 .eq('id', payload.new.reply_to_message_id)
-                                 .maybeSingle();
-                             if (fetchedReply) replyToData = fetchedReply;
-                         }
-                    }
-
-                    const newMessage = { ...payload.new, reply_to: replyToData };
-
-                    setMessages(prev => {
-                        // Check if already applied (duplicate event protection)
-                        if (prev.some(m => m.id === newMessage.id)) return prev;
-                        
-                        // Check if this is the database version of the optimistic message we just sent
-                        // If it is, replace it (identified by matching sender, content, and recent creation time)
-                        // If it's a completely new incoming message, leave other optimistic messages alone.
-                        const isSentByMe = String(newMessage.sender_id) === String(currentUser.id);
-                        
-                        // If I sent it, the `sendMessage` function already provides instant UI updates.
-                        // We preserve optimistic ones until the promise resolves.
-                        if (isSentByMe) {
-                             // We don't append Postgres duplicates of our own messages here since 
-                             // `sendMessage` inserts the returned DB row into state, avoiding `tempId` bugs.
-                             return prev;
-                        }
-                        
-                        return [...prev, newMessage];
-                    });
-                    
-                    // Don't mark as read here - let the polling mechanism handle it
-                    // This avoids 400 errors from RLS policies
-                    
-                    // Set delivered_at for sender (skip system messages)
-                    // Set delivered_at for sender (skip system messages)
-                    if (payload.new.message_type !== 'system') {
-                        // If I am the receiver and I'm currently looking at this chat, mark as SEEN
-                        if (String(payload.new.receiver_id) === String(currentUser.id)) {
-                             const now = new Date().toISOString();
-                             await supabase
-                                .from('messages')
-                                .update({ 
-                                    is_read: true, 
-                                    delivery_status: 'seen', 
-                                    seen_at: now,
-                                    delivered_at: now 
-                                })
-                                .eq('id', payload.new.id);
-                        } else {
-                            // Just mark as delivered
-                            await supabase
-                                .from('messages')
-                                .update({ 
-                                    delivery_status: 'delivered', 
-                                    delivered_at: new Date().toISOString() 
-                                })
-                                .eq('id', payload.new.id);
-                        }
-                    }
+                await handleNewMessage(payload.new);
+            })
+            .on('broadcast', { event: 'new_message' }, async ({ payload }) => {
+                console.log('⚡ [Chat] Broadcast message received in active chat room:', payload);
+                if (payload && payload.message) {
+                    await handleNewMessage(payload.message);
                 }
             })
             // Listen for message updates (read/delivered status)
@@ -2830,7 +2824,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 console.log(`Chat room subscription status: ${status}`);
             });
 
-        return () => { supabase.removeChannel(channel); };
+        activeChatChannelRef.current = channel;
+
+        return () => {
+            activeChatChannelRef.current = null;
+            supabase.removeChannel(channel);
+        };
     }, [currentUser.id, targetUser.id, blockStatus]);
 
     // Polling Fallback: Fetch messages every 3 seconds to ensure delivery if realtime fails
@@ -3072,10 +3071,35 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             // Remove optimistic message on error
             setMessages(prev => prev.filter(m => m.tempId !== tempId));
         } else if (data && data[0]) {
+            const realMessage = { ...data[0], reply_to: optimisticMessage.reply_to };
             // Replace optimistic with real message
             setMessages(prev => prev.map(m => 
-                m.tempId === tempId ? { ...data[0], reply_to: optimisticMessage.reply_to } : m
+                m.tempId === tempId ? realMessage : m
             ));
+
+            // ⚡ Instant Broadcast Delivery to Active Room
+            if (activeChatChannelRef.current) {
+                activeChatChannelRef.current.send({
+                    type: 'broadcast',
+                    event: 'new_message',
+                    payload: { message: realMessage }
+                });
+            }
+
+            // ⚡ Instant Broadcast Delivery to Partner's Chat List
+            const listUpdateChannel = supabase.channel(`chat_list_updates_${targetUser.id}`);
+            listUpdateChannel.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    listUpdateChannel.send({
+                        type: 'broadcast',
+                        event: 'new_message',
+                        payload: { message: realMessage }
+                    });
+                    setTimeout(() => {
+                        supabase.removeChannel(listUpdateChannel);
+                    }, 1000);
+                }
+            });
         }
     };
 

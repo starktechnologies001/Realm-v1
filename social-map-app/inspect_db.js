@@ -7,8 +7,7 @@ const envConfig = dotenv.parse(fs.readFileSync('/Users/anonymous/Desktop/realmm/
 const supabase = createClient(envConfig.VITE_SUPABASE_URL, envConfig.VITE_SUPABASE_ANON_KEY);
 
 async function check() {
-  // Let's try to get a user profile to see columns
-  const { data, error } = await supabase.from('profiles').select('*').limit(1);
-  console.log('Profile columns:', data && data[0] ? Object.keys(data[0]) : error);
+  const { data, error } = await supabase.from('thought_reactions').select('*').limit(1);
+  console.log('thought_reactions select:', error, data);
 }
 check();

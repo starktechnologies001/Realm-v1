@@ -14,7 +14,7 @@ import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';
-import { fuzzyLocation, distanceMetres, fuzzyLocationForDB } from '../utils/locationPrivacy';
+import { fuzzyLocation, distanceMetres, fuzzyLocationForDB, parseThought, formatThought } from '../utils/locationPrivacy';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import LocationOnboarding from '../components/LocationOnboarding';
 import StoryViewer from '../components/StoryViewer';
@@ -249,6 +249,16 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 if (diffHours > 3) displayThought = null;
             }
 
+            if (displayThought) {
+                const parsed = parseThought(displayThought);
+                if (parsed.privacy === 'friends') {
+                    const isFriend = u.friendshipStatus === 'accepted';
+                    if (!isFriend) {
+                        displayThought = null;
+                    }
+                }
+            }
+
             // moodUpdatedAt is camelCase in nearbyUsers; fallback to snake_case for safety
             const moodUpdatedAt = u.moodUpdatedAt || u.mood_updated_at;
 
@@ -393,6 +403,54 @@ const mapAvatarStyle = `
 
 // Module-level persistent caches to prevent avatars from jumping or losing stalker protection view counts on unmount
 const globalFuzzyLocationCache = new Map();
+
+// Helper: Generates a stable, random 50-100m offset for other users
+const getFuzzyLocationForUser = (userId, latVal, lngVal) => {
+    if (latVal == null || lngVal == null || isNaN(latVal) || isNaN(lngVal)) {
+        return { lat: latVal, lng: lngVal, latitude: latVal, longitude: lngVal };
+    }
+
+    let fCache = globalFuzzyLocationCache.get(userId);
+
+    if (!fCache) {
+        // Generate a random stable offset between 50 and 100 meters
+        const distM = 50 + Math.random() * 50; // Random distance 50-100m
+        const bearing = Math.random() * 2 * Math.PI; // Random bearing in radians
+        
+        const METRES_PER_DEG_LAT = 111000;
+        const METRES_PER_DEG_LNG = 111000 * Math.cos((latVal * Math.PI) / 180);
+
+        const deltaLat = (distM * Math.cos(bearing)) / METRES_PER_DEG_LAT;
+        const deltaLng = (distM * Math.sin(bearing)) / METRES_PER_DEG_LNG;
+
+        fCache = {
+            realLat: latVal,
+            realLng: lngVal,
+            deltaLat,
+            deltaLng,
+            fuzzyLat: latVal + deltaLat,
+            fuzzyLng: lngVal + deltaLng
+        };
+        globalFuzzyLocationCache.set(userId, fCache);
+    } else if (fCache.realLat !== latVal || fCache.realLng !== lngVal) {
+        // Keep the exact same offset (deltaLat, deltaLng) to prevent avatar from jumping/running
+        fCache = {
+            ...fCache,
+            realLat: latVal,
+            realLng: lngVal,
+            fuzzyLat: latVal + (fCache.deltaLat || 0),
+            fuzzyLng: lngVal + (fCache.deltaLng || 0)
+        };
+        globalFuzzyLocationCache.set(userId, fCache);
+    }
+
+    return {
+        lat: fCache.fuzzyLat,
+        lng: fCache.fuzzyLng,
+        latitude: fCache.fuzzyLat,
+        longitude: fCache.fuzzyLng
+    };
+};
 const globalViewCounts = {};
 let globalNearbyUsersCache = [];
 
@@ -565,6 +623,23 @@ export default function MapHome() {
     // Floating Thought State
     const [showThoughtInput, setShowThoughtInput] = useState(false);
     const [myThought, setMyThought] = useState('');
+    const [selectedColor, setSelectedColor] = useState('#f3d9fa'); // Lavender by default
+    const [selectedPrivacy, setSelectedPrivacy] = useState('everyone');
+
+    const handleOpenThoughtInput = () => {
+        if (currentUser) {
+            const raw = currentUser.thought || currentUser.status_message;
+            const parsed = parseThought(raw);
+            setMyThought(parsed.text || '');
+            setSelectedColor(parsed.color || '#f3d9fa');
+            setSelectedPrivacy(parsed.privacy || 'everyone');
+        } else {
+            setMyThought('');
+            setSelectedColor('#f3d9fa');
+            setSelectedPrivacy('everyone');
+        }
+        setShowThoughtInput(true);
+    };
 
     // --- Onboarding State ---
     const [showProfileSetup, setShowProfileSetup] = useState(false);
@@ -942,14 +1017,10 @@ export default function MapHome() {
                                 setNearbyUsers(prev => {
                                     if (prev.some(u => u.id === relevantId)) return prev;
 
-                                    const lat = parseFloat(friendProfile.latitude);
-                                    const lng = parseFloat(friendProfile.longitude);
+                                    const latVal = parseFloat(friendProfile.latitude);
+                                    const lngVal = parseFloat(friendProfile.longitude);
                                     
-                                    let fCache = fuzzyLocationCache.current.get(relevantId);
-                                    if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng) {
-                                        fCache = { realLat: lat, realLng: lng, fuzzyLat: lat, fuzzyLng: lng };
-                                        fuzzyLocationCache.current.set(relevantId, fCache);
-                                    }
+                                    const fuzzyLoc = getFuzzyLocationForUser(relevantId, latVal, lngVal);
 
                                     let fallbackAvatar;
                                     if (friendProfile.gender === 'Male') fallbackAvatar = DEFAULT_MALE_AVATAR;
@@ -971,8 +1042,8 @@ export default function MapHome() {
                                     const newUserObj = {
                                         id: friendProfile.id,
                                         name: friendProfile.username || 'User',
-                                        lat: fCache.fuzzyLat,
-                                        lng: fCache.fuzzyLng,
+                                        lat: fuzzyLoc.lat,
+                                        lng: fuzzyLoc.lng,
                                         avatar: friendProfile.avatar_url || fallbackAvatar,
                                         originalAvatar: friendProfile.avatar_url,
                                         status: statusEmoji,
@@ -1323,22 +1394,11 @@ export default function MapHome() {
                         else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
 
                         const lat = parseFloat(u.latitude);
-                        const lng = parseFloat(u.longitude);
+                                const lng = parseFloat(u.longitude);
 
-                        let fCache = fuzzyLocationCache.current.get(u.id);
-
-                        if (!fCache || fCache.realLat !== lat || fCache.realLng !== lng) {
-                            fCache = { 
-                                realLat: lat, 
-                                realLng: lng, 
-                                fuzzyLat: lat, 
-                                fuzzyLng: lng
-                            };
-                            fuzzyLocationCache.current.set(u.id, fCache);
-                        }
-
-                        const renderLat = fCache.fuzzyLat;
-                        const renderLng = fCache.fuzzyLng;
+                        const fuzzyLoc = getFuzzyLocationForUser(u.id, lat, lng);
+                        const renderLat = fuzzyLoc.lat;
+                        const renderLng = fuzzyLoc.lng;
 
                         // Get friendship data from map
                         const fData = myFriendships.get(u.id);
@@ -1507,20 +1567,9 @@ export default function MapHome() {
                     // Apply fuzzy location caching so coordinates remain stable/consistent
                     const latVal = renderLat;
                     const lngVal = renderLng;
-                    let fCache = fuzzyLocationCache.current.get(updatedUser.id);
-
-                    if (!fCache || fCache.realLat !== latVal || fCache.realLng !== lngVal) {
-                        fCache = {
-                            realLat: latVal,
-                            realLng: lngVal,
-                            fuzzyLat: latVal,
-                            fuzzyLng: lngVal
-                        };
-                        fuzzyLocationCache.current.set(updatedUser.id, fCache);
-                    }
-
-                    renderLat = fCache.fuzzyLat;
-                    renderLng = fCache.fuzzyLng;
+                    const fuzzyLoc = getFuzzyLocationForUser(updatedUser.id, latVal, lngVal);
+                    renderLat = fuzzyLoc.lat;
+                    renderLng = fuzzyLoc.lng;
 
                     let statusMessage = updatedUser.status_message;
                     let statusEmoji = updatedUser.status;
@@ -1669,24 +1718,14 @@ export default function MapHome() {
                         const rawLng = parseFloat(newUser.longitude);
 
                         // Apply fuzzy location caching so coordinates remain stable/consistent
-                        let fCache = fuzzyLocationCache.current.get(newUser.id);
-                        
-                        if (!fCache || fCache.realLat !== rawLat || fCache.realLng !== rawLng) {
-                            fCache = {
-                                realLat: rawLat,
-                                realLng: rawLng,
-                                fuzzyLat: rawLat,
-                                fuzzyLng: rawLng
-                            };
-                            fuzzyLocationCache.current.set(newUser.id, fCache);
-                        }
+                        const fuzzyLoc = getFuzzyLocationForUser(newUser.id, rawLat, rawLng);
 
                         // Add new user locally
                         return [...prev, {
                             id: newUser.id,
                             name: newUser.username || 'User',
-                            lat: fCache.fuzzyLat,
-                            lng: fCache.fuzzyLng,
+                            lat: fuzzyLoc.lat,
+                            lng: fuzzyLoc.lng,
                             avatar: mapAvatar,
                             originalAvatar: newUser.avatar_url,
                             status: statusEmoji,
@@ -2040,6 +2079,8 @@ export default function MapHome() {
             const updatedUser = { ...currentUser, thought: null, thoughtTime: null };
             setCurrentUser(updatedUser);
             setMyThought(''); // Clear input
+            setSelectedColor('#f3d9fa'); // Reset selection
+            setSelectedPrivacy('everyone');
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
             setShowThoughtInput(false);
 
@@ -2064,9 +2105,11 @@ export default function MapHome() {
         e.preventDefault();
         if (!currentUser) return;
 
+        const formattedThought = formatThought(myThought, selectedColor, selectedPrivacy);
+
         try {
             // Optimistic update
-            const updatedUser = { ...currentUser, thought: myThought, thoughtTime: Date.now() };
+            const updatedUser = { ...currentUser, thought: formattedThought, thoughtTime: Date.now() };
             setCurrentUser(updatedUser);
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
             setShowThoughtInput(false);
@@ -2075,7 +2118,7 @@ export default function MapHome() {
             const { error } = await supabase
                 .from('profiles')
                 .update({
-                    status_message: myThought,
+                    status_message: formattedThought,
                     last_active: new Date().toISOString(),
                     status_updated_at: new Date().toISOString()
                 })
@@ -2084,17 +2127,17 @@ export default function MapHome() {
             if (error) throw error;
             
             setNearbyUsers(prev =>
-            prev.map(u =>
-                u.id === currentUser.id
-                    ? {
-                        ...u,
-                        thought: myThought,
-                        status_updated_at: new Date().toISOString(),
-                        lastActive: new Date().toISOString()
-                      }
-                    : u
-            )
-        );
+                prev.map(u =>
+                    u.id === currentUser.id
+                        ? {
+                            ...u,
+                            thought: formattedThought,
+                            status_updated_at: new Date().toISOString(),
+                            lastActive: new Date().toISOString()
+                          }
+                        : u
+                )
+            );
 
             showToast('Thought posted to map! 🌍');
         } catch (err) {
@@ -2549,13 +2592,31 @@ export default function MapHome() {
         }
 
         // Only show thought if it exists (simplified check)
-        const thoughtHTML = thought
-            ? `<div class="thought-bubble" style="background: white !important; color: black !important; padding-right: 24px;">
+        const parsed = parseThought(thought);
+        const thoughtText = parsed.text;
+        const bubbleColor = parsed.color || '#ffffff';
+        
+        // Darker border helper
+        const getDarkerBorderColor = (c) => {
+            switch (c?.toLowerCase()) {
+                case '#ffffff': return '#d1d1d6';
+                case '#fef5d1': return '#ecc844';
+                case '#d4ebfc': return '#9ac8eb';
+                case '#f3d9fa': return '#d1aced';
+                case '#d2f8e3': return '#9be6ba';
+                case '#fde2e4': return '#e8b7bd';
+                default: return 'rgba(0,0,0,0.15)';
+            }
+        };
+        const bubbleBorderColor = getDarkerBorderColor(bubbleColor);
+
+        const thoughtHTML = thoughtText
+            ? `<div class="thought-bubble" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 24px;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem;">${name}</div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
-                    ${thought}
+                    ${thoughtText}
                  </div>
-                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thought.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
+                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thoughtText.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
                </div>`
             : '';
 
@@ -3433,7 +3494,7 @@ export default function MapHome() {
                 }}>
                     {/* ── Floating Thought Button ── */}
                     <button
-                        onClick={() => setShowThoughtInput(true)}
+                        onClick={() => handleOpenThoughtInput()}
                         title="Set Floating Thought"
                         style={{
                             width: 32, height: 32,
@@ -3644,7 +3705,7 @@ export default function MapHome() {
                         {/* Status / Thoughts */}
                         <button 
                             className="control-btn status-trigger-btn" 
-                            onClick={() => setShowThoughtInput(true)} 
+                            onClick={() => handleOpenThoughtInput()} 
                             title="Set Status"
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -4288,42 +4349,101 @@ export default function MapHome() {
             {/* Thought Input Overlay */}
             {showThoughtInput && (
                 <div className="thought-input-overlay" onClick={() => setShowThoughtInput(false)}>
-                    <div className="thought-card" onClick={e => e.stopPropagation()}>
-                        <h3>💭 Set a Status</h3>
+                    <div className="thought-card new-thought-card" style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        {/* Close button (✕) in the top-right corner */}
+                        <button type="button" className="thought-close-btn" onClick={() => setShowThoughtInput(false)}>&times;</button>
+                        
+                        {/* Circular purple container with a 💭 emoji at the top */}
+                        <div className="thought-emoji-header">
+                            <span className="thought-emoji-bubble">💭</span>
+                        </div>
+                        
+                        {/* Centered "Set a Thought" header */}
+                        <h3 className="thought-card-title">Set a Thought</h3>
+                        
                         <form onSubmit={handlePostThought}>
-                            <input
-                                type="text"
-                                placeholder="What's on your mind? (e.g. Coffee?)"
-                                value={myThought}
-                                onChange={e => setMyThought(e.target.value)}
-                                maxLength={30}
-                                autoFocus
-                            />
-                            <div className="thought-actions">
-                                <button type="button" onClick={() => setShowThoughtInput(false)}>Cancel</button>
+                            {/* "What's on your mind?" textarea with a characters counter and 80-char limit */}
+                            <div className="textarea-container">
+                                <textarea
+                                    placeholder="What's on your mind?"
+                                    value={myThought}
+                                    onChange={e => {
+                                        if (e.target.value.length <= 80) {
+                                            setMyThought(e.target.value);
+                                        }
+                                    }}
+                                    maxLength={80}
+                                    autoFocus
+                                    rows={3}
+                                    className="thought-textarea"
+                                    id="thought-textarea-input"
+                                />
+                                <div className="character-counter">
+                                    {myThought.length}/80
+                                </div>
+                            </div>
+                            
+                            {/* Bubble Color selection row */}
+                            <div className="setting-section">
+                                <label className="setting-label">Bubble Color</label>
+                                <div className="color-circles-row">
+                                    {[
+                                        { name: 'White', value: '#ffffff' },
+                                        { name: 'Golden Yellow', value: '#fef5d1' },
+                                        { name: 'Soft Blue', value: '#d4ebfc' },
+                                        { name: 'Lavender', value: '#f3d9fa' },
+                                        { name: 'Mint Green', value: '#d2f8e3' },
+                                        { name: 'Soft Peach', value: '#fde2e4' }
+                                    ].map(colorObj => (
+                                        <button
+                                            key={colorObj.value}
+                                            type="button"
+                                            className={`color-circle-btn ${selectedColor === colorObj.value ? 'selected' : ''}`}
+                                            style={{ backgroundColor: colorObj.value }}
+                                            onClick={() => setSelectedColor(colorObj.value)}
+                                            title={colorObj.name}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Privacy selector */}
+                            <div className="setting-section">
+                                <label className="setting-label" htmlFor="thought-privacy">Who can see this?</label>
+                                <div className="privacy-select-wrapper">
+                                    <span className="privacy-select-icon">
+                                        {selectedPrivacy === 'friends' ? '👥' : '🌐'}
+                                    </span>
+                                    <select
+                                        id="thought-privacy"
+                                        value={selectedPrivacy}
+                                        onChange={e => setSelectedPrivacy(e.target.value)}
+                                        className="privacy-select"
+                                    >
+                                        <option value="everyone">Everyone Nearby</option>
+                                        <option value="friends">Friends Only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            {/* Buttons at the bottom */}
+                            <div className="thought-actions new-actions">
+                                <button type="button" className="btn-cancel" onClick={() => setShowThoughtInput(false)}>Cancel</button>
                                 <div className="right-actions">
                                     {currentUser?.thought && (
                                         <button
                                             type="button"
                                             onClick={handleDeleteThought}
-                                            style={{
-                                                background: 'rgba(255, 59, 48, 0.1)',
-                                                color: '#ff3b30',
-                                                border: '1px solid rgba(255, 59, 48, 0.2)',
-                                                padding: '8px 12px',
-                                                fontSize: '1.2rem',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                            }}
-                                            title="Delete Thought"
+                                            className="btn-remove"
+                                            title="Remove Thought"
                                         >
-                                            🗑️
+                                            Remove
                                         </button>
                                     )}
-                                    <button type="submit" className="primary">Post</button>
+                                    <button type="submit" className="btn-post primary" disabled={!myThought.trim()}>Post</button>
                                 </div>
                             </div>
                         </form>
-                        <p className="hint">Disappears in 3 hours</p>
                     </div>
                 </div>
             )}
@@ -4646,68 +4766,85 @@ export default function MapHome() {
                 .thought-input-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.5);
                     display: flex; align-items: center; justify-content: center; z-index: 3000;
-                    backdrop-filter: blur(2px);
+                    backdrop-filter: blur(8px);
                 }
-                .thought-card {
-                    background: white; padding: 20px; border-radius: 20px; width: 80%; max-width: 320px;
+                .new-thought-card {
+                    background: white; padding: 24px; border-radius: 24px; width: 90%; max-width: 340px;
                     display: flex; flex-direction: column; gap: 10px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                    box-shadow: 0 15px 45px rgba(0,0,0,0.25);
+                    border: 1px solid rgba(0,0,0,0.08);
                 }
-                .thought-card h3 { margin: 0; font-size: 1.1rem; color: #333; }
-                .thought-card input {
-                    width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 1rem; outline: none;
+                .thought-close-btn {
+                    position: absolute; top: 16px; right: 16px; background: none; border: none;
+                    font-size: 24px; line-height: 1; color: #8e8e93; cursor: pointer; padding: 4px;
+                    transition: color 0.15s ease;
                 }
-                .thought-card input:focus { border-color: #4285F4; }
-                .thought-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 5px; }
-                .thought-actions .right-actions { display: flex; gap: 10px; }
-                .thought-actions button { padding: 8px 16px; border-radius: 8px; border:none; cursor: pointer; font-weight: 600; }
-                .thought-actions button.primary { background: #4285F4; color: white; }
-                .hint { font-size: 0.75rem; color: #888; margin: 0; text-align: center; }
+                .thought-close-btn:hover { color: #3a3a3c; }
+                .thought-emoji-header { display: flex; justify-content: center; margin-top: -8px; margin-bottom: 8px; }
+                .thought-emoji-bubble {
+                    width: 56px; height: 56px; background: #8b5cf6; border-radius: 50%;
+                    display: flex; align-items: center; justify-content: center; font-size: 24px;
+                    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+                }
+                .thought-card-title { text-align: center; font-size: 1.25rem; font-weight: 700; color: #1c1c1e; margin: 0 0 16px 0; }
+                .textarea-container { position: relative; margin-bottom: 16px; }
+                .thought-textarea {
+                    width: 100%; padding: 12px 12px 28px 12px; border: 1.5px solid #e5e5ea; border-radius: 12px;
+                    font-size: 0.95rem; font-family: inherit; outline: none; resize: none; box-sizing: border-box;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                }
+                .thought-textarea:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+                .character-counter { position: absolute; bottom: 8px; right: 12px; font-size: 0.75rem; color: #8e8e93; }
+                .setting-section { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+                .setting-label { font-size: 0.85rem; font-weight: 600; color: #636366; text-align: left; }
+                .color-circles-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 4px 2px; }
+                .color-circle-btn {
+                    width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid #d1d1d6; cursor: pointer;
+                    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; padding: 0;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+                }
+                .color-circle-btn:hover { transform: scale(1.15); }
+                .color-circle-btn.selected { border: 2.5px solid #8b5cf6; transform: scale(1.15); box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3); }
+                .privacy-select-wrapper { position: relative; display: flex; align-items: center; }
+                .privacy-select-icon { position: absolute; left: 12px; font-size: 1.1rem; pointer-events: none; color: #8e8e93; }
+                .privacy-select {
+                    width: 100%; padding: 12px 12px 12px 38px; border: 1.5px solid #e5e5ea; border-radius: 12px;
+                    font-size: 0.95rem; font-family: inherit; outline: none; appearance: none; cursor: pointer;
+                    background: white; transition: border-color 0.2s, box-shadow 0.2s;
+                }
+                .privacy-select:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+                .thought-actions.new-actions { margin-top: 24px; display: flex; justify-content: space-between; gap: 12px; }
+                .new-actions button { padding: 12px 20px; border-radius: 12px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+                .new-actions .btn-cancel { background: #f2f2f7; color: #48484a; }
+                .new-actions .btn-cancel:hover { background: #e5e5ea; }
+                .new-actions .btn-remove { background: rgba(255, 59, 48, 0.1); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.2); }
+                .new-actions .btn-remove:hover { background: rgba(255, 59, 48, 0.15); }
+                .new-actions .btn-post { background: #8b5cf6; color: white; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25); }
+                .new-actions .btn-post:hover { background: #7c3aed; transform: translateY(-1px); }
+                .new-actions .btn-post:disabled { background: #aeaeb2; color: #e5e5ea; cursor: not-allowed; box-shadow: none; transform: none; }
 
-                /* Dark Mode for Thought Card */
-                html[data-theme="dark"] .thought-card {
-                    background: #1e1e24 !important;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                }
-                html[data-theme="dark"] .thought-card h3 {
-                    color: white;
-                }
-                html[data-theme="dark"] .thought-card input {
-                    background: rgba(0, 0, 0, 0.3);
-                    color: white;
-                    border-color: rgba(255, 255, 255, 0.2);
-                }
-                html[data-theme="dark"] .thought-card input:focus {
-                    border-color: #4285F4;
-                }
-                html[data-theme="dark"] .thought-actions button {
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
-                }
-                html[data-theme="dark"] .thought-actions button.primary {
-                    background: #4285F4;
-                }
+                /* Dark Mode for New Thought Card */
+                html[data-theme="dark"] .new-thought-card { background: #1e1e24 !important; border: 1px solid rgba(255, 255, 255, 0.1); }
+                html[data-theme="dark"] .thought-close-btn:hover { color: #f2f2f7; }
+                html[data-theme="dark"] .thought-card-title { color: white; }
+                html[data-theme="dark"] .thought-textarea { background: rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
+                html[data-theme="dark"] .thought-textarea:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3); }
+                html[data-theme="dark"] .setting-label { color: #aeaeb2; }
+                html[data-theme="dark"] .privacy-select { background: rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
+                html[data-theme="dark"] .privacy-select:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3); }
+                html[data-theme="dark"] .new-actions .btn-cancel { background: rgba(255, 255, 255, 0.1); color: #f2f2f7; }
+                html[data-theme="dark"] .new-actions .btn-cancel:hover { background: rgba(255, 255, 255, 0.15); }
+                html[data-theme="dark"] .new-actions .btn-post:disabled { background: #48484a; color: #8e8e93; }
 
                 @media (prefers-color-scheme: dark) {
-                    html[data-theme="system"] .thought-card {
-                        background: #1e1e24 !important;
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                    }
-                    html[data-theme="system"] .thought-card h3 {
-                        color: white;
-                    }
-                    html[data-theme="system"] .thought-card input {
-                        background: rgba(0, 0, 0, 0.3);
-                        color: white;
-                        border-color: rgba(255, 255, 255, 0.2);
-                    }
-                    html[data-theme="system"] .thought-actions button {
-                        background: rgba(255, 255, 255, 0.1);
-                        color: white;
-                    }
-                    html[data-theme="system"] .thought-actions button.primary {
-                        background: #4285F4;
-                    }
+                    html[data-theme="system"] .new-thought-card { background: #1e1e24 !important; border: 1px solid rgba(255, 255, 255, 0.1); }
+                    html[data-theme="system"] .thought-close-btn:hover { color: #f2f2f7; }
+                    html[data-theme="system"] .thought-card-title { color: white; }
+                    html[data-theme="system"] .thought-textarea { background: rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
+                    html[data-theme="system"] .setting-label { color: #aeaeb2; }
+                    html[data-theme="system"] .privacy-select { background: rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
+                    html[data-theme="system"] .new-actions .btn-cancel { background: rgba(255, 255, 255, 0.1); color: #f2f2f7; }
+                    html[data-theme="system"] .new-actions .btn-post:disabled { background: #48484a; color: #8e8e93; }
                 }
 
 

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D } from '../utils/avatarUtils';
 import { calculateDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
-import { nearbyLabel } from '../utils/locationPrivacy';
+import { nearbyLabel, parseThought } from '../utils/locationPrivacy';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast }) {
@@ -21,7 +21,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const canViewDetails = isOwner || isFriend || isPublic;
 
     // Check if the thought has expired (3 hours)
-    const thoughtText = user.thought || user.status_message;
+    const rawThoughtText = user.thought || user.status_message;
+    const parsedThought = parseThought(rawThoughtText);
+    const thoughtText = parsedThought.text;
     const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
     const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;
@@ -134,7 +136,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
             if (canChat) {
                 // Insert into messages
-                const messageContent = `Replying to your thought: "${user.thought}"\n\n${replyText.trim()}`;
+                const messageContent = `Replying to your thought: "${displayThought || ''}"\n\n${replyText.trim()}`;
                 
                 const { error } = await supabase
                     .from('messages')
@@ -164,7 +166,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         sender_id: currentUser.id,
                         receiver_id: user.id,
                         content: replyText.trim(),
-                        thought_text: user.thought,
+                        thought_text: displayThought || '',
                         status: 'pending'
                     });
 

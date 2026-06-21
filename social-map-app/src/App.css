@@ -61,7 +61,7 @@
     left: 50%;
     margin-left: -5px;
     border: 5px solid transparent;
-    border-top-color: #4285F4;
+    border-top-color: var(--bubble-bg, #4285F4);
 }
 
 @keyframes float {

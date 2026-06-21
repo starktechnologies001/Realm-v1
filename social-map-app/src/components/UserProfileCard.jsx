@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { supabase } from '../supabaseClient';
+import { parseThought } from '../utils/locationPrivacy';
 
 // Helper to format date
 // Helper to format date safely for mobile Safari
@@ -135,7 +136,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const canSeeFullProfile = isFriend || isPublic;
 
     // Check if the thought has expired (3 hours)
-    const thoughtText = user.thought || user.status_message;
+    const rawThoughtText = user.thought || user.status_message;
+    const parsedThought = parseThought(rawThoughtText);
+    const thoughtText = parsedThought.text;
     const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
     const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;

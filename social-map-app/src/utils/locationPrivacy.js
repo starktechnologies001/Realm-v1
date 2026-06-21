@@ -115,3 +115,20 @@ export function nearbyLabel(metres) {
   if (metres < 500) return 'Close to you';
   return 'Nearby';
 }
+
+export function parseThought(rawThought) {
+  if (!rawThought) return { text: null, color: '#ffffff', privacy: 'everyone' };
+  const parts = rawThought.split('|');
+  if (parts.length === 1) {
+    return { text: rawThought, color: '#ffffff', privacy: 'everyone' };
+  }
+  return {
+    text: parts[0] || '',
+    color: parts[1] || '#ffffff',
+    privacy: parts[2] || 'everyone'
+  };
+}
+
+export function formatThought(text, color, privacy) {
+  return `${text || ''}|${color || '#ffffff'}|${privacy || 'everyone'}`;
+}
