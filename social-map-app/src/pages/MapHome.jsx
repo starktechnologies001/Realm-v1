@@ -773,6 +773,7 @@ export default function MapHome() {
 
         let updatedList = [];
         let dbPromise = null;
+        let tempId = null;
 
         if (existing) {
             if (existing.reaction_type === reactionType) {
@@ -797,7 +798,7 @@ export default function MapHome() {
             }
         } else {
             // Add reaction
-            const tempId = `temp-${Date.now()}`;
+            tempId = `temp-${Date.now()}`;
             const tempReaction = {
                 id: tempId,
                 thought_id: thoughtUserId,
@@ -2905,7 +2906,7 @@ export default function MapHome() {
         ` : '';
 
         const thoughtHTML = thoughtText
-            ? `<div class="thought-bubble" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 12px; pointer-events: auto !important; cursor: pointer;">
+            ? `<div class="thought-bubble" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 28px; pointer-events: auto !important; cursor: pointer;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem; display: flex; align-items: center; justify-content: space-between;">
                      <span>${name}</span>
                      ${expiryHTML}
@@ -2915,6 +2916,7 @@ export default function MapHome() {
                  </div>
                  ${reactionsHTML}
                  ${expandedBarHTML}
+                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thoughtText.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 8px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
                </div>`
             : '';
 
