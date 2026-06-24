@@ -12,7 +12,37 @@ import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getStatusRingClass } from '../utils/statusUtils';
 import { uploadToStorage } from '../utils/fileUpload';
+import { premiumTiers, ACHIEVEMENTS } from '../utils/premiumUtils';
 import './Profile.css';
+
+const formatRelativeTime = (dateStr) => {
+    if (!dateStr) return 'recently';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) {
+        if (diffHours === 1) return '1 hour ago';
+        return `${diffHours} hours ago`;
+    }
+    
+    // Check if yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+        return 'Yesterday';
+    }
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+};
 
 export default function Profile() {
     const [user, setUser] = useState(() => {
@@ -30,6 +60,10 @@ export default function Profile() {
     const wallpaperInputRef = useRef(null);
     const photoInputRef = useRef(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+    // Profile states
+    const [friendsCount, setFriendsCount] = useState(0);
+    const [unlockedAchievements, setUnlockedAchievements] = useState([]);
 
     const { 
         locationEnabled,
@@ -136,6 +170,35 @@ export default function Profile() {
     useEffect(() => {
         fetchProfile();
     }, []);
+
+    // Fetch premium features & visitor data dynamically
+    useEffect(() => {
+        if (!user?.id) return;
+        
+        const loadPremiumData = async () => {
+            try {
+                // 1. Fetch friends count
+                const { count } = await supabase
+                    .from('friendships')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('status', 'accepted')
+                    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+                setFriendsCount(count || 0);
+
+
+
+                // 3. Compute achievements
+                import('../utils/premiumUtils').then(({ checkUnlockedAchievements }) => {
+                    const unlocked = checkUnlockedAchievements(user, count || 0);
+                    setUnlockedAchievements(unlocked);
+                });
+            } catch (err) {
+                console.error("Error loading premium data:", err);
+            }
+        };
+
+        loadPremiumData();
+    }, [user?.id, user?.subscription_tier, user?.streak_count, user?.status_message]);
 
     // 🔥 Sync UI: If Location is Enabled, Ghost Mode MUST be Off (unless user's visibility mode is ghost)
     useEffect(() => {
@@ -397,7 +460,7 @@ export default function Profile() {
             )}
 
             {/* Header Card */}
-            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''}`}>
+            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''} ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`}>
                 <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
                     {is3DAvatar ? (
                         <div className="avatar-3d-container">
@@ -410,14 +473,21 @@ export default function Profile() {
                             </Suspense>
                         </div>
                     ) : (
-                        <img src={(() => {
-                            if (user.avatar_url) return user.avatar_url;
-                            // Fallback to realistic defaults
-                            const gender = user.gender;
-                            if (gender === 'Male') return DEFAULT_MALE_AVATAR;
-                            if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
-                            return DEFAULT_GENERIC_AVATAR;
-                        })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} />
+                        <div className={`profile-avatar-container ${
+                            user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                            user.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                            user.subscription_tier === 'diamond' ? `avatar-ring-diamond effect-${user.avatar_effect || 'none'}` :
+                            user.subscription_tier === 'legend' ? 'avatar-ring-legend' : ''
+                        }`} style={{ width: '100%', height: '100%', borderRadius: '50%', position: 'relative' }}>
+                            <img src={(() => {
+                                if (user.avatar_url) return user.avatar_url;
+                                // Fallback to realistic defaults
+                                const gender = user.gender;
+                                if (gender === 'Male') return DEFAULT_MALE_AVATAR;
+                                if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
+                                return DEFAULT_GENERIC_AVATAR;
+                            })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} />
+                        </div>
                     )}
                     
                     {/* Unified Update Button */}
@@ -523,7 +593,13 @@ export default function Profile() {
                 </div>
                 
                 <div className="profile-info">
-                    <div className="profile-username">@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</div>
+                    <div className="profile-username" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <span>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</span>
+                        {user.subscription_tier === 'silver' && <span className="premium-badge silver">🥈 Silver Member</span>}
+                        {user.subscription_tier === 'gold' && <span className="premium-badge gold">🥇 Gold Elite</span>}
+                        {user.subscription_tier === 'diamond' && <span className="premium-badge diamond">💎 Diamond Elite</span>}
+                        {user.subscription_tier === 'legend' && <span className="premium-badge legend">👑 Legend</span>}
+                    </div>
                     <div className="tags-row">
                         {user.relationship_status && !user.hide_status && 
                             <span className="tag status">{user.relationship_status}</span>
@@ -539,10 +615,81 @@ export default function Profile() {
                 </div>
             </div>
 
+            {/* Compact Stats Card */}
+            <div className="profile-stats-card">
+                <div className="stats-item">
+                    <span className="stats-icon">👥</span>
+                    <span className="stats-value">{friendsCount} Friends</span>
+                </div>
+                <div className="stats-item">
+                    <span className="stats-icon">💭</span>
+                    <span className="stats-value">18 Thoughts</span>
+                </div>
+                <div className="stats-item" onClick={() => navigate('/profile/streak')} style={{ cursor: 'pointer' }}>
+                    <span className="stats-icon">🔥</span>
+                    <span className="stats-value">{user.current_streak || 0} Day Streak</span>
+                </div>
+                <div className="stats-item" onClick={() => navigate('/profile/achievements')}>
+                    <span className="stats-icon">🏆</span>
+                    <span className="stats-value">{unlockedAchievements.length} Badges</span>
+                </div>
+            </div>
+
+            {/* Premium Entry */}
+            <div className="premium-preview-card minimal" onClick={() => navigate('/subscription')}>
+                <div className="premium-preview-content">
+                    <div className="premium-icon-box">
+                        💎
+                    </div>
+                    <div className="premium-text-group">
+                        <span className="premium-title">Nearo Premium</span>
+                        <span className="premium-subtitle">
+                            {user.subscription_tier === 'diamond' ? '💎 Diamond Elite' 
+                            : user.subscription_tier === 'gold' ? '🥇 Gold Elite' 
+                            : user.subscription_tier === 'silver' ? '🥈 Silver Member' 
+                            : 'Current Plan: Free'}
+                        </span>
+                    </div>
+                </div>
+                <button className="premium-upgrade-btn">Upgrade &rarr;</button>
+            </div>
+
+            {/* Achievements Preview */}
+            <div className="achievements-preview-card minimal" onClick={() => navigate('/profile/achievements')}>
+                <div className="achievements-preview-header">
+                    <span className="achievements-title">🏆 Achievements ({unlockedAchievements.length}/6)</span>
+                    <span className="view-all-link">View All &rarr;</span>
+                </div>
+                <div className="achievements-preview-row minimal-row">
+                    {ACHIEVEMENTS.map(ach => {
+                        const isUnlocked = unlockedAchievements.includes(ach.id);
+                        if (!isUnlocked) return null;
+                        return (
+                            <span key={ach.id} className="achievement-icon-bubble unlocked" title={ach.title}>
+                                {ach.icon}
+                            </span>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Insights Entry */}
+            <div className="menu-group" style={{ margin: '0 16px 16px 16px' }}>
+                <MenuItem
+                    icon={<span style={{ fontSize: '1.2rem' }}>👀</span>}
+                    label="Insights"
+                    value="Profile Views & Analytics"
+                    hasArrow={true}
+                    iconClass="icon-interests"
+                    onClick={() => navigate('/profile/insights')}
+                />
+            </div>
 
             <div className="scroll-content">
-                {/* Section: Personal */}
-                <div className="section-label">Personal</div>
+
+
+                {/* Section: Personal Information */}
+                <div className="section-label">Personal Information</div>
                 <div className="menu-group">
                     <MenuItem
                         icon={<div style={{ fontSize: '1.2rem', lineHeight: 1 }}>{user.mood || '😶'}</div>}
@@ -586,23 +733,25 @@ export default function Profile() {
                         iconClass="icon-interests"
                         onClick={() => setActiveModal('edit-interests')}
                     />
+                    <MenuItem
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>}
+                        label="Birthday"
+                        value={user.birth_date ? new Date(user.birth_date).toLocaleDateString() : 'Add Birthday'}
+                        iconClass="icon-birthday"
+                        onClick={() => setActiveModal('edit-birthday')}
+                    />
                     <div className="menu-item toggle-item">
                         <span className="menu-icon-wrapper icon-interests">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                         </span>
                         <div className="menu-content">
                             <span className="menu-label">Hide Status</span>
-                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Status : Single</span>
                         </div>
                         <label className="toggle-switch">
                             <input 
                                 type="checkbox" 
                                 checked={user.hide_status || false}
-                                onChange={async (e) => {
-                                    console.log('🔵 Toggle hide_status:', e.target.checked);
-                                    await updateProfile({ hide_status: e.target.checked });
-                                    console.log('✅ Updated hide_status to:', e.target.checked);
-                                }}
+                                onChange={async (e) => await updateProfile({ hide_status: e.target.checked })}
                             />
                             <span className="toggle-slider"></span>
                         </label>
@@ -613,118 +762,21 @@ export default function Profile() {
                         </span>
                         <div className="menu-content">
                             <span className="menu-label">Show Last Seen</span>
-
                         </div>
                         <label className="toggle-switch">
                             <input 
                                 type="checkbox" 
                                 checked={user.show_last_seen !== false}
-                                onChange={async (e) => {
-                                    await updateProfile({ show_last_seen: e.target.checked });
-                                }}
+                                onChange={async (e) => await updateProfile({ show_last_seen: e.target.checked })}
                             />
                             <span className="toggle-slider"></span>
                         </label>
                     </div>
-                    <MenuItem
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>}
-                        label="Birthday"
-                        value={user.birth_date ? new Date(user.birth_date).toLocaleDateString() : 'Add Birthday'}
-                        iconClass="icon-birthday"
-
-                        onClick={() => setActiveModal('edit-birthday')}
-                    />
                 </div>
 
+                {/* Section: Settings */}
                 <div className="section-label">Settings</div>
                 <div className="menu-group">
-                    <div className="menu-item toggle-item">
-                        <span className="menu-icon-wrapper icon-lock" style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759' }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                        </span>
-                        <div className="menu-content">
-                            <span className="menu-label">Public Profile</span>
-                        </div>
-                        <label className="toggle-switch">
-                            <input 
-                                type="checkbox" 
-                                checked={user.is_public !== false}
-                                onChange={async (e) => {
-                                    const newValue = e.target.checked;
-                                    if (newValue) {
-                                        // Turning Public -> Confirm first
-                                        setShowPublicConfirm(true);
-                                    } else {
-                                        // Turning Private -> Immediate
-                                        await updateProfile({ is_public: false });
-                                    }
-                                }}
-                            />
-                            <span className="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div className="menu-item toggle-item">
-                        <span className="menu-icon-wrapper icon-location" style={{ background: 'rgba(0, 198, 255, 0.15)', color: '#00C6FF' }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        </span>
-                        <div className="menu-content">
-                            <span className="menu-label">Location Services</span>
-                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                {locationEnabled ? 'Visible on map' : 'Location hidden'}
-                            </span>
-                        </div>
-                        <label className="toggle-switch">
-                            <input 
-                                type="checkbox" 
-                                checked={locationEnabled}
-                                onChange={async (e) => {
-                                    const checked = e.target.checked;
-                                    console.log("🔵 [Profile] Location Toggle:", checked);
-
-                                    if (checked) {
-                                        // 1️⃣ Start GPS (this triggers browser permission automatically)
-                                        startLocation(true);        
-                                        // 2️⃣ Update profile DB
-                                        await updateProfile({
-                                            is_ghost_mode: false,
-                                            is_location_on: true,
-                                            visibility_mode: user.visibility_mode === 'ghost' ? 'public' : (user.visibility_mode || 'public')
-                                        });
-
-                                    } else {
-                                        // 1️⃣ Stop GPS tracking
-                                        stopLocation();
-                                        // 2️⃣ Update profile DB
-                                        await updateProfile({
-                                            is_location_on: false
-                                        });
-                                    }
-                                }}  
-
-                            />
-                            <span className="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <MenuItem
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
-                        label="Map Visibility"
-                        value={user.visibility_mode === 'ghost' ? 'Ghost Mode' : user.visibility_mode === 'friends' ? 'Friends Only' : 'Public'}
-                        hasArrow={true}
-                        iconClass="icon-location"
-                        onClick={() => navigate('/visibility-settings')}
-                    />
-
-                    <MenuItem
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>}
-                        label="Notifications"
-                        value={user.mute_settings?.mute_all ? 'DND Enabled' : (user.mute_settings?.message && user.mute_settings.message !== 'Never' ? `Muted: ${user.mute_settings.message}` : '')}
-                        hasArrow={true}
-                        iconClass="icon-notif"
-                        onClick={() => setActiveModal('notifications')}
-                    />
-                    
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>}
                         label="Theme"
@@ -734,7 +786,6 @@ export default function Profile() {
                         iconClass="icon-notif"
                         onClick={() => setShowThemeMenu(!showThemeMenu)}
                     />
-
                     {showThemeMenu && (
                         <div className="inner-submenu">
                             <div className="submenu-hint">Choose your theme:</div>
@@ -751,69 +802,55 @@ export default function Profile() {
                             </div>
                         </div>
                     )}
-                    
+
                     <MenuItem
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>}
-                        label="Chat Wallpaper"
-                        hasArrow
-                        iconClass="icon-interests"
-                        onClick={() => setActiveModal('wallpaper')}
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>}
+                        label="Notifications"
+                        value={user.mute_settings?.mute_all ? 'DND Enabled' : (user.mute_settings?.message && user.mute_settings.message !== 'Never' ? `Muted: ${user.mute_settings.message}` : '')}
+                        hasArrow={true}
+                        iconClass="icon-notif"
+                        onClick={() => setActiveModal('notifications')}
                     />
 
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
-                        label="Change Password"
-                        hasArrow={false}
+                        label="Privacy"
+                        value="Manage visibility, locations & password"
+                        hasArrow={true}
                         iconClass="icon-lock"
-                        onClick={() => setActiveModal('password')}
+                        onClick={() => setActiveModal('privacy-settings')}
                     />
-                </div>
 
-                {/* Section: Support & Safety */}
-                <div className="section-label">Legal & Safety</div>
-                <div className="menu-group">
+                    <MenuItem
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>}
+                        label="Chat Wallpaper"
+                        hasArrow={true}
+                        iconClass="icon-interests"
+                        onClick={() => setActiveModal('wallpaper')}
+                    />
+
                     <MenuItem 
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>}
                         label="Blocked Users" 
-                        hasArrow 
+                        hasArrow={true}
                         iconClass="icon-block"
                         onClick={() => navigate('/blocked-users')}
                     />
+
                     <MenuItem 
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>}
                         label="Safety Center" 
-                        hasArrow 
+                        hasArrow={true}
                         iconClass="icon-safety"
                         onClick={() => navigate('/legal/safety')}
                     />
-                    <MenuItem 
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>}
-                        label="Community Guidelines" 
-                        hasArrow 
-                        iconClass="icon-safety"
-                        onClick={() => navigate('/legal/guidelines')}
-                    />
-                    <MenuItem 
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/><path d="M12 2v2"/></svg>}
-                        label="Privacy Policy" 
-                        hasArrow 
-                        iconClass="icon-safety"
-                        onClick={() => navigate('/legal/privacy')}
-                    />
+
                     <MenuItem 
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>}
                         label="Terms of Service" 
-                        hasArrow 
+                        hasArrow={true}
                         iconClass="icon-safety"
                         onClick={() => navigate('/legal/terms')}
-                    />
-                    <div className="divider" style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0 16px' }}></div>
-                    <MenuItem
-                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>}
-                        label="Delete Account"
-                        onClick={() => setActiveModal('delete')}
-                        iconClass="icon-delete"
-                        style={{ color: '#ff453a' }}
                     />
                 </div>
 
@@ -1390,9 +1427,235 @@ export default function Profile() {
                                 </div>
                             </>
                         )}
+
+                        {activeModal === 'premium-themes' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>Premium Themes</h3>
+                                </div>
+                                <div className="chip-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', padding: '16px 0' }}>
+                                    {[
+                                        { id: 'default', name: 'Default ⚪' },
+                                        { id: 'purple_glass', name: 'Purple Glass 🟣' },
+                                        { id: 'ocean_blue', name: 'Ocean Blue 🔵' },
+                                        { id: 'midnight_black', name: 'Midnight 🌑' },
+                                        { id: 'sunset_orange', name: 'Sunset 🟠' }
+                                    ].map(t => (
+                                        <button
+                                            key={t.id}
+                                            className={`chip-option ${user.premium_theme === t.id ? 'active' : ''}`}
+                                            onClick={async () => {
+                                                await updateProfile({ premium_theme: t.id });
+                                                setActiveModal(null);
+                                            }}
+                                        >
+                                            {t.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                </div>
+                            </>
+                        )}
+
+                        {activeModal === 'avatar-effects' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>Avatar Effects</h3>
+                                </div>
+                                <div className="chip-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', padding: '16px 0' }}>
+                                    {[
+                                        { id: 'none', name: 'None' },
+                                        { id: 'neon_ring', name: 'Neon Ring 🟢' },
+                                        { id: 'diamond_ring', name: 'Diamond Ring 💎' },
+                                        { id: 'diamond_aura', name: 'Diamond Aura 🌌' },
+                                        { id: 'galaxy_effect', name: 'Galaxy Effect 🌀' },
+                                        { id: 'blue_glow', name: 'Blue Glow 🔵' },
+                                        { id: 'animated_pulse', name: 'Animated Pulse 💓' }
+                                    ].map(eff => (
+                                        <button
+                                            key={eff.id}
+                                            className={`chip-option ${user.avatar_effect === eff.id ? 'active' : ''}`}
+                                            onClick={async () => {
+                                                await updateProfile({ avatar_effect: eff.id });
+                                                setActiveModal(null);
+                                            }}
+                                        >
+                                            {eff.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
+                                </div>
+                            </>
+                        )}
+
+                        {activeModal === 'advanced-privacy' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>🔒 Advanced Privacy</h3>
+                                </div>
+                                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 0' }}>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Mood Status</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_mood || false}
+                                                onChange={async (e) => await updateProfile({ hide_mood: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Last Seen</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_last_seen || false}
+                                                onChange={async (e) => await updateProfile({ hide_last_seen: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Relationship Status</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_relationship_status || false}
+                                                onChange={async (e) => await updateProfile({ hide_relationship_status: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Online Status</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_online_status || false}
+                                                onChange={async (e) => await updateProfile({ hide_online_status: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Birthday</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_birthday || false}
+                                                onChange={async (e) => await updateProfile({ hide_birthday: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Institute / Work</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_institute || false}
+                                                onChange={async (e) => await updateProfile({ hide_institute: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Done</button>
+                                </div>
+                            </>
+                        )}
+
+                        {activeModal === 'privacy-settings' && (
+                            <>
+                                <div className="modal-header">
+                                    <h3>🔒 Privacy Settings</h3>
+                                </div>
+                                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 0' }}>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span className="menu-label">Public Profile</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.is_public !== false}
+                                                onChange={async (e) => {
+                                                    const newValue = e.target.checked;
+                                                    if (newValue) {
+                                                        setShowPublicConfirm(true);
+                                                    } else {
+                                                        await updateProfile({ is_public: false });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span className="menu-label">Location Services</span>
+                                            <span className="menu-hint" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                {locationEnabled ? 'Visible on map' : 'Location hidden'}
+                                            </span>
+                                        </div>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={locationEnabled}
+                                                onChange={async (e) => {
+                                                    const checked = e.target.checked;
+                                                    if (checked) {
+                                                        startLocation(true);        
+                                                        await updateProfile({
+                                                            is_ghost_mode: false,
+                                                            is_location_on: true,
+                                                            visibility_mode: user.visibility_mode === 'ghost' ? 'public' : (user.visibility_mode || 'public')
+                                                        });
+                                                    } else {
+                                                        stopLocation();
+                                                        await updateProfile({ is_location_on: false });
+                                                    }
+                                                }}  
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <MenuItem
+                                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+                                        label="Map Visibility"
+                                        value={user.visibility_mode === 'ghost' ? 'Ghost Mode' : user.visibility_mode === 'friends' ? 'Friends Only' : 'Public'}
+                                        hasArrow={true}
+                                        onClick={() => { setActiveModal(null); navigate('/visibility-settings'); }}
+                                    />
+                                    <MenuItem
+                                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+                                        label="Change Password"
+                                        hasArrow={true}
+                                        onClick={() => setActiveModal('password')}
+                                    />
+                                    <MenuItem
+                                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>}
+                                        label="Delete Account"
+                                        style={{ color: '#ff453a' }}
+                                        onClick={() => setActiveModal('delete')}
+                                    />
+                                </div>
+                                <div className="modal-footer">
+                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Done</button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
+
+
+
+
 
             {/* Styles moved to Profile.css */}
         </div>

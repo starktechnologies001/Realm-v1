@@ -15,7 +15,14 @@ export default function PokeNotifications({ currentUser }) {
     // Track whether user manually dismissed the panel this session
     const dismissedKey = 'poke_panel_dismissed';
 
-    const unseenPokes = pendingPokes.filter(poke => !seenIds.includes(poke.id));
+    const unseenPokes = pendingPokes
+        .filter(poke => !seenIds.includes(poke.id))
+        .sort((a, b) => {
+            const aType = a.is_diamond_poke ? 2 : (a.is_super_poke ? 1 : 0);
+            const bType = b.is_diamond_poke ? 2 : (b.is_super_poke ? 1 : 0);
+            if (aType !== bType) return bType - aType;
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
 
     useEffect(() => {
         if (!currentUser) return;
@@ -28,6 +35,8 @@ export default function PokeNotifications({ currentUser }) {
                     id,
                     requester_id,
                     created_at,
+                    is_super_poke,
+                    is_diamond_poke,
                     requester:profiles!requester_id(id, full_name, username, avatar_url, gender)
                 `)
                 .eq('receiver_id', currentUser.id)
@@ -247,7 +256,7 @@ export default function PokeNotifications({ currentUser }) {
                     }} title="Dismiss">✕</button>
                     <div className="poke-list">
                         {unseenPokes.slice(0, 1).map(poke => (
-                            <div key={poke.id} className="poke-item">
+                            <div key={poke.id} className={`poke-item ${poke.is_diamond_poke ? 'diamond-poke-highlight' : poke.is_super_poke ? 'super-poke-highlight' : ''}`}>
                                 <img 
                                     src={poke.requester.avatar_url ? getAvatar2D(poke.requester.avatar_url) : (() => {
                                         const safeName = encodeURIComponent(poke.requester.username || poke.requester.full_name || 'User');
@@ -263,10 +272,20 @@ export default function PokeNotifications({ currentUser }) {
                                     }}
                                 />
                                 <div className="poke-info">
-                                    <span className="poke-title-label">
-                                        {unseenPokes.length > 1 ? `👋 Poke Request (+${unseenPokes.length - 1})` : '👋 Poke Request'}
+                                    <span className={`poke-title-label ${poke.is_diamond_poke ? 'diamond-poke-text' : poke.is_super_poke ? 'super-poke-text' : ''}`}>
+                                        {poke.is_diamond_poke
+                                            ? '💎 Diamond Poke!'
+                                            : poke.is_super_poke 
+                                                ? '⭐ Super Poke!' 
+                                                : (unseenPokes.length > 1 ? `👋 Poke Request (+${unseenPokes.length - 1})` : '👋 Poke Request')}
                                     </span>
-                                    <strong>{poke.requester.username || poke.requester.full_name}</strong>
+                                    <strong>
+                                        {poke.is_diamond_poke
+                                            ? `${poke.requester.username || poke.requester.full_name} Diamond Poked You`
+                                            : poke.is_super_poke 
+                                                ? `${poke.requester.username || poke.requester.full_name} Super Poked You` 
+                                                : (poke.requester.username || poke.requester.full_name)}
+                                    </strong>
                                 </div>
                                 <div className="poke-actions">
                                     <button className="accept-btn" onClick={() => handleAccept(poke)} title="Accept">
@@ -283,6 +302,18 @@ export default function PokeNotifications({ currentUser }) {
             )}
 
             <style>{`
+                .super-poke-highlight {
+                    background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(234, 179, 8, 0.2)) !important;
+                    border: 1.5px solid #facc15 !important;
+                    box-shadow: 0 4px 15px rgba(250, 204, 21, 0.25) !important;
+                    transform: scale(1.02);
+                }
+                .super-poke-text {
+                    color: #facc15 !important;
+                    font-weight: 700;
+                    text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+                }
+
                 .poke-badge {
                     position: fixed;
                     top: 20px;

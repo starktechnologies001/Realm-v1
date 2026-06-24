@@ -277,9 +277,12 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 expandedThoughtId === u.id // PASS isExpanded
             );
 
+            const isBoosted = u?.thought_boosted_at && (new Date(u.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+            const zIndexOffset = isBoosted ? 2000 : 100;
+
             if (!marker) {
                 // Create native Leaflet marker
-                marker = L.marker([u.lat, u.lng], { icon, zIndexOffset: 100 }).addTo(map);
+                marker = L.marker([u.lat, u.lng], { icon, zIndexOffset }).addTo(map);
                 marker.on('click', () => handleMarkerClick(u));
                 markerRefs.current.set(u.id, marker);
             } else {
@@ -289,6 +292,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 if (marker.options.icon.options.html !== icon.options.html) {
                     marker.setIcon(icon);
                 }
+                marker.setZIndexOffset(zIndexOffset);
                 // Sync coordinate drift/movement smoothly
                 const currentLatLng = marker.getLatLng();
                 const dist = getDistance(currentLatLng.lat, currentLatLng.lng, u.lat, u.lng);
@@ -303,10 +307,13 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
     useEffect(() => {
         if (!map || !currentUser?.id || !userLocation || !currentUserIcon) return;
         
+        const selfBoosted = currentUser?.thought_boosted_at && (new Date(currentUser.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+        const selfZIndex = selfBoosted ? 3000 : 1000;
+
         let marker = markerRefs.current.get(currentUser.id);
         if (!marker) {
             // First time spawn
-            marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: 1000 }).addTo(map);
+            marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: selfZIndex }).addTo(map);
             // Clicking your own avatar closes any open profile card — it does NOT open one for yourself
             marker.on('click', () => setSelectedUser(null));
             markerRefs.current.set(currentUser.id, marker);
@@ -318,6 +325,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
             if (marker.options.icon !== currentUserIcon) {
                 marker.setIcon(currentUserIcon);
             }
+            marker.setZIndexOffset(selfZIndex);
         }
     }, [currentUser?.id, currentUserIcon, map, handleMarkerClick, markerRefs]); 
     // 🔥 CRITICAL: Removed `userLocation` from deps. 
@@ -572,6 +580,17 @@ export default function MapHome() {
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
+    const [diamondFilters, setDiamondFilters] = useState({
+        gender: 'All',
+        ageMin: 18,
+        ageMax: 99,
+        relationshipStatus: 'All',
+        interests: '',
+        onlineOnly: false,
+        distanceMax: 5,
+        enabled: false
+    });
+    const [showDiamondFilterPanel, setShowDiamondFilterPanel] = useState(false);
     const navigate = useNavigate();
     const routeLocation = useLocation();
 
@@ -627,9 +646,70 @@ export default function MapHome() {
     const [myThought, setMyThought] = useState('');
     const [selectedColor, setSelectedColor] = useState('#f3d9fa'); // Lavender by default
     const [selectedPrivacy, setSelectedPrivacy] = useState('everyone');
+    const [isBoostSelected, setIsBoostSelected] = useState(false);
+
+    useEffect(() => {
+        if (showThoughtInput) {
+            setIsBoostSelected(false);
+        }
+    }, [showThoughtInput]);
 
     const [thoughtReactions, setThoughtReactions] = useState({});
     const [expandedThoughtId, setExpandedThoughtId] = useState(null);
+    const [showOwnReactorsSheet, setShowOwnReactorsSheet] = useState(false);
+    const [thoughtReplies, setThoughtReplies] = useState([]);
+
+    // Fetch initial thought replies (message requests)
+    const fetchThoughtReplies = React.useCallback(async () => {
+        if (!currentUser) return;
+        try {
+            const rawThoughtText = currentUser.thought || currentUser.status_message;
+            const parsedThought = parseThought(rawThoughtText);
+            const displayThought = parsedThought.text;
+            
+            if (!displayThought) {
+                setThoughtReplies([]);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('message_requests')
+                .select(`
+                    id,
+                    sender_id,
+                    receiver_id,
+                    content,
+                    thought_text,
+                    status,
+                    created_at,
+                    sender:profiles!sender_id(id, username, full_name, avatar_url, gender)
+                `)
+                .eq('receiver_id', currentUser.id)
+                .eq('status', 'pending')
+                .eq('thought_text', displayThought);
+
+            if (!error && data) {
+                setThoughtReplies(data);
+            } else {
+                setThoughtReplies([]);
+            }
+        } catch (err) {
+            console.error('Error fetching thought replies:', err);
+            setThoughtReplies([]);
+        }
+    }, [currentUser?.id, currentUser?.thought, currentUser?.status_message]);
+
+    const fetchThoughtRepliesRef = React.useRef(null);
+    fetchThoughtRepliesRef.current = fetchThoughtReplies;
+
+    // Fetch replies when opening own reactors sheet
+    useEffect(() => {
+        if (selectedUser?.id === currentUser?.id && (showOwnReactorsSheet || selectedUser)) {
+            fetchThoughtReplies();
+        } else {
+            setThoughtReplies([]);
+        }
+    }, [selectedUser?.id, showOwnReactorsSheet, currentUser?.id, fetchThoughtReplies]);
 
     // Fetch initial thought reactions
     const fetchReactions = async (userIds) => {
@@ -867,11 +947,28 @@ export default function MapHome() {
         window.handleThoughtReact = (id, type) => {
             handleToggleReaction(id, type);
         };
+        window.handleThoughtReactionsClick = (userId) => {
+            // Open the profile card for this user and show the reactors sheet
+            setShowOwnReactorsSheet(true);
+            // If we're clicking on our own thought, set selectedUser to currentUser so the card opens
+            if (currentUser && currentUser.id === userId) {
+                setSelectedUser(prev => {
+                    // If card is already open for self, just update sheet flag
+                    return prev?.id === userId ? prev : {
+                        ...currentUser,
+                        lat: currentUser.latitude,
+                        lng: currentUser.longitude,
+                        thought: currentUser.thought || currentUser.status_message,
+                    };
+                });
+            }
+        };
         return () => {
             delete window.handleThoughtClick;
             delete window.handleThoughtReact;
+            delete window.handleThoughtReactionsClick;
         };
-    }, [handleToggleReaction]);
+    }, [handleToggleReaction, currentUser]);
 
     const handleOpenThoughtInput = () => {
         if (currentUser) {
@@ -1362,8 +1459,10 @@ export default function MapHome() {
                 if (eventType === 'INSERT' && newRec.status === 'pending') {
                     setMessageRequestsCount(prev => prev + 1);
                     showToast('You have a new message request! 📬');
+                    fetchThoughtRepliesRef.current?.();
                 } else if (eventType === 'DELETE' || (eventType === 'UPDATE' && newRec.status !== 'pending' && oldRec.status === 'pending')) {
                     setMessageRequestsCount(prev => Math.max(0, prev - 1));
+                    fetchThoughtRepliesRef.current?.();
                 }
             })
             .subscribe();
@@ -1443,6 +1542,7 @@ export default function MapHome() {
             supabase.removeChannel(channel);
             supabase.removeChannel(friendshipChannel);
             supabase.removeChannel(blockChannel);
+            supabase.removeChannel(messageRequestsChannel);
         };
     }, [currentUser, userLocation]);
 
@@ -1499,7 +1599,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since, subscription_tier, avatar_effect, interests, birth_date')
                         .neq('id', currentUser.id)
                         .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
                         .not('latitude', 'is', null)
@@ -1690,6 +1790,10 @@ export default function MapHome() {
                             is_public: u.is_public,
                             status_updated_at: u.status_updated_at, // 🔥 Critical for expiration check
                             visibility_mode: u.visibility_mode,
+                            subscription_tier: u.subscription_tier || 'free',
+                            avatar_effect: u.avatar_effect || 'none',
+                            interests: u.interests || [],
+                            birth_date: u.birth_date || null,
                             // PRIVACY CHECK: Only show story if public OR friends
                             hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
                             hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
@@ -1711,6 +1815,25 @@ export default function MapHome() {
                     });
                     return Array.from(map.values());
                 });
+
+                // Proximity check for Crossing Paths (safely log distance <= 50m)
+                if (currentUser && validUsers.length > 0) {
+                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+                    if (myLat && myLng) {
+                        validUsers.forEach(u => {
+                            if (u.lat && u.lng) {
+                                const dist = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng) * 1000;
+                                if (dist <= 50) {
+                                    import('../utils/premiumUtils').then(({ recordCrossingPath }) => {
+                                        recordCrossingPath(currentUser.id, u.id);
+                                    });
+                                }
+                            }
+                        });
+                    }
+                }
+
                 initialLoadComplete.current = true;
             } catch (err) {
                 console.error(err);
@@ -2352,10 +2475,44 @@ export default function MapHome() {
         if (!currentUser) return;
 
         const formattedThought = formatThought(myThought, selectedColor, selectedPrivacy);
+        const now = new Date().toISOString();
 
         try {
+            const updates = {
+                status_message: formattedThought,
+                last_active: now,
+                status_updated_at: now
+            };
+
+            let updatedUser = { 
+                ...currentUser, 
+                thought: formattedThought, 
+                thoughtTime: Date.now() 
+            };
+
+            if (isBoostSelected) {
+                const lastBoostDay = currentUser.last_thought_boost_at ? new Date(currentUser.last_thought_boost_at).toDateString() : '';
+                const currentDay = new Date().toDateString();
+                const newBoostCount = (lastBoostDay === currentDay) ? (currentUser.daily_thought_boost_count || 0) + 1 : 1;
+
+                if (newBoostCount > 1) {
+                    showToast("⚠️ Daily thought boost limit reached.");
+                    return;
+                }
+
+                updates.thought_boosted_at = now;
+                updates.daily_thought_boost_count = newBoostCount;
+                updates.last_thought_boost_at = now;
+
+                updatedUser = {
+                    ...updatedUser,
+                    thought_boosted_at: now,
+                    daily_thought_boost_count: newBoostCount,
+                    last_thought_boost_at: now
+                };
+            }
+
             // Optimistic update
-            const updatedUser = { ...currentUser, thought: formattedThought, thoughtTime: Date.now() };
             setCurrentUser(updatedUser);
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
             setShowThoughtInput(false);
@@ -2363,11 +2520,7 @@ export default function MapHome() {
             // DB Update for global visibility
             const { error } = await supabase
                 .from('profiles')
-                .update({
-                    status_message: formattedThought,
-                    last_active: new Date().toISOString(),
-                    status_updated_at: new Date().toISOString()
-                })
+                .update(updates)
                 .eq('id', currentUser.id);
 
             if (error) throw error;
@@ -2378,14 +2531,19 @@ export default function MapHome() {
                         ? {
                             ...u,
                             thought: formattedThought,
-                            status_updated_at: new Date().toISOString(),
-                            lastActive: new Date().toISOString()
+                            status_updated_at: now,
+                            lastActive: now,
+                            ...(isBoostSelected ? {
+                                thought_boosted_at: now,
+                                daily_thought_boost_count: updatedUser.daily_thought_boost_count,
+                                last_thought_boost_at: now
+                            } : {})
                           }
                         : u
                 )
             );
 
-            showToast('Thought posted to map! 🌍');
+            showToast(isBoostSelected ? '🚀 Thought Boosted successfully!' : 'Thought posted to map! 🌍');
         } catch (err) {
             console.error("Error posting thought:", err);
             showToast("Failed to post thought");
@@ -2461,7 +2619,7 @@ export default function MapHome() {
                             if (acceptError) throw acceptError;
 
                             showToast(`You and ${targetUser.name} are now friends! 🤝`);
-                            setSelectedUser((prev) => ({ ...prev, friendshipStatus: 'accepted' }));
+                            setSelectedUser((prev) => prev && prev.id === targetUser.id ? { ...prev, friendshipStatus: 'accepted' } : prev);
                             return;
                         }
                     }
@@ -2485,7 +2643,7 @@ export default function MapHome() {
                             .eq('id', existing.id);
 
                         showToast(`👋 Poked ${targetUser.name}!`);
-                        setSelectedUser({ ...targetUser, friendshipStatus: 'pending' });
+                        setSelectedUser(prev => prev && prev.id === targetUser.id ? { ...targetUser, friendshipStatus: 'pending' } : prev);
                         return;
                     }
                 }
@@ -2496,13 +2654,13 @@ export default function MapHome() {
                 // Track previous state for rollback
                 const prevSelectedUser = { ...selectedUser };
 
-                setSelectedUser({
+                setSelectedUser(prev => prev && prev.id === targetUser.id ? {
                     ...targetUser,
                     friendshipStatus: 'pending',
                     requesterId: currentUser.id,
                     // Temporary ID or null, will update after DB
                     friendshipId: 'temp-' + Date.now()
-                });
+                } : prev);
 
                 // Send Poke Request
                 const { data: newRecs, error } = await supabase
@@ -2533,10 +2691,10 @@ export default function MapHome() {
                     const newFriendship = newRecs[0];
                     friendshipsRef.current.set(newFriendship.id, targetUser.id);
 
-                    setSelectedUser(prev => ({
+                    setSelectedUser(prev => prev && prev.id === targetUser.id ? {
                         ...prev,
                         friendshipId: newFriendship.id
-                    }));
+                    } : prev);
                 }
             } catch (err) {
                 // Already handled rollback above for most cases
@@ -2560,12 +2718,12 @@ export default function MapHome() {
                 showToast("Request cancelled ❌");
 
                 // Update UI immediately (Revert to no status)
-                setSelectedUser({
-                    ...targetUser,
+                setSelectedUser(prev => prev && prev.id === targetUser.id ? {
+                    ...prev,
                     friendshipStatus: null,
                     friendshipId: null,
                     requesterId: null
-                });
+                } : prev);
                 
                 setNearbyUsers(prev => prev.map(u => 
                     u.id === targetUser.id ? { ...u, friendshipStatus: null, friendshipId: null, requesterId: null } : u
@@ -2814,15 +2972,41 @@ export default function MapHome() {
         
         const reactionsList = (id && thoughtReactions[id]) || [];
         const reactionsKey = reactionsList.map(r => `${r.user_id}:${r.reaction_type}`).sort().join(',');
+        const repliesKey = isSelf ? thoughtReplies.length : 0;
         // Prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v7_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}_${thoughtUpdatedAt}_${reactionsKey}_${isExpanded}`;
+        const cacheKey = `v8_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}_${thoughtUpdatedAt}_${reactionsKey}_${isExpanded}_${repliesKey}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
         }
 
         let className = 'avatar-marker';
-        let style = `background-image: url('${url}'); background-size: cover; background-position: center; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border-radius: 50%;`;
+        let style = `background-image: url('${url}'); background-size: cover; background-position: center; border-radius: 50%;`;
+
+        // Retrieve user tier and effect dynamically
+        const u = isSelf ? currentUser : nearbyUsers.find(usr => usr.id === id);
+        const tier = u?.subscription_tier || 'free';
+        const effect = u?.avatar_effect || 'none';
+
+        if (tier === 'silver') {
+            className += ' avatar-ring-silver';
+        } else if (tier === 'gold') {
+            className += ' avatar-ring-gold';
+        } else if (tier === 'diamond') {
+            className += ' avatar-ring-diamond';
+        } else if (tier === 'legend') {
+            className += ' avatar-ring-legend';
+        } else {
+            style += ' border: 3.5px solid #FFFFFF; box-shadow: 0 4px 12px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.35);';
+        }
+
+        // Diamond Avatar Effects
+        if (tier === 'diamond' && effect && effect !== 'none') {
+            if (effect === 'neon_glow') className += ' effect-neon-glow';
+            else if (effect === 'diamond_ring') className += ' effect-diamond-ring';
+            else if (effect === 'diamond_aura') className += ' effect-diamond-aura';
+            else if (effect === 'galaxy') className += ' effect-galaxy-effect';
+        }
 
         if (isSelf) {
             className += ' self';
@@ -2883,15 +3067,19 @@ export default function MapHome() {
             reactionCounts[type] = (reactionCounts[type] || 0) + 1;
         });
 
-        const countsStr = Object.keys(reactionCounts)
+        let countsStr = Object.keys(reactionCounts)
             .map(type => {
                 const emoji = emojiMap[type] || '❤️';
                 return `<span style="margin-right: 6px;">${emoji} ${reactionCounts[type]}</span>`;
             })
             .join('');
 
+        if (isSelf && thoughtReplies?.length > 0) {
+            countsStr += `<span style="margin-right: 6px;">💬 ${thoughtReplies.length}</span>`;
+        }
+
         const reactionsHTML = countsStr
-            ? `<div class="thought-reactions-compact" style="margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; font-size: 0.7rem; gap: 2px;">
+            ? `<div class="thought-reactions-compact" onclick="event.stopPropagation(); if(window.handleThoughtReactionsClick) window.handleThoughtReactionsClick('${id}');" style="margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; font-size: 0.7rem; gap: 2px; cursor: pointer; pointer-events: auto !important;">
                  ${countsStr}
                </div>`
             : '';
@@ -2905,10 +3093,13 @@ export default function MapHome() {
             </div>
         ` : '';
 
+        const isBoosted = u?.thought_boosted_at && (new Date(u.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+        const bubbleClasses = `thought-bubble ${isBoosted ? 'thought-boosted' : ''}`;
+
         const thoughtHTML = thoughtText
-            ? `<div class="thought-bubble" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${bubbleBorderColor} !important; color: black !important; padding-right: 28px; pointer-events: auto !important; cursor: pointer;">
+            ? `<div class="${bubbleClasses}" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${isBoosted ? '#facc15' : bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${isBoosted ? '#facc15' : bubbleBorderColor} !important; color: black !important; padding-right: 28px; pointer-events: auto !important; cursor: pointer;">
                  <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem; display: flex; align-items: center; justify-content: space-between;">
-                     <span>${name}</span>
+                     <span>${isBoosted ? '🚀 Boosted' : name}</span>
                      ${expiryHTML}
                  </div>
                  <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
@@ -2921,7 +3112,7 @@ export default function MapHome() {
             : '';
 
         let moodHTML = '';
-        if (mood && moodUpdatedAt) {
+        if (mood && moodUpdatedAt && !u?.hide_mood) {
             const isExpired = new Date(moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
             if (!isExpired) {
                 moodHTML = `<div class="mood-badge" style="
@@ -2969,7 +3160,7 @@ export default function MapHome() {
 
         iconCache.current.set(cacheKey, icon);
         return icon;
-    }, [currentUser, thoughtReactions]);
+    }, [currentUser, thoughtReactions, nearbyUsers]);
 
     // Memoize the icon separately so location updates don't destroy the DOM node and break CSS transitions
     const currentUserIcon = useMemo(() => {
@@ -2994,7 +3185,7 @@ export default function MapHome() {
         }
 
         return createAvatarIcon(avatarUrl, true, displayThought, 'You', null, currentUser.mood, currentUser.mood_updated_at, 0, currentUser.activity_status || 'live', currentUser.id, thoughtTime, false);
-    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, currentUser?.visibility_mode, currentUser?.is_ghost_mode, createAvatarIcon, thoughtReactions]);
+    }, [currentUser?.id, currentUser?.avatar_url, currentUser?.gender, currentUser?.thought, currentUser?.status_message, currentUser?.thoughtTime, currentUser?.status_updated_at, currentUser?.mood, currentUser?.mood_updated_at, currentUser?.activity_status, currentUser?.visibility_mode, currentUser?.is_ghost_mode, createAvatarIcon, thoughtReactions, thoughtReplies]);
 
  // 4. Main App (Map & Overlays)
     // visibleUsers filter was redundant with nearbyUsers logic. 
@@ -3021,7 +3212,7 @@ export default function MapHome() {
         // Use !== false to match the realtime UPDATE handler's isVisible check.
         // This ensures users appear instantly when they turn location on without
         // waiting for the next 30s poll.
-        const visibleUsers = nearbyUsers.filter(u =>
+        let visibleUsers = nearbyUsers.filter(u =>
             u.isLocationOn !== false &&
             u.lat != null &&
             u.lng != null &&
@@ -3030,6 +3221,56 @@ export default function MapHome() {
 
         const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
         const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+
+        if (currentUser.subscription_tier === 'diamond' && diamondFilters.enabled) {
+            visibleUsers = visibleUsers.filter(u => {
+                // 1. Gender filter
+                if (diamondFilters.gender && diamondFilters.gender !== 'All') {
+                    if (u.gender !== diamondFilters.gender) return false;
+                }
+                
+                // 2. Age Range filter (calculate age from birth_date or birthDate)
+                const bdate = u.birth_date || u.birthDate;
+                if (bdate) {
+                    const dob = new Date(bdate);
+                    const age = new Date().getFullYear() - dob.getFullYear();
+                    if (age < diamondFilters.ageMin || age > diamondFilters.ageMax) return false;
+                } else {
+                    // Skip if age ranges are set but user age is unknown
+                    if (diamondFilters.ageMin > 18 || diamondFilters.ageMax < 99) return false;
+                }
+
+                // 3. Relationship Status filter
+                if (diamondFilters.relationshipStatus && diamondFilters.relationshipStatus !== 'All') {
+                    const rel = u.relationship_status || u.relationshipStatus;
+                    if (rel !== diamondFilters.relationshipStatus) return false;
+                }
+
+                // 4. Interests keyword filter
+                if (diamondFilters.interests && diamondFilters.interests.trim()) {
+                    const tags = diamondFilters.interests.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+                    const uInterests = (u.interests || []).map(i => i.toLowerCase());
+                    const matched = tags.some(t => uInterests.some(ui => ui.includes(t)));
+                    if (!matched) return false;
+                }
+
+                // 5. Online Status filter
+                if (diamondFilters.onlineOnly) {
+                    if (!u.lastActive) return false;
+                    const diff = Date.now() - new Date(u.lastActive).getTime();
+                    if (diff >= 5 * 60 * 1000) return false;
+                }
+
+                // 6. Distance Range filter
+                if (diamondFilters.distanceMax && myLat && myLng) {
+                    const distKm = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng);
+                    if (distKm > diamondFilters.distanceMax) return false;
+                }
+
+                return true;
+            });
+            return visibleUsers;
+        }
 
         switch (activeFilter) {
 
@@ -3066,7 +3307,7 @@ export default function MapHome() {
             return visibleUsers;
         }
 
-    }, [nearbyUsers, activeFilter, currentUser]);
+    }, [nearbyUsers, activeFilter, currentUser, diamondFilters]);
     // 🔥 Removed `userLocation` from deps — accessed via userLocationRef so GPS updates
     // don't rebuild filteredUsers and restart NativeMarkerSync on every tick.
 
@@ -4128,19 +4369,48 @@ export default function MapHome() {
                     </div>
                 </div>
                 
-                {/* Horizontal Filter Scroll */}
                 <div className="filter-scroll">
                     {FILTERS.map(f => (
                         <button 
                             key={f}
                             className={`filter-chip glass-pill ${activeFilter === f ? 'active' : ''}`}
-                            onClick={() => setActiveFilter(f)}
+                            onClick={() => {
+                                // Disable advanced filters if switching to standard tabs
+                                setDiamondFilters(prev => ({ ...prev, enabled: false }));
+                                setActiveFilter(f);
+                            }}
                         >
                             {f}
                         </button>
                     ))}
                     
-                    {/* Map View Toggle Moved to Header Actions */}
+                    <button 
+                        className={`filter-chip glass-pill discovery-filter-btn ${diamondFilters.enabled ? 'active-diamond' : ''}`}
+                        onClick={() => {
+                            if (currentUser?.subscription_tier !== 'diamond') {
+                                showToast("Upgrade to Diamond Elite to filter nearby people by gender, age, interests, and more! 💎");
+                                navigate('/subscription');
+                                return;
+                            }
+                            setShowDiamondFilterPanel(true);
+                        }}
+                        style={{
+                            background: diamondFilters.enabled 
+                                ? 'linear-gradient(135deg, #00d4ff, #a855f7)' 
+                                : 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(168, 85, 247, 0.4)',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }}
+                    >
+                        <span>💎 Discovery</span>
+                        {diamondFilters.enabled && (
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', display: 'inline-block' }} />
+                        )}
+                    </button>
                 </div>
             </div>
 
@@ -4376,11 +4646,14 @@ export default function MapHome() {
                 user={selectedUser}
                 currentUser={currentUser}
                 userLocation={userLocation}
-                onClose={() => setSelectedUser(null)}
+                onClose={() => { setSelectedUser(null); setShowOwnReactorsSheet(false); }}
                 onAction={handleUserAction}
                 showToast={showToast}
                 reactions={selectedUser ? (thoughtReactions[selectedUser.id] || []) : []}
                 onToggleReaction={handleToggleReaction}
+                initialShowReactors={showOwnReactorsSheet}
+                friendshipsMapRef={friendshipsMapRef}
+                replies={selectedUser?.id === currentUser?.id ? thoughtReplies : []}
             />
 
             <PokeNotifications currentUser={currentUser} />
@@ -4655,6 +4928,161 @@ export default function MapHome() {
                 }
             `}</style>
 
+            {/* Diamond Discovery Filter Panel */}
+            {showDiamondFilterPanel && (
+                <div className="thought-input-overlay" onClick={() => setShowDiamondFilterPanel(false)}>
+                    <div className="new-thought-card" style={{ position: 'relative', background: 'var(--bg-secondary, #1a1a1a)', color: 'var(--text-primary, #fff)', border: '1px solid var(--glass-border, rgba(255,255,255,0.15))', maxWidth: '360px', width: '90%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', borderRadius: '24px', padding: '20px' }} onClick={e => e.stopPropagation()}>
+                        <button type="button" className="thought-close-btn" onClick={() => setShowDiamondFilterPanel(false)} style={{ color: '#aaa' }}>&times;</button>
+                        
+                        <div className="thought-emoji-header">
+                            <span className="thought-emoji-bubble" style={{ background: 'linear-gradient(135deg, #00d4ff, #a855f7)', boxShadow: '0 4px 15px rgba(168, 85, 247, 0.4)' }}>💎</span>
+                        </div>
+                        
+                        <h3 className="thought-card-title" style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 10px 0' }}>Discovery Filters</h3>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {/* Enable Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Enable Filters</span>
+                                <label className="toggle-switch">
+                                    <input 
+                                        type="checkbox"
+                                        checked={diamondFilters.enabled}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, enabled: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Gender Select */}
+                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Gender</label>
+                                <select 
+                                    value={diamondFilters.gender}
+                                    onChange={e => setDiamondFilters(prev => ({ ...prev, gender: e.target.value }))}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                >
+                                    <option value="All">All</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            {/* Age Range Select */}
+                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Age Range ({diamondFilters.ageMin} - {diamondFilters.ageMax})</label>
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
+                                    <input 
+                                        type="number"
+                                        min={18} max={99}
+                                        value={diamondFilters.ageMin}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, ageMin: Math.max(18, parseInt(e.target.value) || 18) }))}
+                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', outline: 'none' }}
+                                    />
+                                    <span style={{ color: '#aaa' }}>to</span>
+                                    <input 
+                                        type="number"
+                                        min={18} max={99}
+                                        value={diamondFilters.ageMax}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, ageMax: Math.min(99, parseInt(e.target.value) || 99) }))}
+                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', outline: 'none' }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Relationship Status Select */}
+                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Relationship Status</label>
+                                <select 
+                                    value={diamondFilters.relationshipStatus}
+                                    onChange={e => setDiamondFilters(prev => ({ ...prev, relationshipStatus: e.target.value }))}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                >
+                                    <option value="All">All</option>
+                                    <option value="Single">Single</option>
+                                    <option value="In a relationship">In a relationship</option>
+                                    <option value="Married">Married</option>
+                                    <option value="It's complicated">It's complicated</option>
+                                    <option value="Open relationship">Open relationship</option>
+                                </select>
+                            </div>
+
+                            {/* Interests search */}
+                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Interests (comma separated)</label>
+                                <input 
+                                    type="text"
+                                    placeholder="Gym, Coffee, Travel..."
+                                    value={diamondFilters.interests}
+                                    onChange={e => setDiamondFilters(prev => ({ ...prev, interests: e.target.value }))}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                />
+                            </div>
+
+                            {/* Online Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Online Now Only</span>
+                                <label className="toggle-switch">
+                                    <input 
+                                        type="checkbox"
+                                        checked={diamondFilters.onlineOnly}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, onlineOnly: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Distance range */}
+                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Distance Limit: {diamondFilters.distanceMax} km</label>
+                                <input 
+                                    type="range"
+                                    min={0.5} max={10} step={0.5}
+                                    value={diamondFilters.distanceMax}
+                                    onChange={e => setDiamondFilters(prev => ({ ...prev, distanceMax: parseFloat(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: '#00d4ff' }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="modal-footer" style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                            <button 
+                                className="btn-pri" 
+                                onClick={() => {
+                                    setDiamondFilters(prev => ({ ...prev, enabled: true }));
+                                    setShowDiamondFilterPanel(false);
+                                    showToast("Discovery filters applied! 🎯");
+                                }}
+                                style={{ flex: 1, background: 'linear-gradient(135deg, #00d4ff, #a855f7)', color: '#fff', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
+                            >
+                                Apply
+                            </button>
+                            <button 
+                                className="btn-sec" 
+                                onClick={() => {
+                                    setDiamondFilters({
+                                        gender: 'All',
+                                        ageMin: 18,
+                                        ageMax: 99,
+                                        relationshipStatus: 'All',
+                                        interests: '',
+                                        onlineOnly: false,
+                                        distanceMax: 5,
+                                        enabled: false
+                                    });
+                                    setShowDiamondFilterPanel(false);
+                                    showToast("Filters reset! 🔓");
+                                }}
+                                style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
+                            >
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Thought Input Overlay */}
             {showThoughtInput && (
                 <div className="thought-input-overlay" onClick={() => setShowThoughtInput(false)}>
@@ -4734,6 +5162,39 @@ export default function MapHome() {
                                     </select>
                                 </div>
                             </div>
+
+                            {/* 🚀 Boost Thought Selection */}
+                            {(() => {
+                                const isGoldOrAbove = currentUser?.subscription_tier === 'gold' || currentUser?.subscription_tier === 'diamond';
+                                const lastBoostDay = currentUser?.last_thought_boost_at ? new Date(currentUser.last_thought_boost_at).toDateString() : '';
+                                const hasBoostedToday = (lastBoostDay === new Date().toDateString()) && (currentUser?.daily_thought_boost_count >= 1);
+                                
+                                if (!isGoldOrAbove) return null;
+                                
+                                return (
+                                    <div className="setting-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <label className="setting-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#facc15' }}>
+                                                🚀 Boost Thought
+                                            </label>
+                                            <span style={{ fontSize: '0.7rem', color: '#a1a1aa' }}>
+                                                {hasBoostedToday 
+                                                    ? "Limit reached: 1 Boost daily" 
+                                                    : "Prominent gold glow for 3 hours"}
+                                            </span>
+                                        </div>
+                                        <label className="toggle-switch" style={{ pointerEvents: hasBoostedToday ? 'none' : 'auto' }}>
+                                            <input 
+                                                type="checkbox"
+                                                disabled={hasBoostedToday}
+                                                checked={isBoostSelected}
+                                                onChange={e => setIsBoostSelected(e.target.checked)}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                );
+                            })()}
                             
                             {/* Buttons at the bottom */}
                             <div className="thought-actions new-actions">

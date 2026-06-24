@@ -105,7 +105,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
             // 1. Fetch Profile Details (Bio, Joined, Interests, etc)
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, created_at, birth_date, interests, username')
+                .select('bio, created_at, birth_date, interests, username, hide_birthday')
                 .eq('id', user.id)
                 .maybeSingle();
 
@@ -156,7 +156,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 mutuals: mutualCount,
                 joinedDate: profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: '2-digit' }) : 'Unknown',
                 bio: profile?.bio || 'No bio set.',
-                birthDate: formatSafeDate(profile?.birth_date),
+                birthDate: profile?.hide_birthday ? null : formatSafeDate(profile?.birth_date),
                 interests: profile?.interests || [],
                 username: profile?.username || user.username 
             });

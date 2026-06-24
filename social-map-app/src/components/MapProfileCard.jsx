@@ -5,9 +5,10 @@ import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR } from '../util
 import { calculateDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 import { nearbyLabel, parseThought } from '../utils/locationPrivacy';
+import { calculateSmartMatchScore } from '../utils/premiumUtils';
 
 
-export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast, reactions = [], onToggleReaction }) {
+export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast, reactions = [], onToggleReaction, initialShowReactors = false, friendshipsMapRef, replies = [] }) {
     if (!user) return null;
     const navigate = useNavigate();
 
@@ -29,12 +30,12 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const displayThought = isThoughtExpired ? null : thoughtText;
 
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
-    const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false);
+    const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false) && !user.hide_last_seen;
 
     const getLastActive = (dateStr) => {
-        if (!dateStr) return null;
+        if (!dateStr || user.hide_last_seen) return null;
         const diff = Date.now() - new Date(dateStr).getTime();
-        if (diff < 5 * 60 * 1000) return 'Active now';
+        if (diff < 5 * 60 * 1000 && !user.hide_online_status) return 'Active now';
         if (diff < 60 * 60 * 1000 && canShowLastSeen) return 'Recently active';
         return null;
     };
@@ -57,8 +58,28 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const [isSendingReply, setIsSendingReply] = useState(false);
 
     // Thought Reactions States
-    const [showReactorsList, setShowReactorsList] = useState(false);
+    const [showReactorsList, setShowReactorsList] = useState(initialShowReactors);
     const [selectedReactorTab, setSelectedReactorTab] = useState('all');
+
+    // If parent triggers opening the sheet (e.g. via map bubble tap)
+    useEffect(() => {
+        if (initialShowReactors) {
+            if (currentUser?.subscription_tier === 'free') {
+                showToast("Upgrade to Silver to see who reacted! 🥈");
+                setShowReactorsList(false);
+            } else {
+                setShowReactorsList(true);
+            }
+        }
+    }, [initialShowReactors, currentUser?.subscription_tier]);
+
+    useEffect(() => {
+        if (user && currentUser && user.id !== currentUser.id) {
+            import('../utils/premiumUtils').then(({ recordProfileView }) => {
+                recordProfileView(user.id, currentUser.id);
+            }).catch(err => console.warn(err));
+        }
+    }, [user?.id, currentUser?.id]);
 
     const filteredReactors = selectedReactorTab === 'all'
         ? reactions
@@ -320,7 +341,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                 )}
                                 {/* Mood emoji — shown if set and not expired (6h) */}
                                 {(() => {
-                                    if (!user.mood || !user.moodUpdatedAt) return null;
+                                    if (!user.mood || !user.moodUpdatedAt || user.hide_mood) return null;
                                     const isExpired = new Date(user.moodUpdatedAt).getTime() < Date.now() - 6 * 60 * 60 * 1000;
                                     if (isExpired) return null;
                                     return (
@@ -345,39 +366,88 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                 🤝 Friend
                                             </span>
                                         )}
-                                        {!user.hide_status && user.relationshipStatus && (
-                                            <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>
-                                                {user.relationshipStatus}
+                                        {user.subscription_tier === 'silver' && (
+                                            <span className="badge-pill status silver" style={{ background: 'rgba(209, 213, 219, 0.15)', color: '#d1d5db', border: '1px solid rgba(209, 213, 219, 0.3)' }}>
+                                                🥈 Silver Member
                                             </span>
                                         )}
-                                        {/* Unified presence badge — Online OR last-seen, never both */}
-                                        {(() => {
-                                            if (!user.lastActive) return null;
-                                            const diffMs = Date.now() - new Date(user.lastActive).getTime();
-                                            const isOnline = diffMs < 5 * 60 * 1000; // online if active in last 5 min
-
-                                            if (isOnline) {
-                                                return (
-                                                    <span className="badge-pill active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
-                                                        🟢 Active now
-                                                    </span>
-                                                );
-                                            }
-
-                                            const isRecentlyActive = diffMs < 60 * 60 * 1000; // recently active if in last 60 min
-                                            if (isRecentlyActive && canShowLastSeen) {
-                                                return (
-                                                    <span className="badge-pill active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
-                                                        ⏱ Recently active
-                                                    </span>
-                                                );
-                                            }
-
-                                            return null;
-                                        })()}
+                                        {user.subscription_tier === 'gold' && (
+                                            <span className="badge-pill status gold" style={{ background: 'rgba(250, 204, 21, 0.15)', color: '#facc15', border: '1px solid rgba(250, 204, 21, 0.3)' }}>
+                                                🥇 Gold Elite
+                                            </span>
+                                        )}
+                                        {user.subscription_tier === 'diamond' && (
+                                            <>
+                                                <span className="badge-pill status diamond" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                                                    💎 Diamond Elite
+                                                </span>
+                                                <span className="badge-pill status early-access" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>
+                                                    🧪 Early Access Member
+                                                </span>
+                                            </>
+                                        )}
+                                        {!user.hide_status && !user.hide_relationship_status && (user.relationshipStatus || user.relationship_status) && (
+                                            <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>
+                                        {user.relationshipStatus || user.relationship_status}
+                                            </span>
+                                        )}
                                     </>
                                 )}
                             </div>
+
+                            {(() => {
+                                const match = currentUser?.subscription_tier === 'diamond' ? calculateSmartMatchScore(currentUser, user) : null;
+                                if (!match) return null;
+                                return (
+                                    <div className="match-score-card" style={{
+                                        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.12))',
+                                        border: '1px dashed rgba(6, 182, 212, 0.4)',
+                                        borderRadius: '12px',
+                                        padding: '10px 14px',
+                                        margin: '10px 0 2px 0',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '4px',
+                                        alignItems: 'center',
+                                        textAlign: 'center',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                    }}>
+                                        <div style={{ fontWeight: 'bold', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
+                                            ❤️ {match.score}% Compatibility Score
+                                        </div>
+                                        {match.commonInterests.length > 0 && (
+                                            <div style={{ fontSize: '0.75rem', color: '#cffafe' }}>
+                                                Common Interests: {match.commonInterests.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ')}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                            {/* Unified presence badge — Online OR last-seen, never both */}
+                            {(() => {
+                                if (!user.lastActive) return null;
+                                const diffMs = Date.now() - new Date(user.lastActive).getTime();
+                                const isOnline = diffMs < 5 * 60 * 1000 && !user.hide_online_status; // online if active in last 5 min
+
+                                if (isOnline) {
+                                    return (
+                                        <span className="badge-pill active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
+                                            🟢 Active now
+                                        </span>
+                                    );
+                                }
+
+                                const isRecentlyActive = diffMs < 60 * 60 * 1000; // recently active if in last 60 min
+                                if (isRecentlyActive && canShowLastSeen) {
+                                    return (
+                                        <span className="badge-pill active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
+                                            ⏱ Recently active
+                                        </span>
+                                    );
+                                }
+
+                                return null;
+                            })()}
                         </div>
                     </div>
 
@@ -397,7 +467,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                             {/* Reaction Counts Row */}
                             {reactions.length > 0 && (
-                                <div className="thought-reactions-summary" onClick={() => setShowReactorsList(true)}>
+                                <div className="thought-reactions-summary" onClick={() => {
+                                    if (currentUser?.subscription_tier === 'free') {
+                                        showToast("Upgrade to Silver to see who reacted! 🥈");
+                                    } else {
+                                        setShowReactorsList(true);
+                                    }
+                                }}>
                                     {Object.entries(
                                         reactions.reduce((acc, r) => {
                                             acc[r.reaction_type] = (acc[r.reaction_type] || 0) + 1;
@@ -576,39 +652,75 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                             {/* Tab Bar */}
                             <div className="sheet-tab-bar">
-                                {['all', 'love', 'fire', 'laugh', 'clap'].map(tab => {
-                                    const emojiMap = { all: 'All', love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
-                                    const tabCount = tab === 'all' 
-                                        ? reactions.length 
-                                        : reactions.filter(r => r.reaction_type === tab).length;
-                                    return (
-                                        <button
-                                            key={tab}
-                                            className={`sheet-tab-btn ${selectedReactorTab === tab ? 'active' : ''}`}
-                                            onClick={() => setSelectedReactorTab(tab)}
-                                        >
-                                            {emojiMap[tab]} <span className="tab-count">{tabCount}</span>
-                                        </button>
-                                    );
-                                })}
+                                {(() => {
+                                    const tabs = ['all', 'love', 'fire', 'laugh', 'clap'];
+                                    if (isOwner) {
+                                        tabs.push('replies');
+                                    }
+                                    return tabs.map(tab => {
+                                        const emojiMap = { all: 'All', love: '❤️', fire: '🔥', laugh: '😂', clap: '👏', replies: '💬' };
+                                        const tabCount = tab === 'all' 
+                                            ? reactions.length 
+                                            : tab === 'replies'
+                                                ? replies.length
+                                                : reactions.filter(r => r.reaction_type === tab).length;
+                                        return (
+                                            <button
+                                                key={tab}
+                                                className={`sheet-tab-btn ${selectedReactorTab === tab ? 'active' : ''}`}
+                                                onClick={() => setSelectedReactorTab(tab)}
+                                            >
+                                                {emojiMap[tab]} <span className="tab-count">{tabCount}</span>
+                                            </button>
+                                        );
+                                    });
+                                })()}
                             </div>
 
                             {/* Reactors List */}
                             <div className="reactors-list">
-                                {filteredReactors.length === 0 ? (
-                                    <div className="empty-reactors">No reactions yet</div>
-                                ) : (
-                                    filteredReactors.map(reactor => {
-                                        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
-                                        const emoji = emojiMap[reactor.reaction_type] || '❤️';
-                                        const reactorProfile = reactor.user || {};
-                                        const reactorAvatar = getAvatar2D(reactorProfile.avatar_url || (reactorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : DEFAULT_FEMALE_AVATAR));
+                                {(() => {
+                                    const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
+                                    const filteredReactors = selectedReactorTab === 'all'
+                                        ? reactions
+                                        : selectedReactorTab === 'replies'
+                                            ? []
+                                            : reactions.filter(r => r.reaction_type === selectedReactorTab);
+
+                                    const displayItems = selectedReactorTab === 'replies'
+                                        ? replies.map(r => ({
+                                            id: r.id,
+                                            type: 'reply',
+                                            created_at: r.created_at,
+                                            user: r.sender || {},
+                                            content: r.content
+                                        }))
+                                        : filteredReactors.map(r => ({
+                                            id: r.id,
+                                            type: 'reaction',
+                                            reaction_type: r.reaction_type,
+                                            created_at: r.created_at,
+                                            user: r.user || {}
+                                        }));
+
+                                    if (displayItems.length === 0) {
+                                        return (
+                                            <div className="empty-reactors">
+                                                {selectedReactorTab === 'replies' ? 'No replies yet' : 'No reactions yet'}
+                                            </div>
+                                        );
+                                    }
+
+                                    return displayItems.map(item => {
+                                        const reactorProfile = item.user || {};
                                         const name = reactorProfile.full_name || reactorProfile.username || 'Unknown User';
+                                        const username = reactorProfile.username ? `@${reactorProfile.username}` : '';
+                                        const reactorAvatar = getAvatar2D(reactorProfile.avatar_url || (reactorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : DEFAULT_FEMALE_AVATAR));
                                         
                                         // Calculate time elapsed
                                         const timeElapsedStr = (() => {
-                                            if (!reactor.created_at) return '';
-                                            const diff = Date.now() - new Date(reactor.created_at).getTime();
+                                            if (!item.created_at) return '';
+                                            const diff = Date.now() - new Date(item.created_at).getTime();
                                             const mins = Math.floor(diff / 60000);
                                             if (mins < 1) return 'just now';
                                             if (mins < 60) return `${mins}m ago`;
@@ -619,37 +731,102 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                                         const isSelfReactor = reactorProfile.id === currentUser?.id;
 
+                                        // Lookup friendship status
+                                        const fData = friendshipsMapRef?.current?.get(reactorProfile.id);
+                                        const isFriend = fData?.status === 'accepted';
+                                        const isPending = fData?.status === 'pending';
+                                        const isRequester = fData?.requesterId === currentUser?.id;
+
                                         return (
-                                            <div key={reactor.id} className="reactor-item">
+                                            <div key={item.id} className="reactor-item">
                                                 <img src={reactorAvatar} alt={name} className="reactor-avatar" />
                                                 <div className="reactor-info">
                                                     <div className="reactor-name-row">
                                                         <span className="reactor-name">{name}</span>
-                                                        <span className="reactor-emoji-badge">{emoji}</span>
+                                                        {isFriend && <span className="friends-badge">Friends</span>}
+                                                        {item.type === 'reaction' && (
+                                                            <span className="reactor-emoji-badge">{emojiMap[item.reaction_type] || '❤️'}</span>
+                                                        )}
+                                                        {item.type === 'reply' && (
+                                                            <span className="reactor-emoji-badge">💬</span>
+                                                        )}
                                                     </div>
-                                                    <span className="reactor-time">{timeElapsedStr}</span>
+                                                    <div className="reactor-sub-row">
+                                                        {username && username !== `@${name}` && (
+                                                            <span className="reactor-username">{username}</span>
+                                                        )}
+                                                        <span className="reactor-time">{timeElapsedStr}</span>
+                                                    </div>
+                                                    {item.type === 'reply' && item.content && (
+                                                        <div className="reactor-reply-content">
+                                                            "{item.content}"
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {!isSelfReactor && (
-                                                    <button
-                                                        className="reactor-msg-btn"
-                                                        onClick={() => {
-                                                            setShowReactorsList(false);
-                                                            onClose(); // Close the profile card
-                                                            onAction('message', {
-                                                                id: reactorProfile.id,
-                                                                username: reactorProfile.username,
-                                                                full_name: reactorProfile.full_name,
-                                                                avatar_url: reactorProfile.avatar_url
-                                                            });
-                                                        }}
-                                                    >
-                                                        Message
-                                                    </button>
+                                                    <div className="reactor-actions">
+                                                        {isFriend ? (
+                                                            <button
+                                                                className="reactor-msg-btn"
+                                                                onClick={() => {
+                                                                    setShowReactorsList(false);
+                                                                    onClose(); // Close the profile card
+                                                                    onAction('message', {
+                                                                        id: reactorProfile.id,
+                                                                        username: reactorProfile.username,
+                                                                        full_name: reactorProfile.full_name,
+                                                                        avatar_url: reactorProfile.avatar_url
+                                                                    });
+                                                                }}
+                                                            >
+                                                                Message
+                                                            </button>
+                                                        ) : isPending ? (
+                                                            isRequester ? (
+                                                                <button
+                                                                    className="reactor-requested-btn"
+                                                                    onClick={() => {
+                                                                        onAction('cancel-poke', {
+                                                                            id: reactorProfile.id,
+                                                                            name: reactorProfile.full_name || reactorProfile.username || 'User',
+                                                                            friendshipId: fData?.id
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    Requested
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    className="reactor-poke-btn"
+                                                                    onClick={() => {
+                                                                        onAction('poke', {
+                                                                            id: reactorProfile.id,
+                                                                            name: reactorProfile.full_name || reactorProfile.username || 'User'
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    Poke back
+                                                                </button>
+                                                            )
+                                                        ) : (
+                                                            <button
+                                                                className="reactor-poke-btn"
+                                                                onClick={() => {
+                                                                    onAction('poke', {
+                                                                        id: reactorProfile.id,
+                                                                        name: reactorProfile.full_name || reactorProfile.username || 'User'
+                                                                    });
+                                                                }}
+                                                            >
+                                                                Poke
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         );
-                                    })
-                                )}
+                                    });
+                                })()}
                             </div>
                         </motion.div>
                     )}
@@ -1148,10 +1325,11 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         bottom: 0;
                         left: 0;
                         right: 0;
-                        background: linear-gradient(135deg, rgba(30, 30, 40, 0.98), rgba(15, 15, 20, 0.99));
+                        background: #ffffff;
+                        color: #000000;
                         border-radius: 24px 24px 0 0;
-                        border-top: 1px solid rgba(255, 255, 255, 0.1);
-                        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+                        border-top: 1px solid rgba(0, 0, 0, 0.08);
+                        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
                         z-index: 3100;
                         max-height: 75vh;
                         display: flex;
@@ -1162,7 +1340,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .sheet-drag-handle {
                         width: 32px;
                         height: 4px;
-                        background: rgba(255, 255, 255, 0.2);
+                        background: rgba(0, 0, 0, 0.1);
                         border-radius: 2px;
                         margin: 0 auto 12px;
                     }
@@ -1178,13 +1356,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         margin: 0;
                         font-size: 1.1rem;
                         font-weight: 700;
-                        color: var(--text-primary);
+                        color: #1c1c1e;
                     }
 
                     .sheet-close-btn {
                         background: none;
                         border: none;
-                        color: var(--text-secondary);
+                        color: #8e8e93;
                         font-size: 1.1rem;
                         cursor: pointer;
                         padding: 4px;
@@ -1196,13 +1374,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         overflow-x: auto;
                         padding-bottom: 12px;
                         margin-bottom: 12px;
-                        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
                     }
 
                     .sheet-tab-btn {
-                        background: rgba(255, 255, 255, 0.05);
-                        border: 1px solid rgba(255, 255, 255, 0.08);
-                        color: var(--text-secondary);
+                        background: #ffffff;
+                        border: 1px solid rgba(0, 0, 0, 0.05);
+                        color: #8a2be2;
                         padding: 6px 12px;
                         border-radius: 16px;
                         font-size: 0.8rem;
@@ -1213,6 +1391,11 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         align-items: center;
                         gap: 4px;
                         transition: all 0.2s;
+                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+                    }
+
+                    .sheet-tab-btn:hover {
+                        background: rgba(138, 43, 226, 0.04);
                     }
 
                     .sheet-tab-btn.active {
@@ -1222,8 +1405,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     }
 
                     .tab-count {
-                        opacity: 0.6;
                         font-size: 0.75rem;
+                        font-weight: 700;
                     }
 
                     .reactors-list {
@@ -1236,7 +1419,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                     .empty-reactors {
                         text-align: center;
-                        color: var(--text-secondary);
+                        color: #8e8e93;
                         padding: 20px;
                         font-size: 0.9rem;
                     }
@@ -1245,8 +1428,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         display: flex;
                         align-items: center;
                         gap: 12px;
-                        padding: 8px 0;
-                        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+                        padding: 12px 0;
+                        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
                     }
 
                     .reactor-avatar {
@@ -1254,7 +1437,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         height: 44px;
                         border-radius: 50%;
                         object-fit: cover;
-                        border: 1.5px solid rgba(255, 255, 255, 0.1);
+                        border: 1.5px solid rgba(0, 0, 0, 0.05);
                     }
 
                     .reactor-info {
@@ -1273,7 +1456,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     .reactor-name {
                         font-weight: 600;
                         font-size: 0.9rem;
-                        color: var(--text-primary);
+                        color: #1c1c1e;
                     }
 
                     .reactor-emoji-badge {
@@ -1282,23 +1465,76 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                     .reactor-time {
                         font-size: 0.75rem;
-                        color: var(--text-secondary);
+                        color: #8e8e93;
                     }
 
-                    .reactor-msg-btn {
-                        background: #8a2be2;
-                        color: white;
+                    .reactor-msg-btn, .reactor-poke-btn {
+                        background: #f1ebf9;
+                        color: #8a2be2;
                         border: none;
                         border-radius: 12px;
                         padding: 6px 12px;
                         font-size: 0.8rem;
                         font-weight: 600;
                         cursor: pointer;
-                        transition: background 0.2s;
+                        transition: all 0.2s;
                     }
 
-                    .reactor-msg-btn:hover {
-                        background: #9b42f5;
+                    .reactor-msg-btn:hover, .reactor-poke-btn:hover {
+                        background: #e5daf5;
+                    }
+
+                    .reactor-requested-btn {
+                        background: #fff4e5;
+                        color: #FF9500;
+                        border: none;
+                        border-radius: 12px;
+                        padding: 6px 12px;
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    }
+
+                    .reactor-requested-btn:hover {
+                        background: #ffe9cc;
+                    }
+
+                    .reactor-reply-content {
+                        font-size: 0.8rem;
+                        color: #2c2c2e;
+                        font-style: italic;
+                        margin-top: 4px;
+                        background: rgba(138, 43, 226, 0.04);
+                        padding: 6px 10px;
+                        border-radius: 8px;
+                        border-left: 3px solid #8a2be2;
+                    }
+
+                    .reactor-sub-row {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+
+                    .reactor-username {
+                        font-size: 0.75rem;
+                        color: var(--text-secondary);
+                        opacity: 0.7;
+                    }
+
+                    .friends-badge {
+                        background: rgba(46, 213, 115, 0.15);
+                        color: #2ed573;
+                        border: 1px solid rgba(46, 213, 115, 0.3);
+                        padding: 2px 6px;
+                        border-radius: 8px;
+                        font-size: 0.65rem;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        display: inline-flex;
+                        align-items: center;
                     }
                     
                 `}</style>

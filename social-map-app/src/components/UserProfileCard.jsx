@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { supabase } from '../supabaseClient';
 import { parseThought } from '../utils/locationPrivacy';
+import { calculateSmartMatchScore } from '../utils/premiumUtils';
 
 // Helper to format date
 // Helper to format date safely for mobile Safari
@@ -55,16 +56,11 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
              // 1. Fetch Profile Columns
              const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, interests, birth_date, created_at, username, full_name, is_public')
+                .select('bio, interests, birth_date, created_at, username, full_name, is_public, relationship_status, hide_relationship_status, hide_online_status, hide_mood, hide_last_seen, hide_birthday, hide_institute, institute, subscription_tier, avatar_effect')
                 .eq('id', user.id)
                 .maybeSingle();
             
              if (profile) {
-                 // 2. Calculate Mutuals (Mockable or expensive query)
-                 // Lightweight approach: Intersection of accepted friends
-                 // Note: Ideally this should be an RPC function.
-                 // For now, we'll do the client-side intersection if friend lists aren't too huge
-                 
                  // Get MY friends
                  const { data: myFriends } = await supabase.from('friendships')
                     .select('receiver_id, requester_id')
@@ -90,7 +86,17 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                      joinedAt: profile.created_at,
                      mutuals: mutualCount,
                      username: profile.username || user.name,
-                     isPublic: profile.is_public !== false
+                     isPublic: profile.is_public !== false,
+                     relationship_status: profile.relationship_status,
+                     hide_relationship_status: profile.hide_relationship_status,
+                     hide_online_status: profile.hide_online_status,
+                     hide_mood: profile.hide_mood,
+                     hide_last_seen: profile.hide_last_seen,
+                     hide_birthday: profile.hide_birthday,
+                     hide_institute: profile.hide_institute,
+                     institute: profile.institute,
+                     subscription_tier: profile.subscription_tier,
+                     avatar_effect: profile.avatar_effect
                  });
              }
         };
@@ -130,7 +136,8 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const interests = details.interests; 
     const mutuals = details.mutuals; 
     const joinedDate = formatJoinDate(details.joinedAt); 
-    const birthday = details.birthDate ? formatDate(details.birthDate) : null;
+    const birthday = details.birthDate && !details.hide_birthday ? formatDate(details.birthDate) : null;
+    const institute = details.institute && !details.hide_institute ? details.institute : null;
     const isPublic = details.isPublic;
     const isFriend = user.friendshipStatus === 'accepted';
     const canSeeFullProfile = isFriend || isPublic;
@@ -183,7 +190,11 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                 onClick={onClose}
             >
                 <motion.div 
-                    className="user-profile-card glass-panel"
+                    className={`user-profile-card glass-panel ${
+                        (user.subscription_tier || details.subscription_tier) === 'silver' ? 'profile-card-silver' :
+                        (user.subscription_tier || details.subscription_tier) === 'gold' ? 'profile-card-gold' :
+                        (user.subscription_tier || details.subscription_tier) === 'diamond' ? 'profile-card-diamond' : ''
+                    }`}
                     initial={{ y: "100%" }}
                     animate={{ y: 0 }}
                     exit={{ y: "100%" }}
@@ -194,23 +205,69 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                     <button className="close-btn-floating" onClick={onClose}>✕</button>
 
                     <div className="card-header-centered">
-                        <div className="avatar-ring-container">
+                        <div className={`avatar-ring-container ${
+                            (user.subscription_tier || details.subscription_tier) === 'silver' ? 'avatar-ring-silver' :
+                            (user.subscription_tier || details.subscription_tier) === 'gold' ? 'avatar-ring-gold' :
+                            (user.subscription_tier || details.subscription_tier) === 'diamond' ? `avatar-ring-diamond effect-${user.avatar_effect || details.avatar_effect || 'none'}` : ''
+                        }`}>
                              <img 
                                 src={displayAvatar} 
                                 alt={user.name} 
                                 className="avatar-main"
                             />
-                             <div className={`status-dot-large ${user.isLocationOn ? 'online' : 'offline'}`} />
+                             <div className={`status-dot-large ${(user.isLocationOn && !details.hide_online_status) ? 'online' : 'offline'}`} />
                         </div>
                         
                         <h2 className="user-name">{user.name}</h2>
                         <span className="user-handle">@{details.username}</span>
                         
-                        <div className="header-badges">
-                            {details.relationship_status && (
-                                <div className="status-pill">
-                                    {details.relationship_status}
+                        {(() => {
+                            const targetUserObj = {
+                                id: user.id,
+                                interests: details.interests || [],
+                                birth_date: details.birthDate || null,
+                                relationship_status: details.relationship_status || null
+                            };
+                            const match = currentUser?.subscription_tier === 'diamond' ? calculateSmartMatchScore(currentUser, targetUserObj) : null;
+                            if (!match) return null;
+                            return (
+                                <div className="match-score-badge" style={{
+                                    fontSize: '0.75rem',
+                                    color: '#06b6d4',
+                                    fontWeight: 'bold',
+                                    marginTop: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    background: 'rgba(6, 182, 212, 0.1)',
+                                    padding: '3px 10px',
+                                    borderRadius: '20px',
+                                    border: '1px solid rgba(6, 182, 212, 0.25)'
+                                }}>
+                                    ❤️ {match.score}% Match {match.commonInterests.length > 0 ? `(Common: ${match.commonInterests.join(', ')})` : ''}
                                 </div>
+                            );
+                        })()}
+                        
+                        <div className="header-badges">
+                            {details.relationship_status && !details.hide_relationship_status && (
+                                <div className="status-pill">
+                                    💕 {details.relationship_status}
+                                </div>
+                            )}
+
+                            {(user.subscription_tier || details.subscription_tier) === 'silver' && (
+                                <span className="premium-badge silver">🥈 Silver Member</span>
+                            )}
+                            {(user.subscription_tier || details.subscription_tier) === 'gold' && (
+                                <span className="premium-badge gold">🥇 Gold Elite</span>
+                            )}
+                            {(user.subscription_tier || details.subscription_tier) === 'diamond' && (
+                                <>
+                                    <span className="premium-badge diamond">💎 Diamond Elite</span>
+                                    <span className="premium-badge early-access" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>🧪 Early Access Member</span>
+                                </>
                             )}
 
                             {isFriend && (
@@ -265,6 +322,14 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         <div className="info-section">
                             <h4 className="section-title">ABOUT</h4>
                             <p className="bio-text">{bio}</p>
+                        </div>
+                    )}
+
+                    {/* Institute / Work Section */}
+                    {canSeeFullProfile && institute && (
+                        <div className="info-section">
+                            <h4 className="section-title">INSTITUTE / WORK</h4>
+                            <p className="bio-text">🎓 {institute}</p>
                         </div>
                     )}
 

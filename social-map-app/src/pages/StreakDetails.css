@@ -1,0 +1,195 @@
+.streak-page {
+    padding-bottom: 80px;
+    background: var(--bg-primary, #f9fafb);
+    min-height: 100vh;
+}
+
+.streak-hero {
+    background: linear-gradient(135deg, #ff7e5f, #feb47b);
+    padding: 32px 20px 48px 20px;
+    border-bottom-left-radius: 32px;
+    border-bottom-right-radius: 32px;
+    text-align: center;
+    color: white;
+    margin-bottom: -32px;
+}
+
+.streak-hero-icon {
+    font-size: 4rem;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 4px 8px rgba(255, 126, 95, 0.4));
+    animation: flamePulse 2s infinite ease-in-out;
+}
+
+@keyframes flamePulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.streak-hero-count {
+    font-size: 3rem;
+    font-weight: 800;
+    line-height: 1;
+    margin: 0;
+    letter-spacing: -1px;
+}
+
+.streak-hero-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.streak-content {
+    padding: 0 16px;
+    position: relative;
+    z-index: 10;
+}
+
+.streak-stats-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.streak-stat-card {
+    flex: 1;
+    background: var(--card-bg, #ffffff);
+    border-radius: 20px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.stat-card-icon {
+    font-size: 1.5rem;
+}
+
+.stat-card-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary, #1d1d1f);
+}
+
+.stat-card-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary, #86868b);
+}
+
+.streak-progress-card {
+    background: var(--card-bg, #ffffff);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+    margin-bottom: 24px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.progress-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary, #1d1d1f);
+}
+
+.progress-target {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #ff7e5f;
+}
+
+.progress-bar-container {
+    height: 12px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(to right, #ff7e5f, #feb47b);
+    border-radius: 6px;
+    transition: width 0.5s ease-out;
+}
+
+.milestones-section {
+    padding-top: 8px;
+}
+
+.milestones-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--text-primary, #1d1d1f);
+}
+
+.milestone-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--card-bg, #ffffff);
+    padding: 16px;
+    border-radius: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    border: 1px solid rgba(0,0,0,0.03);
+    opacity: 0.6;
+    transition: opacity 0.3s;
+}
+
+.milestone-item.unlocked {
+    opacity: 1;
+    border-color: rgba(255, 126, 95, 0.2);
+    box-shadow: 0 4px 16px rgba(255, 126, 95, 0.08);
+}
+
+.milestone-icon-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: rgba(0,0,0,0.04);
+}
+
+.milestone-item.unlocked .milestone-icon-box {
+    background: linear-gradient(135deg, rgba(255, 126, 95, 0.15), rgba(254, 180, 123, 0.15));
+}
+
+.milestone-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.milestone-day {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary, #86868b);
+}
+
+.milestone-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary, #1d1d1f);
+}
+
+.milestone-status {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #34c759;
+}

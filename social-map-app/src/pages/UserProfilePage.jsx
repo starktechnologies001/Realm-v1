@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCall } from '../context/CallContext';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { checkUnlockedAchievements, ACHIEVEMENTS, calculateSmartMatchScore } from '../utils/premiumUtils';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
@@ -37,6 +38,8 @@ export default function UserProfilePage() {
     const [details, setDetails] = useState(null);
     const [sharedMedia, setSharedMedia] = useState([]);
     const [previewImage, setPreviewImage] = useState(null);
+    const [showPokeSelector, setShowPokeSelector] = useState(false);
+    const [unlockedAchievements, setUnlockedAchievements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -55,7 +58,7 @@ export default function UserProfilePage() {
             // 2. Get current user's profile (for mutuals + friendship queries)
             const { data: me } = await supabase
                 .from('profiles')
-                .select('id, latitude, longitude')
+                .select('id, latitude, longitude, subscription_tier, super_poke_count_today, last_super_poke_at, diamond_poke_count_today, last_diamond_poke_at, interests, birth_date, relationship_status')
                 .eq('id', session.user.id)
                 .maybeSingle();
 
@@ -80,6 +83,13 @@ export default function UserProfilePage() {
                 console.warn('⚠️ [UserProfilePage] No profile found for userId:', userId);
                 setLoading(false);
                 return;
+            }
+
+            // Record view
+            if (userId !== meId) {
+                import('../utils/premiumUtils').then(({ recordProfileView }) => {
+                    recordProfileView(userId, meId);
+                }).catch(err => console.warn(err));
             }
 
             // 4. Friendship status
@@ -108,6 +118,9 @@ export default function UserProfilePage() {
             const theirFriendIds = theirFriends?.map(f => f.requester_id === userId ? f.receiver_id : f.requester_id) || [];
             const mutualCount = theirFriendIds.filter(id => myFriendIds.has(id)).length;
 
+            const targetUnlocked = checkUnlockedAchievements(profile, theirFriendIds.length);
+            setUnlockedAchievements(targetUnlocked);
+
             setDetails({
                 bio: profile.bio || 'No bio set.',
                 interests: profile.interests || [],
@@ -116,7 +129,8 @@ export default function UserProfilePage() {
                 mutuals: mutualCount,
                 username: profile.username,
                 relationship_status: profile.relationship_status,
-                is_public: profile.is_public !== false
+                is_public: profile.is_public !== false,
+                institute: profile.institute
             });
 
             // 6. Shared media (friends only)
@@ -202,9 +216,12 @@ export default function UserProfilePage() {
                 await supabase.from('friendships').delete().match({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
                 setUser(u => ({ ...u, friendshipStatus: 'none', requesterId: null }));
             } else {
-                // Send Poke
-                await supabase.from('friendships').insert({ requester_id: currentUser.id, receiver_id: user.id, status: 'pending' });
-                setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+                const isPremium = currentUser?.subscription_tier === 'gold' || currentUser?.subscription_tier === 'diamond';
+                if (isPremium) {
+                    setShowPokeSelector(true);
+                } else {
+                    executePoke('normal');
+                }
             }
         } else if (action === 'unfriend') {
             if (window.confirm(`Are you sure you want to unfriend ${user.username || user.name}?`)) {
@@ -233,6 +250,80 @@ export default function UserProfilePage() {
         }
     };
 
+    const executePoke = async (pokeType) => {
+        try {
+            if (pokeType === 'super') {
+                const lastPokeDay = currentUser.last_super_poke_at ? new Date(currentUser.last_super_poke_at).toDateString() : '';
+                const currentDay = new Date().toDateString();
+                const newCount = (lastPokeDay === currentDay) ? (currentUser.super_poke_count_today || 0) + 1 : 1;
+                
+                if (newCount > 10) {
+                    alert("⚠️ You've reached your daily limit of 10 Super Pokes!");
+                    return;
+                }
+            } else if (pokeType === 'diamond') {
+                const lastPokeDay = currentUser.last_diamond_poke_at ? new Date(currentUser.last_diamond_poke_at).toDateString() : '';
+                const currentDay = new Date().toDateString();
+                const newCount = (lastPokeDay === currentDay) ? (currentUser.diamond_poke_count_today || 0) + 1 : 1;
+                
+                if (newCount > 5) {
+                    alert("⚠️ You've reached your daily limit of 5 Diamond Pokes!");
+                    return;
+                }
+            }
+
+            await supabase.from('friendships').insert({ 
+                requester_id: currentUser.id, 
+                receiver_id: user.id, 
+                status: 'pending',
+                is_super_poke: pokeType === 'super',
+                is_diamond_poke: pokeType === 'diamond'
+            });
+            
+            if (pokeType === 'super') {
+                const today = new Date().toISOString();
+                const lastPokeDay = currentUser.last_super_poke_at ? new Date(currentUser.last_super_poke_at).toDateString() : '';
+                const currentDay = new Date().toDateString();
+                const newCount = (lastPokeDay === currentDay) ? (currentUser.super_poke_count_today || 0) + 1 : 1;
+                
+                await supabase.from('profiles').update({
+                    super_poke_count_today: newCount,
+                    last_super_poke_at: today
+                }).eq('id', currentUser.id);
+                
+                const updated = {
+                    ...currentUser,
+                    super_poke_count_today: newCount,
+                    last_super_poke_at: today
+                };
+                setCurrentUser(updated);
+                localStorage.setItem('currentUser', JSON.stringify(updated));
+            } else if (pokeType === 'diamond') {
+                const today = new Date().toISOString();
+                const lastPokeDay = currentUser.last_diamond_poke_at ? new Date(currentUser.last_diamond_poke_at).toDateString() : '';
+                const currentDay = new Date().toDateString();
+                const newCount = (lastPokeDay === currentDay) ? (currentUser.diamond_poke_count_today || 0) + 1 : 1;
+                
+                await supabase.from('profiles').update({
+                    diamond_poke_count_today: newCount,
+                    last_diamond_poke_at: today
+                }).eq('id', currentUser.id);
+                
+                const updated = {
+                    ...currentUser,
+                    diamond_poke_count_today: newCount,
+                    last_diamond_poke_at: today
+                };
+                setCurrentUser(updated);
+                localStorage.setItem('currentUser', JSON.stringify(updated));
+            }
+            
+            setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+        } catch (err) {
+            console.error("Error executing poke:", err);
+        }
+    };
+
     if (loading) {
         return (
             <div style={styles.loadingWrap}>
@@ -254,7 +345,8 @@ export default function UserProfilePage() {
 
     const avatarUrl = user.avatar_url || (user.gender === 'Male' ? DEFAULT_MALE_AVATAR : user.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR);
     const displayAvatar = getAvatar2D(avatarUrl);
-    const birthday = details.birthDate ? formatDate(details.birthDate) : null;
+    const birthday = details.birthDate && !user.hide_birthday ? formatDate(details.birthDate) : null;
+    const institute = details.institute && !user.hide_institute ? details.institute : null;
     const joinedDate = formatJoinDate(details.joinedAt);
     const isFriend = user.friendshipStatus === 'accepted';
     const isPublic = details.is_public;
@@ -275,19 +367,26 @@ export default function UserProfilePage() {
 
             {/* Avatar — overlaps the hero banner */}
             <div style={styles.avatarWrap}>
-                <div style={{
-                    ...styles.avatarRing,
-                    boxShadow: user.is_location_on
-                        ? '0 0 0 3px #30d158, 0 0 20px rgba(48,209,88,0.4), 0 12px 40px rgba(0,0,0,0.6)'
-                        : '0 0 0 3px rgba(255,255,255,0.15), 0 12px 40px rgba(0,0,0,0.6)'
-                }}>
+                <div 
+                    className={`${
+                        user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                        user.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                        user.subscription_tier === 'diamond' ? `avatar-ring-diamond effect-${user.avatar_effect || 'none'}` : ''
+                    }`}
+                    style={{
+                        ...styles.avatarRing,
+                        boxShadow: user.subscription_tier ? undefined : (user.is_location_on
+                            ? '0 0 0 3px #30d158, 0 0 20px rgba(48,209,88,0.4), 0 12px 40px rgba(0,0,0,0.6)'
+                            : '0 0 0 3px rgba(255,255,255,0.15), 0 12px 40px rgba(0,0,0,0.6)')
+                    }}
+                >
                     <img src={displayAvatar} alt={user.username || user.name} style={styles.avatarImg} fetchpriority="high" />
                 </div>
                 {/* Online badge */}
                 <div style={{
                     ...styles.onlineDot,
-                    background: user.is_location_on ? '#30d158' : '#555',
-                    boxShadow: user.is_location_on ? '0 0 0 2px #1c1c1e, 0 0 10px rgba(48,209,88,0.6)' : '0 0 0 2px #1c1c1e'
+                    background: (user.is_location_on && !user.hide_online_status) ? '#30d158' : '#555',
+                    boxShadow: (user.is_location_on && !user.hide_online_status) ? '0 0 0 2px #1c1c1e, 0 0 10px rgba(48,209,88,0.6)' : '0 0 0 2px #1c1c1e'
                 }} />
             </div>
 
@@ -295,15 +394,53 @@ export default function UserProfilePage() {
             <div style={styles.identity}>
                 <h1 style={styles.name}>{user.username || user.name}</h1>
                 <div style={styles.badgeRow}>
-                    {details.relationship_status && (
+                    {details.relationship_status && !user.hide_relationship_status && (
                         <span style={styles.statusPill}>
                             💕 {details.relationship_status}
                         </span>
+                    )}
+                    {user.subscription_tier === 'silver' && <span className="premium-badge silver" style={{ marginLeft: 8 }}>🥈 Silver Member</span>}
+                    {user.subscription_tier === 'gold' && <span className="premium-badge gold" style={{ marginLeft: 8 }}>🥇 Gold Elite</span>}
+                    {user.subscription_tier === 'diamond' && (
+                        <>
+                            <span className="premium-badge diamond" style={{ marginLeft: 8 }}>💎 Diamond Elite</span>
+                            <span className="premium-badge early-access" style={{ marginLeft: 8, background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>🧪 Early Access Member</span>
+                        </>
                     )}
                     {isFriend && <span style={styles.friendBadge}>🤝 Friend</span>}
                     {!isFriend && isPublic && <span style={styles.publicBadge}>🌍 Public</span>}
                     {!isFriend && !isPublic && <span style={styles.privateBadge}>🔒 Private</span>}
                 </div>
+                {(() => {
+                    const match = currentUser?.subscription_tier === 'diamond' && currentUser.id !== user.id ? calculateSmartMatchScore(currentUser, user) : null;
+                    if (!match) return null;
+                    return (
+                        <div className="match-score-card" style={{
+                            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.12))',
+                            border: '1px dashed rgba(6, 182, 212, 0.4)',
+                            borderRadius: '12px',
+                            padding: '10px 14px',
+                            marginTop: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            alignItems: 'center',
+                            textAlign: 'center',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            width: '92%',
+                            maxWidth: '440px'
+                        }}>
+                            <div style={{ fontWeight: 'bold', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
+                                ❤️ {match.score}% Compatibility Score
+                            </div>
+                            {match.commonInterests.length > 0 && (
+                                <div style={{ fontSize: '0.75rem', color: '#cffafe' }}>
+                                    Common Interests: {match.commonInterests.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ')}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* Stats */}
@@ -316,6 +453,23 @@ export default function UserProfilePage() {
                     <div className="stat-card" style={styles.statCard}>
                         <span style={styles.statVal}>{joinedDate}</span>
                         <span style={styles.statLabel}>Joined</span>
+                    </div>
+                    <div 
+                        className={`stat-card ${
+                            (user.subscription_tier === 'gold' || user.subscription_tier === 'diamond') ? 'gold-streak-pulsate' : ''
+                        }`} 
+                        style={{
+                            ...styles.statCard,
+                            border: (user.subscription_tier === 'gold' || user.subscription_tier === 'diamond') ? '1px solid #facc15' : '1px solid rgba(255,255,255,0.05)',
+                        }}
+                    >
+                        <span style={{
+                            ...styles.statVal,
+                            color: (user.subscription_tier === 'gold' || user.subscription_tier === 'diamond') ? '#facc15' : '#f4f4f5'
+                        }}>
+                            🔥 {user.streak_count || 0}
+                        </span>
+                        <span style={styles.statLabel}>Streak</span>
                     </div>
                     {birthday && (
                         <div className="stat-card" style={styles.statCard}>
@@ -345,6 +499,43 @@ export default function UserProfilePage() {
                             {details.interests.map((tag, i) => (
                                 <span key={i} style={styles.tag}>{tag}</span>
                             ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Achievements Shelf */}
+                {canSeeFullProfile && (user.subscription_tier === 'gold' || user.subscription_tier === 'diamond') && (
+                    <div className="achievements-section" style={{
+                        ...styles.card,
+                        display: 'flex', flexDirection: 'column', gap: 12
+                    }}>
+                        <div className="achievements-header" style={{ borderBottom: 'none', padding: 0 }}>
+                            <h4 style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                🏆 Achievements ({unlockedAchievements.length}/6)
+                            </h4>
+                            <button className="achievements-viewall" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>Public</button>
+                        </div>
+                        <div className="achievements-list" style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
+                            {ACHIEVEMENTS.map(ach => {
+                                const isUnlocked = unlockedAchievements.includes(ach.id);
+                                return (
+                                    <div key={ach.id} className="achievement-item" title={ach.desc} style={{ minWidth: 70, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                                        <div className={`achievement-badge-container ${isUnlocked ? 'unlocked' : ''}`} style={{
+                                            width: 44, height: 44, borderRadius: '50%',
+                                            display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', fontSize: '1.25rem',
+                                            background: isUnlocked ? 'linear-gradient(135deg, #facc15, #eab308)' : 'rgba(255,255,255,0.05)',
+                                            border: isUnlocked ? '1px solid #facc15' : '1px solid rgba(255,255,255,0.1)',
+                                            boxShadow: isUnlocked ? '0 0 10px rgba(250,204,21,0.3)' : 'none',
+                                            transition: 'transform 0.2s'
+                                        }}>
+                                            {ach.icon}
+                                        </div>
+                                        <span className="achievement-title" style={{ fontSize: '0.65rem', color: isUnlocked ? '#f4f4f5' : '#71717a', textAlign: 'center', fontWeight: 500 }}>
+                                            {ach.title}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -431,6 +622,80 @@ export default function UserProfilePage() {
             {previewImage && (
                 <div style={styles.lightbox} onClick={() => setPreviewImage(null)}>
                     <img src={previewImage} alt="Preview" style={styles.lightboxImg} loading="lazy" decoding="async" />
+                </div>
+            )}
+
+            {/* Super & Diamond Poke Selector */}
+            {showPokeSelector && (
+                <div style={styles.pokeSelectorOverlay} onClick={() => setShowPokeSelector(false)}>
+                    <div style={styles.pokeSelectorModal} onClick={e => e.stopPropagation()}>
+                        <h3 style={styles.pokeSelectorTitle}>Select Poke Type</h3>
+                        <p style={styles.pokeSelectorSubtitle}>
+                            {currentUser?.subscription_tier === 'diamond' 
+                                ? `Super Pokes: ${currentUser?.super_poke_count_today || 0}/10 | Diamond Pokes: ${currentUser?.diamond_poke_count_today || 0}/5`
+                                : `Daily Limit: ${currentUser?.super_poke_count_today || 0} / 10 Super Pokes used`}
+                        </p>
+                        <div style={styles.pokeOptions}>
+                            <button 
+                                style={styles.pokeOptionBtnNormal}
+                                onClick={() => {
+                                    setShowPokeSelector(false);
+                                    executePoke('normal');
+                                }}
+                            >
+                                <span style={{ fontSize: '1.5rem' }}>👋</span>
+                                <div>
+                                    <div style={{ fontWeight: 600 }}>Normal Poke</div>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Send a friendly nudge</div>
+                                </div>
+                            </button>
+                            
+                            <button 
+                                style={{
+                                    ...styles.pokeOptionBtnSuper,
+                                    opacity: (currentUser?.super_poke_count_today || 0) >= 10 ? 0.5 : 1
+                                }}
+                                disabled={(currentUser?.super_poke_count_today || 0) >= 10}
+                                onClick={() => {
+                                    setShowPokeSelector(false);
+                                    executePoke('super');
+                                }}
+                            >
+                                <span style={{ fontSize: '1.5rem' }}>⭐</span>
+                                <div>
+                                    <div style={{ fontWeight: 600, color: '#facc15' }}>Super Poke</div>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#fffbeb' }}>
+                                        Priority placement & gold highlight
+                                    </div>
+                                </div>
+                            </button>
+
+                            {currentUser?.subscription_tier === 'diamond' && (
+                                <button 
+                                    style={{
+                                        ...styles.pokeOptionBtnDiamond,
+                                        opacity: (currentUser?.diamond_poke_count_today || 0) >= 5 ? 0.5 : 1
+                                    }}
+                                    disabled={(currentUser?.diamond_poke_count_today || 0) >= 5}
+                                    onClick={() => {
+                                        setShowPokeSelector(false);
+                                        executePoke('diamond');
+                                    }}
+                                >
+                                    <span style={{ fontSize: '1.5rem' }}>💎</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#00d4ff' }}>Diamond Poke</div>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#e0f7fa' }}>
+                                            VIP notification & cyan glow
+                                        </div>
+                                    </div>
+                                </button>
+                            )}
+                        </div>
+                        <button style={styles.pokeSelectorCancel} onClick={() => setShowPokeSelector(false)}>
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -752,5 +1017,45 @@ const styles = {
         backdropFilter: 'blur(10px)',
     },
     lightboxImg: { maxWidth: '92%', maxHeight: '90%', borderRadius: 16 },
+    pokeSelectorOverlay: {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.85)', zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(10px)',
+    },
+    pokeSelectorModal: {
+        width: '90%', maxWidth: 360,
+        background: '#1c1c1e',
+        borderRadius: 24, border: '1px solid rgba(255,255,255,0.1)',
+        padding: '24px', display: 'flex', flexDirection: 'column', gap: 16,
+        alignItems: 'center',
+    },
+    pokeSelectorTitle: { margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'white' },
+    pokeSelectorSubtitle: { margin: 0, fontSize: '0.85rem', color: '#a1a1aa', textAlign: 'center' },
+    pokeOptions: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%' },
+    pokeOptionBtnNormal: {
+        width: '100%', padding: '14px', borderRadius: 16,
+        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+        color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+        textAlign: 'left', transition: 'background 0.2s',
+    },
+    pokeOptionBtnSuper: {
+        width: '100%', padding: '14px', borderRadius: 16,
+        background: 'linear-gradient(135deg, rgba(250, 204, 21, 0.15), rgba(234, 179, 8, 0.15))',
+        border: '1.5px solid #facc15',
+        color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+        textAlign: 'left', transition: 'background 0.2s',
+    },
+    pokeOptionBtnDiamond: {
+        width: '100%', padding: '14px', borderRadius: 16,
+        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15))',
+        border: '1.5px solid #06b6d4',
+        color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+        textAlign: 'left', transition: 'background 0.2s',
+    },
+    pokeSelectorCancel: {
+        background: 'none', border: 'none', color: '#a1a1aa', fontSize: '0.9rem',
+        cursor: 'pointer', marginTop: 8, fontWeight: 500,
+    },
 };
 

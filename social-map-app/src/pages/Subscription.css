@@ -1,0 +1,318 @@
+.subscription-page {
+    min-height: 100vh;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    padding: 24px 16px 80px;
+    font-family: var(--font-family);
+    transition: all 0.3s ease;
+    overflow-x: hidden;
+}
+
+.subscription-header {
+    text-align: center;
+    position: relative;
+    margin-bottom: 40px;
+    padding-top: 10px;
+}
+
+.sub-back-btn {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: all 0.2s ease;
+}
+
+.sub-back-btn:hover {
+    background: var(--bg-secondary);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.subscription-header h2 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, #8b5cf6, #06b6d4, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+}
+
+.header-subtitle {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.sub-container {
+    max-width: 1050px;
+    margin: 0 auto;
+}
+
+/* Plans Grid */
+.plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+    align-items: stretch;
+}
+
+.plan-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 28px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.plan-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+}
+
+.plan-card.active {
+    border: 2px solid var(--brand-primary);
+}
+
+/* Gold Plan Specifics */
+.gold-card {
+    background: linear-gradient(180deg, rgba(250, 204, 21, 0.05) 0%, var(--glass-bg) 100%);
+    border: 2px solid rgba(250, 204, 21, 0.4);
+    box-shadow: 0 15px 45px rgba(250, 204, 21, 0.08);
+    transform: scale(1.02);
+}
+
+.gold-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 25px 60px rgba(250, 204, 21, 0.12);
+    border-color: #facc15;
+}
+
+/* Diamond Plan Specifics */
+.diamond-card {
+    background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, var(--glass-bg) 100%);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.diamond-card:hover {
+    border-color: #06b6d4;
+    box-shadow: 0 25px 60px rgba(6, 182, 212, 0.12);
+}
+
+.popular-ribbon {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #facc15, #eab308);
+    color: #451a03;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);
+    text-transform: uppercase;
+}
+
+.plan-badge {
+    font-weight: 800;
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.silver-badge {
+    color: #6b7280;
+}
+
+.gold-badge {
+    color: #ca8a04;
+}
+
+.diamond-badge {
+    background: linear-gradient(135deg, #06b6d4, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.plan-price {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.price-period {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.plan-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+/* Redesigned Features List */
+.plan-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 32px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1; /* Pushes button to bottom */
+}
+
+.plan-features li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.feature-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    box-shadow: inset 0 0 0 1px var(--glass-border);
+}
+
+.feature-highlight {
+    font-weight: 800 !important;
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    color: var(--brand-primary) !important;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    margin-top: 8px;
+}
+
+.feature-highlight:first-child {
+    margin-top: 0;
+}
+
+/* Action Buttons */
+.plan-action-btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: 16px;
+    font-size: 1rem;
+    font-weight: 800;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+}
+
+.plan-action-btn:active {
+    transform: scale(0.98);
+}
+
+.silver-btn {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+}
+.silver-btn:hover {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.gold-btn {
+    background: linear-gradient(135deg, #facc15, #eab308);
+    color: #451a03;
+    box-shadow: 0 8px 20px rgba(234, 179, 8, 0.25);
+}
+.gold-btn:hover {
+    box-shadow: 0 12px 25px rgba(234, 179, 8, 0.35);
+    transform: translateY(-2px);
+}
+
+.diamond-btn {
+    background: linear-gradient(135deg, #06b6d4, #0ea5e9);
+    color: white;
+    box-shadow: 0 8px 20px rgba(6, 182, 212, 0.25);
+}
+.diamond-btn:hover {
+    box-shadow: 0 12px 25px rgba(6, 182, 212, 0.35);
+    transform: translateY(-2px);
+}
+
+.plan-action-btn.subscribed {
+    background: #10b981 !important;
+    color: white !important;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25) !important;
+    cursor: default;
+    border: none !important;
+}
+
+.plan-action-btn.subscribed:hover {
+    transform: none;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25) !important;
+}
+
+.payment-history-link button {
+    transition: all 0.2s ease;
+}
+
+.payment-history-link button:hover {
+    background: var(--glass-border) !important;
+    color: var(--text-primary) !important;
+}
+
+@media (max-width: 768px) {
+    .plan-card {
+        padding: 24px;
+    }
+    .gold-card {
+        transform: scale(1);
+    }
+    .gold-card:hover {
+        transform: translateY(-4px) scale(1);
+    }
+    .plans-grid {
+        gap: 16px;
+    }
+    .subscription-header h2 {
+        font-size: 1.8rem;
+    }
+    .plan-price {
+        font-size: 2.2rem;
+    }
+}

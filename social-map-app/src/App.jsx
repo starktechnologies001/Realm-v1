@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -45,6 +45,7 @@ const MapHome = lazyWithRetry(() => import('./pages/MapHome'));
 const Friends = lazyWithRetry(() => import('./pages/Friends'));
 const Chat = lazyWithRetry(() => import('./pages/Chat'));
 const Profile = lazyWithRetry(() => import('./pages/Profile'));
+const Insights = lazyWithRetry(() => import('./pages/Insights'));
 const ConfirmEmail = lazyWithRetry(() => import('./pages/ConfirmEmail'));
 const UpdatePassword = lazyWithRetry(() => import('./pages/UpdatePassword'));
 const OAuthProfileSetup = lazyWithRetry(() => import('./pages/OAuthProfileSetup'));
@@ -56,7 +57,91 @@ const Welcome = lazyWithRetry(() => import('./pages/Welcome'));
 const VisibilitySettings = lazyWithRetry(() => import('./pages/VisibilitySettings'));
 const MessageRequestsPage = lazyWithRetry(() => import('./components/MessageRequestsPage'));
 const EnableLocation = lazyWithRetry(() => import('./pages/EnableLocation'));
+const Subscription = lazyWithRetry(() => import('./pages/Subscription'));
+const PaymentHistory = lazyWithRetry(() => import('./pages/PaymentHistory'));
+const Achievements = lazyWithRetry(() => import('./pages/Achievements'));
+const StreakDetails = lazyWithRetry(() => import('./pages/StreakDetails'));
+
 import LocationGuard from './components/LocationGuard';
+import confetti from 'canvas-confetti';
+
+const MilestoneCelebration = () => {
+    const [milestone, setMilestone] = useState(null);
+
+    useEffect(() => {
+        const handleMilestone = (e) => {
+            setMilestone(e.detail);
+            
+            // Fire confetti
+            const end = Date.now() + 3 * 1000;
+            const colors = ['#ff7e5f', '#feb47b', '#ffffff'];
+
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: colors
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: colors
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        };
+
+        window.addEventListener('streak-milestone', handleMilestone);
+        return () => window.removeEventListener('streak-milestone', handleMilestone);
+    }, []);
+
+    if (!milestone) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.8)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(10px)'
+        }} onClick={() => setMilestone(null)}>
+            <div style={{
+                background: 'var(--card-bg, white)', padding: '40px 32px',
+                borderRadius: '32px', textAlign: 'center',
+                boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
+                transform: 'scale(1)', animation: 'popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+            }} onClick={e => e.stopPropagation()}>
+                <div style={{ fontSize: '4rem', marginBottom: '16px' }}>🎉</div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-primary, #1d1d1f)' }}>
+                    Streak Milestone Reached!
+                </h2>
+                <div style={{
+                    margin: '24px auto', background: 'linear-gradient(135deg, rgba(255,126,95,0.1), rgba(254,180,123,0.1))',
+                    border: '1px solid rgba(255,126,95,0.3)', borderRadius: '24px', padding: '24px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px'
+                }}>
+                    <span style={{ fontSize: '3rem' }}>{milestone.reward.icon}</span>
+                    <span style={{ fontSize: '2rem', fontWeight: 900, color: '#ff7e5f' }}>{milestone.days} Days</span>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 700, color: milestone.reward.color }}>{milestone.reward.title}</span>
+                </div>
+                <p style={{ color: 'var(--text-secondary, #6e6e73)', fontWeight: 600, marginBottom: '24px' }}>Keep it up!</p>
+                <button onClick={() => setMilestone(null)} style={{
+                    background: 'linear-gradient(135deg, #ff7e5f, #feb47b)', color: 'white',
+                    border: 'none', padding: '14px 32px', borderRadius: '100px',
+                    fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer', width: '100%',
+                    boxShadow: '0 8px 16px rgba(255,126,95,0.3)'
+                }}>Awesome</button>
+                <style>{`@keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }`}</style>
+            </div>
+        </div>
+    );
+};
 
 // A simple loading fallback for general pages
 const LoadingFallback = () => (
@@ -137,6 +222,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <LocationProvider>
+          <MilestoneCelebration />
           <Router>
             <CallProvider>
             <Suspense fallback={<LoadingFallback />}>
@@ -157,6 +243,11 @@ function App() {
                   <Route path="/friends" element={<Friends />} />
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile/achievements" element={<Achievements />} />
+                  <Route path="/profile/streak" element={<StreakDetails />} />
+                  <Route path="/profile/insights" element={<Insights />} />
+                  <Route path="/subscription" element={<Subscription />} />
+                  <Route path="/profile/payments" element={<PaymentHistory />} />
                   <Route path="/profile/:userId" element={<UserProfilePage />} />
                   <Route path="/message-requests" element={<MessageRequestsPage />} />
                 </Route>

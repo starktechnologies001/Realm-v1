@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import BottomNav from './BottomNav';
 import { supabase } from '../supabaseClient';
+import { recordActivity } from '../utils/streakUtils';
 
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -48,7 +49,10 @@ export default function Layout() {
                         interests: profile.interests
                     };
                     localStorage.setItem('currentUser', JSON.stringify(recoveredUser));
+                    recordActivity(recoveredUser);
                 }
+            } else {
+                recordActivity(JSON.parse(userStr));
             }
         };
 
@@ -225,6 +229,40 @@ export default function Layout() {
             supabase.removeChannel(channel);
         };
     }, [checkingAuth]);
+
+    // Apply premium theme dynamically
+    useEffect(() => {
+        const applyPremiumTheme = () => {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+                if (user && user.premium_theme === 'sunset_orange') {
+                    // Force reset to default to fix the "all orange" issue for the user
+                    user.premium_theme = 'default';
+                    localStorage.setItem('currentUser', JSON.stringify(user));
+                    
+                    // Also fire async to update the DB
+                    if (user.id) {
+                        supabase.from('profiles').update({ premium_theme: 'default' }).eq('id', user.id).then();
+                    }
+                }
+
+                if (user && user.premium_theme && user.subscription_tier && user.subscription_tier !== 'free') {
+                    document.documentElement.setAttribute('data-theme-premium', user.premium_theme);
+                } else {
+                    document.documentElement.removeAttribute('data-theme-premium');
+                }
+            } catch (e) {
+                console.error("Error applying premium theme in layout:", e);
+            }
+        };
+
+        applyPremiumTheme();
+
+        window.addEventListener('local-user-update', applyPremiumTheme);
+        return () => {
+            window.removeEventListener('local-user-update', applyPremiumTheme);
+        };
+    }, []);
 
     const swipeHandlers = useSwipeNavigation();
 

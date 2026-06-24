@@ -263,7 +263,7 @@ export default function Chat() {
 
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active')
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active, subscription_tier, avatar_effect, hide_online_status, hide_last_seen')
             .in('id', validPartnerIds);
 
         if (!profiles) {
@@ -410,7 +410,7 @@ export default function Chat() {
 
             // Consider online if is_online flag is true AND last_active within 5 minutes
             const lastActiveMs = partner.last_active ? Date.now() - new Date(partner.last_active).getTime() : Infinity;
-            const isOnline = !!partner.is_online && lastActiveMs < 5 * 60 * 1000;
+            const isOnline = !!partner.is_online && lastActiveMs < 5 * 60 * 1000 && !partner.hide_online_status;
 
             return {
                 id: partner.id,
@@ -1061,7 +1061,11 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                                 </div>
                             )}
                             
-                            <div className="avatar-wrapper">
+                            <div className={`avatar-wrapper ${
+                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' ? 'avatar-ring-silver' :
+                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' ? 'avatar-ring-gold' :
+                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' ? 'avatar-ring-diamond' : ''
+                            }`} style={{ padding: (chat.fullProfile?.subscription_tier || chat.subscription_tier) ? 2 : 0, borderRadius: '50%' }}>
                                 <img 
                                     src={chat.avatar} 
                                     alt={chat.name} 
@@ -1075,7 +1079,12 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                             
                             <div className="chat-info">
                                 <div className="chat-header-row">
-                                    <span className="chat-name">{chat.name}</span>
+                                    <span className="chat-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {chat.name}
+                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
+                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
+                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                                    </span>
                                     <div className="meta-info">
                                         {chat.isMuted && <span className="mute-icon">🔇</span>}
                                         <span className="chat-time">{chat.time}</span>
@@ -3647,9 +3656,20 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
                     <div className="header-user">
-                        <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" />
+                        <div className={`avatar-wrapper ${
+                            partner.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                            partner.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                            partner.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                        }`} style={{ padding: partner.subscription_tier ? 2 : 0, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" style={{ border: partner.subscription_tier ? '2px solid #1c1c1e' : 'none' }} />
+                        </div>
                         <div className="header-text">
-                            <h3>{partner.username || partner.full_name || partner.name}</h3>
+                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {partner.username || partner.full_name || partner.name}
+                                {partner.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
+                                {partner.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
+                                {partner.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                            </h3>
                             {presence.displayStatus && (
                                 <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
                                     {presence.isOnline && <span className="online-dot">●</span>}

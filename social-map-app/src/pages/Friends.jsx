@@ -36,12 +36,12 @@ export default function Friends() {
         const [pendingResult, myFriendsResult] = await Promise.all([
             supabase
                 .from('friendships')
-                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)')
+                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect)')
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending'),
             supabase
                 .from('friendships')
-                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen)')
+                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect)')
                 .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
                 .eq('status', 'accepted')
         ]);
@@ -99,7 +99,7 @@ export default function Friends() {
 
                         const { data: profile } = await supabase
                             .from('profiles')
-                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen')
+                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect')
                             .eq('id', newRow.requester_id)
                             .maybeSingle();
 
@@ -347,7 +347,11 @@ export default function Friends() {
                             <div className="list">
                                 {requests.map(req => (
                                     <div key={req.id} className="friend-card request">
-                                        <div className="avatar-container">
+                                        <div className={`avatar-container ${
+                                            req.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                                            req.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                                            req.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                                        }`} style={{ padding: req.subscription_tier ? 2 : 0, borderRadius: '50%' }}>
                                             <img 
                                                 src={(() => {
                                                 let avatarUrl = req.avatar_url;
@@ -364,8 +368,13 @@ export default function Friends() {
                                                 decoding="sync"
                                             />
                                         </div>
-                                        <div className="info">
-                                            <h3>{req.username}</h3>
+                                        <div className="info" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                                                {req.username}
+                                                {req.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
+                                                {req.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
+                                                {req.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                                            </h3>
                                             <span className="subtitle">wants to connect</span>
                                         </div>
                                         <div className="actions">
@@ -397,7 +406,11 @@ export default function Friends() {
                                         style={{ zIndex: activeMenuId === friend.id ? 50 : 1 }}
                                         onClick={(e) => handleViewProfile(e, friend)}
                                     >
-                                        <div className="avatar-container">
+                                        <div className={`avatar-container ${
+                                            friend.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                                            friend.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                                            friend.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                                        }`} style={{ padding: friend.subscription_tier ? 2 : 0, borderRadius: '50%' }}>
                                             <img 
                                                 src={(() => {
                                                 let avatarUrl = friend.avatar_url;
@@ -415,7 +428,12 @@ export default function Friends() {
                                             />
                                         </div>
                                         <div className="info">
-                                            <h3>{friend.username}</h3>
+                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                                                {friend.username}
+                                                {friend.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
+                                                {friend.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
+                                                {friend.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                                            </h3>
                                             {!friend.hide_status && <span className="status-text">{friend.relationship_status || 'Single'}</span>}
                                         </div>
                                         
