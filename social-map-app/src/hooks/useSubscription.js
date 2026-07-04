@@ -21,6 +21,9 @@ export function useSubscription() {
                     return;
                 }
 
+                // Run the background subscription expiry cleanup first
+                await supabase.rpc('check_and_expire_subscriptions');
+
                 // Actually fetch from profiles to get the latest synced tier
                 const { data: profile, error } = await supabase
                     .from('profiles')

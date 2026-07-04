@@ -32,6 +32,11 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
     const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false) && !user.hide_last_seen;
 
+    // Calculate if user is online (active in last 5 minutes)
+    const userLastActive = user.lastActive || user.last_active || user.last_seen || user.lastSeen;
+    const diffMs = userLastActive ? Date.now() - new Date(userLastActive).getTime() : null;
+    const isOnline = diffMs != null && !isNaN(diffMs) && diffMs < 5 * 60 * 1000 && !user.hide_online_status;
+
     const getLastActive = (dateStr) => {
         if (!dateStr || user.hide_last_seen) return null;
         const diff = Date.now() - new Date(dateStr).getTime();
@@ -285,6 +290,15 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                     📍 {distanceStr}
                                 </div>
                             )}
+                            {canViewDetails && displayThought && (
+                                <div className="avatar-floating-thought-bubble">
+                                    💬 {displayThought}
+                                </div>
+                            )}
+                            {/* Status Dot */}
+                            {!user.hide_online_status && (
+                                <div className={`status-dot ${isOnline ? 'online' : 'offline'}`} />
+                            )}
 
 
                             {/* Context Menu Popup (Anchored to Avatar) */}
@@ -391,79 +405,61 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                         {user.relationshipStatus || user.relationship_status}
                                             </span>
                                         )}
+                                        {/* Unified presence badge — Online OR last-seen, never both */}
+                                        {(() => {
+                                            if (!userLastActive) return null;
+                                            if (isOnline) {
+                                                return (
+                                                    <span className="badge-pill status active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
+                                                        🟢 Active now
+                                                    </span>
+                                                );
+                                            }
+
+                                            const isRecentlyActive = diffMs != null && !isNaN(diffMs) && diffMs < 60 * 60 * 1000; // recently active if in last 60 min
+                                            if (isRecentlyActive && canShowLastSeen) {
+                                                return (
+                                                    <span className="badge-pill status active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
+                                                        ⏱ Recently active
+                                                    </span>
+                                                );
+                                            }
+
+                                            return null;
+                                        })()}
                                     </>
                                 )}
                             </div>
-
-                            {(() => {
-                                const match = currentUser?.subscription_tier === 'diamond' ? calculateSmartMatchScore(currentUser, user) : null;
-                                if (!match) return null;
-                                return (
-                                    <div className="match-score-card" style={{
-                                        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.12))',
-                                        border: '1px dashed rgba(6, 182, 212, 0.4)',
-                                        borderRadius: '12px',
-                                        padding: '10px 14px',
-                                        margin: '10px 0 2px 0',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '4px',
-                                        alignItems: 'center',
-                                        textAlign: 'center',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                                    }}>
-                                        <div style={{ fontWeight: 'bold', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
-                                            ❤️ {match.score}% Compatibility Score
-                                        </div>
-                                        {match.commonInterests.length > 0 && (
-                                            <div style={{ fontSize: '0.75rem', color: '#cffafe' }}>
-                                                Common Interests: {match.commonInterests.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ')}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                            {/* Unified presence badge — Online OR last-seen, never both */}
-                            {(() => {
-                                if (!user.lastActive) return null;
-                                const diffMs = Date.now() - new Date(user.lastActive).getTime();
-                                const isOnline = diffMs < 5 * 60 * 1000 && !user.hide_online_status; // online if active in last 5 min
-
-                                if (isOnline) {
-                                    return (
-                                        <span className="badge-pill active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
-                                            🟢 Active now
-                                        </span>
-                                    );
-                                }
-
-                                const isRecentlyActive = diffMs < 60 * 60 * 1000; // recently active if in last 60 min
-                                if (isRecentlyActive && canShowLastSeen) {
-                                    return (
-                                        <span className="badge-pill active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
-                                            ⏱ Recently active
-                                        </span>
-                                    );
-                                }
-
-                                return null;
-                            })()}
                         </div>
                     </div>
 
                     {canViewDetails && displayThought && (
                         <div className="thought-section">
-                            <div className="thought-bubble-large">
-                                {displayThought}
-                                {!isOwner && (
+                            {!isOwner && (
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                                     <button 
-                                        className="reply-thought-btn"
+                                        className="reply-thought-btn-small"
+                                        type="button"
                                         onClick={() => setIsReplyingToThought(!isReplyingToThought)}
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.08)',
+                                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                                            color: '#fff',
+                                            padding: '6px 16px',
+                                            borderRadius: '20px',
+                                            fontSize: '0.8rem',
+                                            cursor: 'pointer',
+                                            fontWeight: '600',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            transition: 'all 0.2s'
+                                        }}
                                     >
-                                        Reply
+                                        💬 Reply to Thought
                                     </button>
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             {/* Reaction Counts Row */}
                             {reactions.length > 0 && (
@@ -999,6 +995,34 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         z-index: 10;
                         border: 1.5px solid #1e1e23;
                         pointer-events: none;
+                    }
+
+                    .avatar-floating-thought-bubble {
+                        position: absolute;
+                        top: -14px;
+                        right: -75px;
+                        background: rgba(22, 22, 26, 0.85);
+                        backdrop-filter: blur(12px);
+                        -webkit-backdrop-filter: blur(12px);
+                        border: 1px solid rgba(0, 198, 255, 0.4);
+                        color: white;
+                        padding: 6px 12px;
+                        border-radius: 16px 16px 16px 4px;
+                        font-size: 0.75rem;
+                        max-width: 150px;
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                        z-index: 10;
+                        pointer-events: none; /* Let clicks pass through to avatar tap/press events */
+                        white-space: normal;
+                        word-break: break-word;
+                        text-align: left;
+                        line-height: 1.3;
+                        animation: bubbleFloat 3s ease-in-out infinite;
+                    }
+
+                    @keyframes bubbleFloat {
+                        0%, 100% { transform: translateY(0); }
+                        50% { transform: translateY(-4px); }
                     }
                     
                     /* The Actual Ring - Pseudo Element */

@@ -2453,6 +2453,13 @@ export default function MapHome() {
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
             setShowThoughtInput(false);
 
+            // Clear local reactions
+            setThoughtReactions(prev => {
+                const next = { ...prev };
+                delete next[currentUser.id];
+                return next;
+            });
+
             // DB Update
             const { error } = await supabase
                 .from('profiles')
@@ -2463,6 +2470,16 @@ export default function MapHome() {
                 .eq('id', currentUser.id);
 
             if (error) throw error;
+
+            // Delete reactions from DB (ignore RLS error if policy not yet updated)
+            supabase
+                .from('thought_reactions')
+                .delete()
+                .eq('thought_id', currentUser.id)
+                .then(({ error: delError }) => {
+                    if (delError) console.error("Could not delete thought reactions from DB:", delError);
+                });
+
             showToast('Thought removed');
         } catch (err) {
             console.error("Error deleting thought:", err);
@@ -2517,6 +2534,13 @@ export default function MapHome() {
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
             setShowThoughtInput(false);
 
+            // Clear local reactions
+            setThoughtReactions(prev => {
+                const next = { ...prev };
+                delete next[currentUser.id];
+                return next;
+            });
+
             // DB Update for global visibility
             const { error } = await supabase
                 .from('profiles')
@@ -2524,6 +2548,15 @@ export default function MapHome() {
                 .eq('id', currentUser.id);
 
             if (error) throw error;
+
+            // Delete reactions from DB (ignore RLS error if policy not yet updated)
+            supabase
+                .from('thought_reactions')
+                .delete()
+                .eq('thought_id', currentUser.id)
+                .then(({ error: delError }) => {
+                    if (delError) console.error("Could not delete thought reactions from DB:", delError);
+                });
             
             setNearbyUsers(prev =>
                 prev.map(u =>
@@ -3097,12 +3130,12 @@ export default function MapHome() {
         const bubbleClasses = `thought-bubble ${isBoosted ? 'thought-boosted' : ''}`;
 
         const thoughtHTML = thoughtText
-            ? `<div class="${bubbleClasses}" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${isBoosted ? '#facc15' : bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${isBoosted ? '#facc15' : bubbleBorderColor} !important; color: black !important; padding-right: 28px; pointer-events: auto !important; cursor: pointer;">
-                 <div class="thought-author" style="color: #4285F4 !important; font-weight: 800; font-size: 0.70rem; display: flex; align-items: center; justify-content: space-between;">
+            ? `<div class="${bubbleClasses}" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${isBoosted ? '#facc15' : bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${isBoosted ? '#facc15' : bubbleBorderColor} !important; color: #111827 !important; padding: 8px 32px 8px 12px !important; border-radius: 18px !important; pointer-events: auto !important; cursor: pointer;">
+                 <div class="thought-author" style="color: ${isSelf ? '#3b82f6' : '#64748b'} !important; font-weight: 800; font-size: 0.65rem; display: flex; align-items: center; justify-content: space-between; letter-spacing: 0.8px; text-transform: uppercase;">
                      <span>${isBoosted ? '🚀 Boosted' : name}</span>
                      ${expiryHTML}
                  </div>
-                 <div class="thought-content" style="color: #000000 !important; font-weight: 600; font-size: 0.75rem;">
+                 <div class="thought-content" style="color: #111827 !important; font-weight: 700; font-size: 0.85rem; letter-spacing: -0.015em; line-height: 1.35; margin-top: 1px;">
                     ${thoughtText}
                  </div>
                  ${reactionsHTML}

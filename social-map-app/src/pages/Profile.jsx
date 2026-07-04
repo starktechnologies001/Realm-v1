@@ -218,7 +218,7 @@ export default function Profile() {
             const [profileResult, storiesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('id, username, full_name, gender, avatar_url, bio, interests, relationship_status, hide_status, show_last_seen, is_public, is_ghost_mode, is_location_on, birth_date, mood, mood_updated_at, mute_settings, chat_background, institute, visibility_mode')
+                    .select('*')
                     .eq('id', authUser.id)
                     .maybeSingle(),
                 supabase
