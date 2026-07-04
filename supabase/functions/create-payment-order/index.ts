@@ -66,7 +66,7 @@ serve(async (req) => {
     if (!response.ok) {
       const errorData = await response.json()
       console.error('Razorpay order creation failed:', errorData)
-      throw new Error('Failed to create Razorpay order')
+      throw new Error(`Failed to create Razorpay order: ${JSON.stringify(errorData)}`)
     }
 
     const orderData = await response.json()
