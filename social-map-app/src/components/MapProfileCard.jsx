@@ -375,11 +375,6 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                     </span>
                                 ) : (
                                     <>
-                                        {user.friendshipStatus === 'accepted' && (
-                                            <span className="badge-pill status" style={{ background: 'rgba(0, 212, 255, 0.15)', color: '#00d4ff', border: '1px solid rgba(0, 212, 255, 0.3)' }}>
-                                                🤝 Friend
-                                            </span>
-                                        )}
                                         {user.subscription_tier === 'silver' && (
                                             <span className="badge-pill status silver" style={{ background: 'rgba(209, 213, 219, 0.15)', color: '#d1d5db', border: '1px solid rgba(209, 213, 219, 0.3)' }}>
                                                 🥈 Silver Member
@@ -395,142 +390,13 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                 💎 Diamond Elite
                                             </span>
                                         )}
-                                        {!user.hide_status && !user.hide_relationship_status && (user.relationshipStatus || user.relationship_status) && (
-                                            <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>
-                                        {user.relationshipStatus || user.relationship_status}
-                                            </span>
-                                        )}
-                                        {/* Unified presence badge — Online OR last-seen, never both */}
-                                        {(() => {
-                                            if (!userLastActive) return null;
-                                            if (isOnline) {
-                                                return (
-                                                    <span className="badge-pill status active-time" style={{ background: 'rgba(0,255,136,0.15)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.3)' }}>
-                                                        🟢 Active now
-                                                    </span>
-                                                );
-                                            }
-
-                                            const isRecentlyActive = diffMs != null && !isNaN(diffMs) && diffMs < 60 * 60 * 1000; // recently active if in last 60 min
-                                            if (isRecentlyActive && canShowLastSeen) {
-                                                return (
-                                                    <span className="badge-pill status active-time" style={{ background: 'rgba(255,165,0,0.15)', color: '#ffa500', border: '1px solid rgba(255,165,0,0.3)' }}>
-                                                        ⏱ Recently active
-                                                    </span>
-                                                );
-                                            }
-
-                                            return null;
-                                        })()}
                                     </>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    {canViewDetails && displayThought && (
-                        <div className="thought-section">
-                            {!isOwner && (
-                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
-                                    <button 
-                                        className="reply-thought-btn-small"
-                                        type="button"
-                                        onClick={() => setIsReplyingToThought(!isReplyingToThought)}
-                                        style={{
-                                            background: 'rgba(255, 255, 255, 0.08)',
-                                            border: '1px solid rgba(255, 255, 255, 0.15)',
-                                            color: '#fff',
-                                            padding: '6px 16px',
-                                            borderRadius: '20px',
-                                            fontSize: '0.8rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '600',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        💬 Reply to Thought
-                                    </button>
-                                </div>
-                            )}
 
-                            {/* Reaction Counts Row */}
-                            {reactions.length > 0 && (
-                                <div className="thought-reactions-summary" onClick={() => {
-                                    if (currentUser?.subscription_tier === 'free') {
-                                        showToast("Upgrade to Silver to see who reacted! 🥈");
-                                    } else {
-                                        setShowReactorsList(true);
-                                    }
-                                }}>
-                                    {Object.entries(
-                                        reactions.reduce((acc, r) => {
-                                            acc[r.reaction_type] = (acc[r.reaction_type] || 0) + 1;
-                                            return acc;
-                                        }, {})
-                                    ).map(([type, count]) => {
-                                        const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
-                                        return (
-                                            <span key={type} className="reaction-summary-pill">
-                                                {emojiMap[type] || '❤️'} {count}
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* Reaction Bar */}
-                            <div className="thought-reaction-bar">
-                                {[
-                                    { type: 'love', emoji: '❤️', label: 'Love' },
-                                    { type: 'fire', emoji: '🔥', label: 'Fire' },
-                                    { type: 'laugh', emoji: '😂', label: 'Laugh' },
-                                    { type: 'clap', emoji: '👏', label: 'Clap' }
-                                ].map(({ type, emoji, label }) => {
-                                    const hasReacted = reactions.some(r => r.user_id === currentUser?.id && r.reaction_type === type);
-                                    return (
-                                        <button
-                                            key={type}
-                                            className={`reaction-pill-btn ${hasReacted ? 'active' : ''}`}
-                                            onClick={() => onToggleReaction && onToggleReaction(user.id, type)}
-                                        >
-                                            <span className="reaction-emoji">{emoji}</span>
-                                            <span className="reaction-label">{label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            
-                            <AnimatePresence>
-                                {isReplyingToThought && (
-                                    <motion.form 
-                                        className="thought-reply-form"
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        onSubmit={handleReplySubmit}
-                                    >
-                                        <input 
-                                            type="text" 
-                                            placeholder="Type a reply..." 
-                                            value={replyText}
-                                            onChange={(e) => setReplyText(e.target.value)}
-                                            disabled={isSendingReply}
-                                            autoFocus
-                                        />
-                                        <button 
-                                            type="submit" 
-                                            disabled={!replyText.trim() || isSendingReply}
-                                        >
-                                            {isSendingReply ? '...' : 'Send'}
-                                        </button>
-                                    </motion.form>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    )}
 
                     <div className="action-grid" style={isOwner ? { display: 'flex', justifyContent: 'center' } : {}}>
                         {isOwner ? (

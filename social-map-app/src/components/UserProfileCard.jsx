@@ -241,35 +241,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         <h2 className="user-name">{user.name}</h2>
                         <span className="user-handle">@{details.username}</span>
                         
-                        {(() => {
-                            const targetUserObj = {
-                                id: user.id,
-                                interests: details.interests || [],
-                                birth_date: details.birthDate || null,
-                                relationship_status: details.relationship_status || null
-                            };
-                            const match = currentUser?.subscription_tier === 'diamond' ? calculateSmartMatchScore(currentUser, targetUserObj) : null;
-                            if (!match) return null;
-                            return (
-                                <div className="match-score-badge" style={{
-                                    fontSize: '0.75rem',
-                                    color: '#06b6d4',
-                                    fontWeight: 'bold',
-                                    marginTop: '6px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '4px',
-                                    background: 'rgba(6, 182, 212, 0.1)',
-                                    padding: '3px 10px',
-                                    borderRadius: '20px',
-                                    border: '1px solid rgba(6, 182, 212, 0.25)'
-                                }}>
-                                    ❤️ {match.score}% Match {match.commonInterests.length > 0 ? `(Common: ${match.commonInterests.join(', ')})` : ''}
-                                </div>
-                            );
-                        })()}
-                        
+
                         <div className="header-badges">
                             {details.relationship_status && !details.hide_relationship_status && (
                                 <div className="status-pill">

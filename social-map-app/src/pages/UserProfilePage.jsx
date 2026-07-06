@@ -197,8 +197,40 @@ export default function UserProfilePage() {
             })
             .subscribe();
 
+        const profileChannel = supabase
+            .channel(`user_profile_changes_${userId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'profiles',
+                filter: `id=eq.${userId}`
+            }, (payload) => {
+                const { new: newRec } = payload;
+                if (newRec) {
+                    setUser(u => {
+                        if (!u) return null;
+                        return {
+                            ...u,
+                            ...newRec
+                        };
+                    });
+                    setDetails(d => {
+                        if (!d) return null;
+                        return {
+                            ...d,
+                            bio: newRec.bio !== undefined ? (newRec.bio || 'No bio set.') : d.bio,
+                            interests: newRec.interests !== undefined ? (newRec.interests || []) : d.interests,
+                            birthDate: newRec.birth_date !== undefined ? newRec.birth_date : d.birthDate,
+                            relationship_status: newRec.relationship_status !== undefined ? newRec.relationship_status : d.relationship_status
+                        };
+                    });
+                }
+            })
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(profileChannel);
         };
     }, [currentUser?.id, userId]);
 
@@ -357,6 +389,8 @@ export default function UserProfilePage() {
         canSeeFullProfile = isFriend;
     }
 
+    const displayThought = user.thought || user.status_message;
+
     return (
         <div style={styles.page}>
             {/* Hero Banner — blurred avatar as bg */}
@@ -372,6 +406,28 @@ export default function UserProfilePage() {
 
             {/* Avatar — overlaps the hero banner */}
             <div style={styles.avatarWrap}>
+                {canSeeFullProfile && displayThought && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: 135,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: 'rgba(30, 30, 30, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        color: '#ffffff',
+                        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                        whiteSpace: 'nowrap',
+                        zIndex: 10,
+                    }}>
+                        💭 {displayThought}
+                    </div>
+                )}
                 <div 
                     className={`${
                         user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
@@ -413,36 +469,7 @@ export default function UserProfilePage() {
                     {!isFriend && isPublic && <span style={styles.publicBadge}>🌍 Public</span>}
                     {!isFriend && !isPublic && <span style={styles.privateBadge}>🔒 Private</span>}
                 </div>
-                {(() => {
-                    const match = currentUser?.subscription_tier === 'diamond' && currentUser.id !== user.id ? calculateSmartMatchScore(currentUser, user) : null;
-                    if (!match) return null;
-                    return (
-                        <div className="match-score-card" style={{
-                            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.12))',
-                            border: '1px dashed rgba(6, 182, 212, 0.4)',
-                            borderRadius: '12px',
-                            padding: '10px 14px',
-                            marginTop: '12px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            alignItems: 'center',
-                            textAlign: 'center',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                            width: '92%',
-                            maxWidth: '440px'
-                        }}>
-                            <div style={{ fontWeight: 'bold', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
-                                ❤️ {match.score}% Compatibility Score
-                            </div>
-                            {match.commonInterests.length > 0 && (
-                                <div style={{ fontSize: '0.75rem', color: '#cffafe' }}>
-                                    Common Interests: {match.commonInterests.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ')}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })()}
+
             </div>
 
             {/* Stats */}
@@ -904,20 +931,21 @@ const styles = {
 
     /* ── Stats ── */
     statsRow: {
-        display: 'flex', gap: 12,
+        display: 'flex', flexWrap: 'wrap', gap: 12,
         width: '92%', maxWidth: 440, marginBottom: 24,
         animation: 'fadeUp 0.45s ease',
     },
     statCard: {
-        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-        padding: '16px 10px',
+        flex: '1 1 calc(50% - 6px)', minWidth: 95,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+        padding: '14px 10px',
         background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
         borderRadius: 20,
         border: '1px solid rgba(255,255,255,0.05)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
     },
     statVal: {
-        fontSize: '1.1rem', fontWeight: 700, color: '#f4f4f5',
+        fontSize: '0.92rem', fontWeight: 700, color: '#f4f4f5',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
     },
     statLabel: {
