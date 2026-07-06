@@ -964,33 +964,27 @@ export default function Login() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-        :root {
-          --brand-primary: #A855F7;
-          --brand-gradient: linear-gradient(135deg, #A855F7 0%, #8B5CF6 100%);
-          --text-primary: #111827;
-          --text-secondary: #4B5563;
-          --input-bg: #ffffff;
-          --input-border: #f3f4f6;
-        }
-
         .login-container {
           min-height: 100vh;
           min-height: 100dvh;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(160deg, #E6DFFF 0%, #FFFFFF 40%, #FBEAE1 100%);
+          background: var(--bg-color);
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
           padding: 16px;
           padding-bottom: env(safe-area-inset-bottom);
           overflow-y: auto;
           box-sizing: border-box;
+          --brand-primary: #A855F7;
+          --brand-gradient: linear-gradient(135deg, #A855F7 0%, #8B5CF6 100%);
         }
 
         .login-card {
           width: 100%;
           max-width: 420px;
-          background: #ffffff;
+          background: var(--card-bg, var(--bg-secondary));
+          border: 1px solid var(--glass-border);
           border-radius: 32px;
           padding: 24px 24px 28px;
           box-shadow: 0 24px 48px rgba(0, 0, 0, 0.04), 0 8px 16px rgba(0, 0, 0, 0.02);
@@ -1020,7 +1014,7 @@ export default function Login() {
         }
 
         .app-subtitle {
-          color: #111827;
+          color: var(--text-primary);
           font-size: 0.88rem;
           margin: 0 0 12px 0;
           font-weight: 500;
@@ -1030,7 +1024,7 @@ export default function Login() {
         /* Segmented pill toggle */
         .auth-toggle {
           display: flex;
-          background: #F4F0FF;
+          background: var(--bg-secondary);
           padding: 4px;
           border-radius: 100px;
           width: 100%;
@@ -1042,7 +1036,7 @@ export default function Login() {
           padding: 12px 0;
           background: transparent;
           border: none;
-          color: #6B7280;
+          color: var(--text-secondary);
           font-weight: 600;
           font-size: 0.95rem;
           letter-spacing: 0.1px;
@@ -1052,8 +1046,8 @@ export default function Login() {
         }
 
         .toggle-btn.active {
-          background: #ffffff;
-          color: #111827;
+          background: var(--bg-color);
+          color: var(--text-primary);
           box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
 
@@ -1071,11 +1065,11 @@ export default function Login() {
 
         .input-field {
           width: 100%;
-          background: #ffffff;
-          border: 1.5px solid #F3F4F6;
+          background: var(--input-bg);
+          border: 1.5px solid var(--input-border);
           padding: 16px 40px 16px 16px;
           border-radius: 16px;
-          color: #111827;
+          color: var(--text-primary);
           font-size: 0.95rem;
           font-family: inherit;
           font-weight: 500;
@@ -1084,23 +1078,23 @@ export default function Login() {
           box-sizing: border-box;
         }
 
-        /* Explicitly force light-theme styling on all inputs/selects on Login & Signup pages */
+        /* Explicitly force theme styling on all inputs/selects on Login & Signup pages */
         .login-container input:not([type="file"]),
         .login-container select {
-          background-color: #ffffff !important;
-          background: #ffffff !important;
-          color: #111827 !important;
-          border: 1.5px solid #F3F4F6 !important;
+          background-color: var(--input-bg) !important;
+          background: var(--input-bg) !important;
+          color: var(--text-primary) !important;
+          border: 1.5px solid var(--input-border) !important;
         }
 
         .login-container input::placeholder {
-          color: #9CA3AF !important;
+          color: var(--text-placeholder) !important;
           opacity: 1 !important;
         }
 
         .login-container input:focus,
         .login-container select:focus {
-          border-color: #8B5CF6 !important;
+          border-color: var(--brand-primary) !important;
           box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15) !important;
         }
 
@@ -1145,7 +1139,7 @@ export default function Login() {
           display: flex;
           align-items: center;
           margin: 20px 0;
-          color: #9CA3AF;
+          color: var(--text-secondary);
         }
 
         .auth-separator::before,
@@ -1153,7 +1147,7 @@ export default function Login() {
           content: '';
           flex: 1;
           height: 1px;
-          background: #F3F4F6;
+          background: var(--glass-border);
         }
 
         .auth-separator span {
@@ -1166,8 +1160,8 @@ export default function Login() {
 
         .btn-google {
           width: 100%;
-          background: #ffffff;
-          color: #111827;
+          background: var(--btn-secondary-bg);
+          color: var(--btn-secondary-text);
           font-weight: 600;
           font-family: inherit;
           display: flex;
@@ -1176,15 +1170,15 @@ export default function Login() {
           gap: 12px;
           padding: 16px;
           border-radius: 16px;
-          border: 1.5px solid #F3F4F6;
+          border: 1.5px solid var(--glass-border);
           cursor: pointer;
           font-size: 0.95rem;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           box-shadow: 0 2px 8px rgba(0,0,0,0.02);
         }
         .btn-google:hover { 
-          background: #F9FAFB; 
-          border-color: #E5E7EB;
+          background: var(--bg-secondary); 
+          border-color: var(--glass-border);
           transform: translateY(-1px);
         }
         .btn-google:active { transform: scale(0.98); }
@@ -1207,8 +1201,8 @@ export default function Login() {
           from { opacity: 0; transform: translateY(-8px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .alert-error { background: #FEF2F2; border: 1.5px solid #FECACA; color: #EF4444; }
-        .alert-success { background: #F0FDF4; border: 1.5px solid #BBF7D0; color: #22C55E; }
+        .alert-error { background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.3); color: #EF4444; }
+        .alert-success { background: rgba(34, 197, 94, 0.15); border: 1.5px solid rgba(34, 197, 94, 0.3); color: #22C55E; }
         .alert-icon { font-size: 1.1rem; margin-top: 1px; flex-shrink: 0; }
         .alert-content { flex: 1; }
 
@@ -1225,15 +1219,15 @@ export default function Login() {
         .step {
           width: 32px; height: 32px;
           border-radius: 50%;
-          background: #ffffff;
-          color: #6B7280;
+          background: var(--bg-secondary);
+          color: var(--text-secondary);
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 600;
           font-size: 0.9rem;
           transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-          border: 1.5px solid #E5E7EB;
+          border: 1.5px solid var(--glass-border);
           flex-shrink: 0;
         }
         .step.active {
@@ -1246,7 +1240,7 @@ export default function Login() {
           flex: 1;
           max-width: 48px;
           height: 1.5px;
-          background: #F3F4F6;
+          background: var(--glass-border);
           margin: 0 12px;
         }
 
@@ -1263,7 +1257,7 @@ export default function Login() {
         .step-title {
           font-size: 1.15rem;
           font-weight: 700;
-          color: #111827;
+          color: var(--text-primary);
           margin: 0 0 16px 0;
           text-align: center;
           letter-spacing: -0.2px;
@@ -1278,9 +1272,9 @@ export default function Login() {
         .btn-back {
           flex: 1;
           padding: 16px;
-          background: #ffffff;
-          color: #4B5563;
-          border: 1.5px solid #E5E7EB;
+          background: var(--btn-secondary-bg);
+          color: var(--btn-secondary-text);
+          border: 1.5px solid var(--glass-border);
           border-radius: 16px;
           cursor: pointer;
           font-size: 1rem;
@@ -1288,7 +1282,7 @@ export default function Login() {
           font-family: inherit;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-back:hover { background: #F9FAFB; color: #111827; border-color: #D1D5DB; }
+        .btn-back:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--glass-border); }
 
         .btn-next, .btn-submit {
           flex: 1;
@@ -1312,20 +1306,20 @@ export default function Login() {
         .field-section { margin-bottom: 24px; text-align: left; }
         .field-section label {
           display: block;
-          color: #4B5563;
+          color: var(--text-secondary);
           font-size: 0.85rem;
           margin-bottom: 8px;
           margin-left: 4px;
           font-weight: 600;
         }
-        .sub-label { font-size: 0.75rem; color: #9CA3AF; font-weight: 400; }
+        .sub-label { font-size: 0.75rem; color: var(--text-placeholder); font-weight: 400; }
 
         .custom-select-wrapper { position: relative; }
         .glass-select {
           width: 100%;
-          background: #ffffff;
-          color: #111827;
-          border: 1.5px solid #F3F4F6;
+          background: var(--input-bg);
+          color: var(--text-primary);
+          border: 1.5px solid var(--input-border);
           padding: 16px 40px 16px 16px;
           border-radius: 16px;
           font-size: 0.95rem;
@@ -1335,48 +1329,54 @@ export default function Login() {
           outline: none;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .glass-select option { background: #ffffff; color: #111827; }
-        .glass-select:focus { border-color: #8B5CF6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
+        .glass-select option { background: var(--bg-secondary); color: var(--text-primary); }
+        .glass-select:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
         .select-arrow {
           position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-          color: #9CA3AF; pointer-events: none; font-size: 0.8rem;
+          color: var(--text-placeholder); pointer-events: none; font-size: 0.8rem;
         }
 
         .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
         .chip {
           padding: 8px 16px; border-radius: 100px;
-          background: #F3F4F6;
-          color: #4B5563;
+          background: var(--btn-secondary-bg);
+          color: var(--btn-secondary-text);
           border: 1.5px solid transparent;
-          cursor: pointer; font-size: 0.85rem; font-family: inherit; font-weight: 500;
-          transition: all 0.25s ease;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .chip:hover { background: #E5E7EB; color: #111827; }
-        .chip.selected { background: #F3E8FF; border-color: #A855F7; color: #7E22CE; }
+        .chip:hover { background: var(--bg-secondary); color: var(--text-primary); }
+        .chip.selected {
+          background: var(--brand-gradient);
+          color: white;
+          box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+        }
 
         .glass-input-small {
           flex: 1;
-          background: #ffffff;
-          border: 1.5px solid #F3F4F6;
-          color: #111827;
-          padding: 14px 16px;
-          border-radius: 14px;
-          font-size: 0.95rem;
-          font-family: inherit;
-          font-weight: 500;
+          background: var(--input-bg);
+          border: 1.5px solid var(--input-border);
+          padding: 12px 14px;
+          border-radius: 10px;
+          color: var(--text-primary);
+          font-size: 0.88rem;
           outline: none;
+          transition: all 0.25s ease;
         }
-        .glass-input-small:focus { border-color: #8B5CF6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
-        .btn-primary-small { 
+        .glass-input-small:focus { border-color: var(--brand-primary); }
+
+        .btn-primary-small {
           background: var(--brand-gradient);
           color: white;
-          border: none;
-          border-radius: 14px;
-          padding: 0 16px;
           font-weight: 600;
+          padding: 0 16px;
+          border-radius: 10px;
+          border: none;
           cursor: pointer;
-          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+          font-size: 0.88rem;
+          transition: transform 0.2s;
         }
         .btn-primary-small:active { transform: scale(0.95); }
 
@@ -1390,12 +1390,12 @@ export default function Login() {
           display: flex; align-items: center; justify-content: center;
         }
         .modal-content {
-          background: #ffffff;
+          background: var(--modal-bg);
           width: 90%; max-width: 400px;
           padding: 40px 32px; border-radius: 32px;
-          border: 1px solid #E5E7EB;
+          border: 1px solid var(--modal-border);
           text-align: center;
-          color: #111827;
+          color: var(--text-primary);
           box-shadow: 0 24px 48px rgba(0,0,0,0.1);
           animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -1403,26 +1403,26 @@ export default function Login() {
           from { transform: scale(0.92) translateY(20px); opacity: 0; }
           to   { transform: scale(1) translateY(0); opacity: 1; }
         }
-        .modal-content h3 { margin: 0 0 12px; color: #111827; font-weight: 700; font-size: 1.45rem; letter-spacing: -0.3px; }
-        .modal-content p { color: #6B7280; font-size: 0.95rem; margin-bottom: 28px; line-height: 1.5; }
+        .modal-content h3 { margin: 0 0 12px; color: var(--text-primary); font-weight: 700; font-size: 1.45rem; letter-spacing: -0.3px; }
+        .modal-content p { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 28px; line-height: 1.5; }
         .modal-content input {
           width: 100%; padding: 16px; border-radius: 16px; box-sizing: border-box;
-          background: #ffffff; border: 1.5px solid #E5E7EB;
-          color: #111827; font-size: 1.05rem; margin-bottom: 24px;
+          background: var(--input-bg); border: 1.5px solid var(--input-border);
+          color: var(--text-primary); font-size: 1.05rem; margin-bottom: 24px;
           text-align: center; letter-spacing: 2px; font-family: inherit; font-weight: 600;
           transition: all 0.25s ease;
         }
-        .modal-content input:focus { border-color: #8B5CF6; outline: none; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
+        .modal-content input:focus { border-color: var(--brand-primary); outline: none; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15); }
         .modal-footer { display: flex; gap: 12px; }
         .btn-sec, .btn-pri {
           flex: 1; padding: 16px; border-radius: 16px; border: none;
           font-weight: 600; font-family: inherit; cursor: pointer; font-size: 0.95rem; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-sec { background: #ffffff; color: #4B5563; border: 1.5px solid #E5E7EB; }
-        .btn-sec:hover { background: #F9FAFB; color: #111827; border-color: #D1D5DB; }
+        .btn-sec { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); border: 1.5px solid var(--glass-border); }
+        .btn-sec:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--glass-border); }
         .btn-pri { background: var(--brand-gradient); color: white; box-shadow: 0 8px 20px rgba(168, 85, 247, 0.25); }
         .btn-pri:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(168, 85, 247, 0.35); }
-        .btn-pri:active { transform: scale(0.98); }
+        .btn-pri:active { transform: scale(0.98); }  .btn-pri:active { transform: scale(0.98); }
 
       `}</style>
       {cropImage && (

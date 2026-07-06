@@ -7,6 +7,7 @@ import Badge from '../components/Badge';
 import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getBlockedUserIds, blockUser, unblockUser, isUserBlocked } from '../utils/blockUtils';
 import AttachmentPicker from '../components/AttachmentPicker';
+import PremiumStickersPanel from '../components/PremiumStickersPanel';
 import AttachmentPreview from '../components/AttachmentPreview';
 import MessageAttachment from '../components/MessageAttachment';
 import MessageBubble from '../components/MessageBubble';
@@ -1863,6 +1864,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
     // Attachment System State
     const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+    const [showStickerPanel, setShowStickerPanel] = useState(false);
     const [showAttachmentPreview, setShowAttachmentPreview] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [uploadProgress, setUploadProgress] = useState(null);
@@ -3837,36 +3839,50 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             {showChatThemeSelector && (
                 <div className="theme-selector-modal" onClick={() => setShowChatThemeSelector(false)}>
                     <div className="theme-selector-content" onClick={(e) => e.stopPropagation()}>
-                        <h3>Choose Chat Theme</h3>
-                        <div className="theme-grid">
-                            {Object.keys(CHAT_THEMES).map((themeKey) => {
-                                const themeData = CHAT_THEMES[themeKey];
-                                return (
-                                    <div
-                                        key={themeKey}
-                                        className={`theme-card ${chatTheme === themeKey ? 'active' : ''}`}
-                                        onClick={() => handleChatThemeChange(themeKey)}
-                                        style={{
-                                            background: themeData.backgroundColor,
-                                            borderColor: chatTheme === themeKey ? themeData.accentColor : 'transparent'
-                                        }}
-                                    >
-                                        <div className="theme-emoji">{themeData.emoji}</div>
-                                        <div className="theme-name" style={{ color: themeData.fontColor }}>
-                                            {themeData.name}
-                                        </div>
-                                        <div className="theme-preview">
-                                            <div className="preview-bubble sent" style={{ background: themeData.bubbleSent }}>
-                                                <span style={{ color: themeData.textColor }}>Hi!</span>
+                        <h3>Choose Chat Theme
+                            {!['silver','gold','diamond'].includes(currentUser?.subscription_tier) && (
+                                <span style={{ fontSize: '0.65rem', marginLeft: '8px', background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', borderRadius: '8px', padding: '2px 8px', fontWeight: 700, verticalAlign: 'middle' }}>🥈 Silver</span>
+                            )}
+                        </h3>
+                        {/* Silver Paywall overlay */}
+                        {!['silver','gold','diamond'].includes(currentUser?.subscription_tier) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px 16px' }}>
+                                <div style={{ fontSize: '2.5rem' }}>🎨</div>
+                                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Premium Chat Themes</div>
+                                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'center', maxWidth: '260px', lineHeight: 1.5 }}>Unlock beautiful chat themes shared with your friends. Available from Silver membership and above.</div>
+                                <button onClick={() => { setShowChatThemeSelector(false); navigate('/subscription'); }} style={{ background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', border: 'none', borderRadius: '100px', padding: '10px 24px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', marginTop: '4px' }}>🥈 Upgrade to Silver</button>
+                            </div>
+                        ) : (
+                            <div className="theme-grid">
+                                {Object.keys(CHAT_THEMES).map((themeKey) => {
+                                    const themeData = CHAT_THEMES[themeKey];
+                                    return (
+                                        <div
+                                            key={themeKey}
+                                            className={`theme-card ${chatTheme === themeKey ? 'active' : ''}`}
+                                            onClick={() => handleChatThemeChange(themeKey)}
+                                            style={{
+                                                background: themeData.backgroundColor,
+                                                borderColor: chatTheme === themeKey ? themeData.accentColor : 'transparent'
+                                            }}
+                                        >
+                                            <div className="theme-emoji">{themeData.emoji}</div>
+                                            <div className="theme-name" style={{ color: themeData.fontColor }}>
+                                                {themeData.name}
                                             </div>
-                                            <div className="preview-bubble received" style={{ background: themeData.bubbleReceived }}>
-                                                <span style={{ color: themeData.textColor }}>Hello</span>
+                                            <div className="theme-preview">
+                                                <div className="preview-bubble sent" style={{ background: themeData.bubbleSent }}>
+                                                    <span style={{ color: themeData.textColor }}>Hi!</span>
+                                                </div>
+                                                <div className="preview-bubble received" style={{ background: themeData.bubbleReceived }}>
+                                                    <span style={{ color: themeData.textColor }}>Hello</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                         <button onClick={() => setShowChatThemeSelector(false)} className="cancel-btn">Cancel</button>
                     </div>
                 </div>
@@ -4337,6 +4353,17 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             <line x1="12" y1="8" x2="12" y2="16"></line>
                             <line x1="8" y1="12" x2="16" y2="12"></line>
                         </svg>
+                    </button>
+
+                    {/* Premium Sticker Button */}
+                    <button
+                        onClick={() => { setShowStickerPanel(s => !s); }}
+                        className="input-icon-btn sticker-btn"
+                        title="Premium Stickers"
+                        disabled={uploading || hasPendingSentRequest}
+                        style={{ fontSize: '1.1rem', opacity: showStickerPanel ? 1 : 0.7 }}
+                    >
+                        🎭
                     </button>
                     
                     {/* Existing Image Button */}
@@ -5746,6 +5773,33 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 onSelectGallery={handleSelectGallery}
                 onSelectDocument={handleSelectDocument}
             />
+
+            {/* Premium Stickers Panel */}
+            {showStickerPanel && (
+                <PremiumStickersPanel
+                    currentUser={currentUser}
+                    onClose={() => setShowStickerPanel(false)}
+                    onSend={async (content, type) => {
+                        setShowStickerPanel(false);
+                        if (!content || !currentUser?.id || !targetUser?.id) return;
+                        const newMsg = {
+                            sender_id: currentUser.id,
+                            receiver_id: targetUser.id,
+                            content,
+                            message_type: type === 'sticker' ? 'sticker' : 'text',
+                            created_at: new Date().toISOString(),
+                            is_read: false,
+                        };
+                        // Optimistic update
+                        const tempId = `temp_${Date.now()}`;
+                        setMessages(prev => [...prev, { ...newMsg, id: tempId }]);
+                        const { data } = await supabase.from('messages').insert([newMsg]).select().single();
+                        if (data) {
+                            setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+                        }
+                    }}
+                />
+            )}
 
              <AttachmentPreview
                 files={selectedFiles}

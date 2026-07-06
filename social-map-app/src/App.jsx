@@ -61,6 +61,7 @@ const Subscription = lazyWithRetry(() => import('./pages/Subscription'));
 const PaymentHistory = lazyWithRetry(() => import('./pages/PaymentHistory'));
 const Achievements = lazyWithRetry(() => import('./pages/Achievements'));
 const StreakDetails = lazyWithRetry(() => import('./pages/StreakDetails'));
+const PremiumSettings = lazyWithRetry(() => import('./pages/PremiumSettings'));
 
 import LocationGuard from './components/LocationGuard';
 import confetti from 'canvas-confetti';
@@ -243,6 +244,7 @@ function App() {
                   <Route path="/friends" element={<Friends />} />
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile/premium-settings" element={<PremiumSettings />} />
                   <Route path="/profile/achievements" element={<Achievements />} />
                   <Route path="/profile/streak" element={<StreakDetails />} />
                   <Route path="/profile/insights" element={<Insights />} />

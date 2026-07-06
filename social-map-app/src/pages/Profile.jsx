@@ -7,12 +7,14 @@ import Toast from '../components/Toast';
 const Avatar3D = React.lazy(() => import('../components/Avatar3D'));
 const AvatarEditor = React.lazy(() => import('../components/AvatarEditor'));
 const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
-import { useTheme } from '../context/ThemeContext';
+// useTheme is imported from '../context/ThemeContext' below with SILVER_THEMES
 import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getStatusRingClass } from '../utils/statusUtils';
 import { uploadToStorage } from '../utils/fileUpload';
-import { premiumTiers, ACHIEVEMENTS } from '../utils/premiumUtils';
+import { premiumTiers, ACHIEVEMENTS, RARITY_META } from '../utils/premiumUtils';
+import { useTheme, SILVER_THEMES, PREMIUM_THEME_KEYS } from '../context/ThemeContext';
+import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
 import './Profile.css';
 
 const formatRelativeTime = (dateStr) => {
@@ -465,10 +467,21 @@ export default function Profile() {
     if (loading && !user) return <div style={{ color: 'white', padding: '20px' }}>Loading profile...</div>;
     if (!user) return null;
 
+    const customizations = getPremiumCustomizations(user);
     const is3DAvatar = user.avatar_url?.includes('.glb');
 
+    // Apply profile background style if set
+    const getProfileBgClass = (styleKey) => {
+        if (styleKey === 'diamond_crystal') return 'style-bg-crystal';
+        if (styleKey === 'space_black') return 'style-bg-black';
+        if (styleKey === 'platinum') return 'style-bg-platinum';
+        if (styleKey === 'aurora_elite') return 'style-bg-aurora';
+        if (styleKey === 'royal_diamond') return 'style-bg-royal';
+        return '';
+    };
+
     return (
-        <div className="profile-page">
+        <div className={`profile-page ${getProfileBgClass(customizations.profileBackgroundStyle)}`}>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
             {/* Image Cropper Modal — load the cropper library only when user picks a photo */}
@@ -495,7 +508,7 @@ export default function Profile() {
             <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''} ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`}>
                 <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
                     {is3DAvatar ? (
-                        <div className="avatar-3d-container">
+                        <div className="avatar-3d-container" style={{ position: 'relative' }}>
                             <Suspense fallback={
                                 <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <div style={{ width: 30, height: 30, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -503,6 +516,7 @@ export default function Profile() {
                             }>
                                 <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
                             </Suspense>
+                            <AvatarAccessories accessory={customizations.avatarAccessory} />
                         </div>
                     ) : (
                         <div className={`profile-avatar-container ${
@@ -519,6 +533,7 @@ export default function Profile() {
                                 if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
                                 return DEFAULT_GENERIC_AVATAR;
                             })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} />
+                            <AvatarAccessories accessory={customizations.avatarAccessory} />
                         </div>
                     )}
                     
@@ -626,7 +641,7 @@ export default function Profile() {
                 
                 <div className="profile-info">
                     <div className="profile-username" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <span>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</span>
+                        <span className={getUsernameEffectClass(customizations.usernameEffect)}>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</span>
                         {user.subscription_tier === 'silver' && <span className="premium-badge silver">🥈 Silver Member</span>}
                         {user.subscription_tier === 'gold' && <span className="premium-badge gold">🥇 Gold Elite</span>}
                         {user.subscription_tier === 'diamond' && <span className="premium-badge diamond">💎 Diamond Elite</span>}
@@ -689,19 +704,30 @@ export default function Profile() {
             {/* Achievements Preview */}
             <div className="achievements-preview-card minimal" onClick={() => navigate('/profile/achievements')}>
                 <div className="achievements-preview-header">
-                    <span className="achievements-title">🏆 Achievements ({unlockedAchievements.length}/6)</span>
+                    <span className="achievements-title">🏆 Achievements ({unlockedAchievements.length}/{ACHIEVEMENTS.length})</span>
                     <span className="view-all-link">View All &rarr;</span>
                 </div>
                 <div className="achievements-preview-row minimal-row">
-                    {ACHIEVEMENTS.map(ach => {
-                        const isUnlocked = unlockedAchievements.includes(ach.id);
-                        if (!isUnlocked) return null;
+                    {ACHIEVEMENTS.filter(a => unlockedAchievements.includes(a.id)).slice(0, 7).map(ach => {
+                        const meta = RARITY_META[ach.rarity] || RARITY_META.common;
                         return (
-                            <span key={ach.id} className="achievement-icon-bubble unlocked" title={ach.title}>
+                            <span
+                                key={ach.id}
+                                className="achievement-icon-bubble unlocked"
+                                title={`${ach.title} (${meta.label})`}
+                                style={{
+                                    border: `2px solid ${meta.ring}`,
+                                    boxShadow: `0 0 8px ${meta.glow}`,
+                                    background: `radial-gradient(circle, ${meta.glow} 0%, transparent 80%)`,
+                                }}
+                            >
                                 {ach.icon}
                             </span>
                         );
                     })}
+                    {unlockedAchievements.length === 0 && (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>No achievements yet — keep exploring!</span>
+                    )}
                 </div>
             </div>
 
@@ -893,6 +919,38 @@ export default function Profile() {
                 <div className="section-label">Settings</div>
                 <div className="menu-group">
                     <MenuItem
+                        icon={<span style={{ fontSize: '1.1rem' }}>🎨</span>}
+                        label="Themes & Backgrounds"
+                        value={(user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 'Configure' : 'Premium'}
+                        hasArrow={true}
+                        iconClass="icon-interests"
+                        onClick={() => navigate('/profile/premium-settings?tab=theme')}
+                    />
+                    <MenuItem
+                        icon={<span style={{ fontSize: '1.1rem' }}>👑</span>}
+                        label="Avatar Accessories"
+                        value={(user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 'Configure' : 'Premium'}
+                        hasArrow={true}
+                        iconClass="icon-interests"
+                        onClick={() => navigate('/profile/premium-settings?tab=accessories')}
+                    />
+                    <MenuItem
+                        icon={<span style={{ fontSize: '1.1rem' }}>✨</span>}
+                        label="Username & Chat Style"
+                        value={(user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 'Configure' : 'Premium'}
+                        hasArrow={true}
+                        iconClass="icon-interests"
+                        onClick={() => navigate('/profile/premium-settings?tab=username')}
+                    />
+                    <MenuItem
+                        icon={<span style={{ fontSize: '1.1rem' }}>📱</span>}
+                        label="Custom App Icons"
+                        value={(user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 'Configure' : 'Premium'}
+                        hasArrow={true}
+                        iconClass="icon-interests"
+                        onClick={() => navigate('/profile/premium-settings?tab=icons')}
+                    />
+                    <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>}
                         label="Theme"
                         value={theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System (Auto)'}
@@ -904,6 +962,7 @@ export default function Profile() {
                     {showThemeMenu && (
                         <div className="inner-submenu">
                             <div className="submenu-hint">Choose your theme:</div>
+                            {/* Standard themes */}
                             <div className="chip-grid">
                                 {['light', 'dark'].map(themeOption => (
                                     <button
@@ -914,6 +973,46 @@ export default function Profile() {
                                         {themeOption === 'light' ? '☀️ Light' : '🌙 Dark'}
                                     </button>
                                 ))}
+                            </div>
+
+                            {/* Premium Theme Store — Silver+ only */}
+                            <div style={{ marginTop: 14, borderTop: '1px solid var(--glass-border)', paddingTop: 12 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>🥈 Premium Themes</span>
+                                    {!['silver','gold','diamond'].includes(user?.subscription_tier) && (
+                                        <span style={{ fontSize: '0.6rem', background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', borderRadius: '6px', padding: '1px 6px', fontWeight: 700 }}>Silver+</span>
+                                    )}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                                    {SILVER_THEMES.map(t => {
+                                        const isActive = theme === t.key;
+                                        const isSilverUser = ['silver','gold','diamond'].includes(user?.subscription_tier);
+                                        return (
+                                            <button
+                                                key={t.key}
+                                                onClick={() => isSilverUser ? updateTheme(t.key) : navigate('/subscription')}
+                                                style={{
+                                                    background: t.preview,
+                                                    border: isActive ? '2.5px solid #fff' : '1.5px solid rgba(255,255,255,0.12)',
+                                                    borderRadius: 12,
+                                                    padding: '10px 6px 8px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                                                    position: 'relative',
+                                                    opacity: isSilverUser ? 1 : 0.6,
+                                                    boxShadow: isActive ? '0 0 12px rgba(255,255,255,0.3)' : 'none',
+                                                    transition: 'all 0.2s',
+                                                }}
+                                            >
+                                                {!isSilverUser && (
+                                                    <span style={{ position: 'absolute', top: 4, right: 4, fontSize: '0.6rem' }}>🔒</span>
+                                                )}
+                                                <span style={{ fontSize: '1.3rem' }}>{t.icon}</span>
+                                                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{t.name}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     )}

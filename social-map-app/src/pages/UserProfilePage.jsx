@@ -5,6 +5,8 @@ import { supabase } from '../supabaseClient';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { checkUnlockedAchievements, ACHIEVEMENTS, calculateSmartMatchScore } from '../utils/premiumUtils';
 import { parseThought } from '../utils/locationPrivacy';
+import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
+import { generateSmartIcebreakers } from '../utils/smartIcebreakers';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
@@ -397,8 +399,35 @@ export default function UserProfilePage() {
     const isThoughtExpired = !thoughtText || !thoughtTime || (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;
 
+    const customizations = getPremiumCustomizations(user);
+    const [audioPlaying, setAudioPlaying] = useState(false);
+    const [audioMuted, setAudioMuted] = useState(false);
+    const audioRef = React.useRef(null);
+
+    // Resolve dynamic background style for Diamond/Gold members
+    const getBgStyle = (styleKey) => {
+        if (['galaxy', 'ocean', 'fire', 'snow', 'neon'].includes(styleKey)) {
+            return { color: '#ffffff' };
+        }
+        switch (styleKey) {
+            case 'diamond_crystal': return { background: 'radial-gradient(circle at top left, #0e203c, #050a14)', color: '#e0f2fe' };
+            case 'space_black': return { background: '#020202', color: '#ffffff' };
+            case 'platinum': return { background: 'radial-gradient(circle at top right, #25252b, #0f0f12)', color: '#f3f4f6' };
+            case 'aurora_elite': return { background: 'linear-gradient(180deg, #020612, #040914)', color: '#ecfdf5' };
+            case 'royal_diamond': return { background: 'radial-gradient(circle at 50% 0%, #20043c, #050209)', color: '#fae8ff' };
+            case 'sunset_gold': return { background: 'linear-gradient(135deg, #451a03, #1c0c02)', color: '#fffbeb' };
+            case 'cyberpunk': return { background: 'linear-gradient(135deg, #18001e, #05000a)', color: '#fdf2ff' };
+            default: return {};
+        }
+    };
+
+    const isAnimatedBg = ['galaxy', 'ocean', 'fire', 'snow', 'neon'].includes(customizations.profileBackgroundStyle);
+    const pageStyle = { ...styles.page, ...getBgStyle(customizations.profileBackgroundStyle) };
+    const pageBgClass = isAnimatedBg ? `bg-animated-${customizations.profileBackgroundStyle}` : '';
+    const hasMoment = customizations.nearbyMoment && customizations.nearbyMomentExpiresAt && (new Date(customizations.nearbyMomentExpiresAt).getTime() > Date.now());
+
     return (
-        <div style={styles.page}>
+        <div style={pageStyle} className={pageBgClass}>
             {/* Hero Banner — blurred avatar as bg */}
             <div style={{ ...styles.heroBanner, backgroundImage: `url(${displayAvatar})` }}>
                 <div style={styles.heroBannerOverlay} />
@@ -448,6 +477,8 @@ export default function UserProfilePage() {
                     }}
                 >
                     <img src={displayAvatar} alt={user.username || user.name} style={styles.avatarImg} fetchpriority="high" />
+                    {/* Render Premium Accessories */}
+                    <AvatarAccessories accessory={customizations.avatarAccessory} />
                 </div>
                 {/* Online badge */}
                 <div style={{
@@ -459,7 +490,7 @@ export default function UserProfilePage() {
 
             {/* Identity */}
             <div style={styles.identity}>
-                <h1 style={styles.name}>{user.username || user.name}</h1>
+                <h1 style={styles.name} className={getUsernameEffectClass(customizations.usernameEffect)}>{user.username || user.name}</h1>
                 <div style={styles.badgeRow}>
                     {details.relationship_status && !user.hide_relationship_status && (
                         <span style={styles.statusPill}>
@@ -475,7 +506,6 @@ export default function UserProfilePage() {
                     {!isFriend && isPublic && <span style={styles.publicBadge}>🌍 Public</span>}
                     {!isFriend && !isPublic && <span style={styles.privateBadge}>🔒 Private</span>}
                 </div>
-
             </div>
 
             {/* Stats */}
@@ -515,8 +545,136 @@ export default function UserProfilePage() {
                 </div>
             )}
 
+            {/* Profile Background Music widget */}
+            {customizations.profileMusic && (
+                <div style={{
+                    margin: '12px 16px',
+                    background: 'rgba(0, 212, 255, 0.08)',
+                    border: '1.5px solid rgba(0, 212, 255, 0.3)',
+                    borderRadius: '16px',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 4px 15px rgba(0,212,255,0.1)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '1.3rem', animation: audioPlaying ? 'spin 3s linear infinite' : 'none' }}>🎵</span>
+                        <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{customizations.profileMusicTitle || 'Background Loop'}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Premium Profile Track</div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                            onClick={() => {
+                                if (!audioRef.current) return;
+                                const nextMuted = !audioMuted;
+                                audioRef.current.muted = nextMuted;
+                                setAudioMuted(nextMuted);
+                            }}
+                            style={{
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                color: '#fff',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            {audioMuted ? '🔇' : '🔊'}
+                        </button>
+                        <button 
+                            onClick={() => {
+                                if (!audioRef.current) return;
+                                if (audioPlaying) {
+                                    audioRef.current.pause();
+                                    setAudioPlaying(false);
+                                } else {
+                                    audioRef.current.play().catch(err => console.log('Audio play error:', err));
+                                    setAudioPlaying(true);
+                                }
+                            }}
+                            style={{
+                                background: '#00d4ff',
+                                color: '#000',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            {audioPlaying ? '⏸' : '▶'}
+                        </button>
+                    </div>
+                    <audio 
+                        ref={audioRef} 
+                        src={customizations.profileMusic.startsWith('http') ? customizations.profileMusic : {
+                            chill_beats: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+                            ambient_waves: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+                            lofi_dream: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+                            cyber_lounge: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
+                        }[customizations.profileMusic] || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'}
+                        loop
+                    />
+                </div>
+            )}
+
             {/* Content Cards — ABOVE action buttons */}
             <div style={styles.contentArea}>
+
+                {/* Nearby Moment Box */}
+                {hasMoment && (
+                    <div className="card" style={{
+                        ...styles.card,
+                        border: '1.5px solid #00d4ff',
+                        background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(0, 0, 0, 0.2))',
+                        boxShadow: '0 8px 24px rgba(0, 212, 255, 0.15)',
+                        display: 'flex', flexDirection: 'column', gap: 4
+                    }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#00d4ff', textTransform: 'uppercase', letterSpacing: '0.8px' }}>📍 Active Nearby Moment</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            <span style={{ fontSize: '1.4rem' }}>{customizations.nearbyMoment.split(' ')[0]}</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.92rem' }}>{customizations.nearbyMoment}</span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                            Expires in {Math.round((new Date(customizations.nearbyMomentExpiresAt).getTime() - Date.now()) / 60000)} minutes
+                        </span>
+                    </div>
+                )}
+
+                {/* Smart Icebreakers (Diamond Elite gating) */}
+                {currentUser?.subscription_tier === 'diamond' && currentUser?.id !== user?.id && (
+                    <div className="card" style={{
+                        ...styles.card,
+                        border: '1.5px solid #d946ef',
+                        background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.12), rgba(0, 0, 0, 0.2))',
+                        boxShadow: '0 8px 24px rgba(217, 70, 239, 0.12)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                            <span style={{ fontSize: '1.2rem' }}>🔮</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d946ef', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Smart Icebreakers</span>
+                            <span style={{ fontSize: '0.62rem', background: '#d946ef', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>DIAMOND</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {generateSmartIcebreakers(currentUser, user, details?.mutuals || 0).map((ice, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
+                                    <span>{ice}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Bio */}
                 {canSeeFullProfile && (
@@ -837,8 +995,8 @@ export default function UserProfilePage() {
 const styles = {
     page: {
         minHeight: '100vh',
-        background: '#09090b',
-        color: 'white',
+        background: 'var(--bg-color)',
+        color: 'var(--text-primary)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -858,17 +1016,17 @@ const styles = {
     },
     heroBannerOverlay: {
         position: 'absolute', inset: 0,
-        background: 'linear-gradient(to bottom, rgba(9,9,11,0.2) 0%, rgba(9,9,11,0.7) 60%, rgba(9,9,11,1) 100%)',
+        background: 'linear-gradient(to bottom, rgba(9,9,11,0.2) 0%, rgba(9,9,11,0.7) 60%, var(--bg-color) 100%)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
     },
     backBtnTop: {
         position: 'absolute', top: 'max(16px, env(safe-area-inset-top))', left: 16,
         width: 40, height: 40, borderRadius: '50%',
-        background: 'rgba(0,0,0,0.4)',
+        background: 'var(--btn-secondary-bg)',
         backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        color: 'white', cursor: 'pointer', zIndex: 10,
+        border: '1px solid var(--glass-border)',
+        color: 'var(--text-primary)', cursor: 'pointer', zIndex: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'background 0.2s',
     },
@@ -890,7 +1048,7 @@ const styles = {
         width: '100%', height: '100%',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '4px solid #09090b',
+        border: '4px solid var(--bg-color)',
         display: 'block',
     },
     onlineDot: {
@@ -906,7 +1064,7 @@ const styles = {
     name: {
         margin: 0, fontSize: '1.8rem', fontWeight: 700,
         letterSpacing: '-0.5px',
-        color: '#ffffff',
+        color: 'var(--text-primary)',
     },
     badgeRow: {
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center',
@@ -930,9 +1088,9 @@ const styles = {
         border: '1px solid rgba(16, 185, 129, 0.2)',
     },
     privateBadge: {
-        background: 'rgba(255,255,255,0.05)', color: '#a1a1aa',
+        background: 'var(--btn-secondary-bg)', color: 'var(--text-secondary)',
         padding: '6px 16px', borderRadius: 100, fontSize: '0.75rem', fontWeight: 600,
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: '1px solid var(--glass-border)',
     },
 
     /* ── Stats ── */
@@ -945,17 +1103,17 @@ const styles = {
         flex: '1 1 calc(50% - 6px)', minWidth: 95,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         padding: '14px 10px',
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+        background: 'var(--card-bg)',
         borderRadius: 20,
-        border: '1px solid rgba(255,255,255,0.05)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+        border: '1px solid var(--card-border)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
     },
     statVal: {
-        fontSize: '0.92rem', fontWeight: 700, color: '#f4f4f5',
+        fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
     },
     statLabel: {
-        fontSize: '0.65rem', color: '#a1a1aa',
+        fontSize: '0.65rem', color: 'var(--text-secondary)',
         fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase',
     },
 
@@ -970,22 +1128,22 @@ const styles = {
     },
     actionBtnMessage: {
         flex: 1, padding: '12px 0', borderRadius: 16,
-        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-        color: '#f4f4f5', fontWeight: 600, fontSize: '0.8rem',
+        background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)',
+        color: 'var(--btn-secondary-text)', fontWeight: 600, fontSize: '0.8rem',
         cursor: 'pointer', display: 'flex', flexDirection: 'column',
         alignItems: 'center', gap: 6, transition: 'background 0.2s',
     },
     actionBtnCall: {
         flex: 1, padding: '12px 0', borderRadius: 16,
-        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-        color: '#f4f4f5', fontWeight: 600, fontSize: '0.8rem',
+        background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)',
+        color: 'var(--btn-secondary-text)', fontWeight: 600, fontSize: '0.8rem',
         cursor: 'pointer', display: 'flex', flexDirection: 'column',
         alignItems: 'center', gap: 6, transition: 'background 0.2s',
     },
     actionBtnVideo: {
         flex: 1, padding: '12px 0', borderRadius: 16,
-        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-        color: '#f4f4f5', fontWeight: 600, fontSize: '0.8rem',
+        background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)',
+        color: 'var(--btn-secondary-text)', fontWeight: 600, fontSize: '0.8rem',
         cursor: 'pointer', display: 'flex', flexDirection: 'column',
         alignItems: 'center', gap: 6, transition: 'background 0.2s',
     },
@@ -1007,32 +1165,32 @@ const styles = {
         marginBottom: 24,
     },
     card: {
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+        background: 'var(--glass-bg)',
         borderRadius: 24,
-        border: '1px solid rgba(255,255,255,0.05)',
+        border: '1px solid var(--glass-border)',
         padding: '24px',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+        boxShadow: '0 8px 30px rgba(0,0,0,0.05)',
     },
     cardLabel: {
         display: 'block',
         fontSize: '0.7rem', fontWeight: 700, letterSpacing: '1px',
-        textTransform: 'uppercase', color: '#a1a1aa',
+        textTransform: 'uppercase', color: 'var(--text-secondary)',
         marginBottom: 14,
     },
     bioText: {
-        color: '#d4d4d8', fontSize: '0.95rem',
+        color: 'var(--text-primary)', fontSize: '0.95rem',
         lineHeight: 1.6, margin: 0, fontWeight: 400,
     },
     tagsRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
     tag: {
-        background: 'rgba(255,255,255,0.05)', color: '#d4d4d8',
+        background: 'var(--bg-secondary)', color: 'var(--text-primary)',
         padding: '8px 16px', borderRadius: 100, fontSize: '0.8rem', fontWeight: 500,
-        border: '1px solid rgba(255,255,255,0.08)',
+        border: '1px solid var(--glass-border)',
     },
     mediaGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 },
     mediaItem: {
         aspectRatio: '1', borderRadius: 16, overflow: 'hidden',
-        cursor: 'pointer', background: 'rgba(255,255,255,0.03)',
+        cursor: 'pointer', background: 'var(--bg-secondary)',
         transition: 'transform 0.2s',
     },
     mediaImg: { width: '100%', height: '100%', objectFit: 'cover' },
@@ -1054,17 +1212,17 @@ const styles = {
     loadingWrap: {
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        background: '#09090b', color: 'white', gap: 16,
+        background: 'var(--bg-color)', color: 'var(--text-primary)', gap: 16,
     },
     spinner: {
         width: 40, height: 40,
-        border: '3px solid rgba(255,255,255,0.05)',
-        borderTopColor: '#3b82f6',
+        border: '3px solid var(--glass-border)',
+        borderTopColor: 'var(--brand-primary)',
         borderRadius: '50%', animation: 'spin 0.8s linear infinite',
     },
-    loadingText: { color: '#a1a1aa', fontSize: 15, margin: 0 },
+    loadingText: { color: 'var(--text-secondary)', fontSize: 15, margin: 0 },
     backBtn: {
-        background: 'rgba(255,255,255,0.08)', border: 'none', color: '#f4f4f5',
+        background: 'var(--btn-secondary-bg)', border: 'none', color: 'var(--btn-secondary-text)',
         padding: '10px 24px', borderRadius: 100, cursor: 'pointer', fontSize: 14, fontWeight: 500,
     },
     lightbox: {
@@ -1083,18 +1241,18 @@ const styles = {
     },
     pokeSelectorModal: {
         width: '90%', maxWidth: 360,
-        background: '#1c1c1e',
-        borderRadius: 24, border: '1px solid rgba(255,255,255,0.1)',
+        background: 'var(--modal-bg)',
+        borderRadius: 24, border: '1px solid var(--modal-border)',
         padding: '24px', display: 'flex', flexDirection: 'column', gap: 16,
         alignItems: 'center',
     },
-    pokeSelectorTitle: { margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'white' },
-    pokeSelectorSubtitle: { margin: 0, fontSize: '0.85rem', color: '#a1a1aa', textAlign: 'center' },
+    pokeSelectorTitle: { margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' },
+    pokeSelectorSubtitle: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' },
     pokeOptions: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%' },
     pokeOptionBtnNormal: {
         width: '100%', padding: '14px', borderRadius: 16,
-        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-        color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+        background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)',
+        color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
         textAlign: 'left', transition: 'background 0.2s',
     },
     pokeOptionBtnSuper: {

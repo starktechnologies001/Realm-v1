@@ -6,11 +6,16 @@ import { calculateDistance } from '../utils/distanceUtils';
 import { canViewStatus, hasActiveStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 import { nearbyLabel, parseThought } from '../utils/locationPrivacy';
 import { calculateSmartMatchScore } from '../utils/premiumUtils';
+import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
+import { generateSmartIcebreakers } from '../utils/smartIcebreakers';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast, reactions = [], onToggleReaction, initialShowReactors = false, friendshipsMapRef, replies = [] }) {
     if (!user) return null;
     const navigate = useNavigate();
+
+    const customizations = getPremiumCustomizations(user);
+    const hasMoment = customizations.nearbyMoment && customizations.nearbyMomentExpiresAt && (new Date(customizations.nearbyMomentExpiresAt).getTime() > Date.now());
 
     // Get the avatar URL and convert GLB to PNG if needed
     const displayAvatar = getAvatar2D(user.avatar || user.avatar_url);
@@ -300,6 +305,8 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                 className="avatar-large"
                                 style={{ filter: 'none', pointerEvents: 'none' }} 
                             />
+                            {/* Render Premium Accessories */}
+                            <AvatarAccessories accessory={customizations.avatarAccessory} />
                             {distanceStr && (
                                 <div className="avatar-distance-badge">
                                     📍 {distanceStr}
@@ -362,7 +369,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                         <div className="user-info-area">
                             <h2 style={{ cursor: 'default' }}>
-                                <span className="username-text">{user.username || user.name}</span>
+                                <span className={`username-text ${getUsernameEffectClass(customizations.usernameEffect)}`}>{user.username || user.name}</span>
                                 {user.email_verified && (
                                     <span className="verified-badge" title="Email Verified">
                                         ✔ Verified
@@ -412,6 +419,54 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     </div>
 
 
+
+                    {/* Active Nearby Moment */}
+                    {hasMoment && (
+                        <div style={{
+                            margin: '12px 16px 0',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            border: '1px solid #00d4ff',
+                            background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(0, 0, 0, 0.25))',
+                            boxShadow: '0 4px 12px rgba(0, 212, 255, 0.15)',
+                            display: 'flex', flexDirection: 'column', gap: '3px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#00d4ff', textTransform: 'uppercase', letterSpacing: '0.6px' }}>📍 Nearby Moment</span>
+                                <span style={{ fontSize: '0.62rem', opacity: 0.6 }}>
+                                    {Math.round((new Date(customizations.nearbyMomentExpiresAt).getTime() - Date.now()) / 60000)}m left
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span style={{ fontSize: '1.2rem' }}>{customizations.nearbyMoment.split(' ')[0]}</span>
+                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#fff' }}>{customizations.nearbyMoment}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Smart Icebreakers (Diamond Elite gating) */}
+                    {currentUser?.subscription_tier === 'diamond' && currentUser?.id !== user?.id && (
+                        <div style={{
+                            margin: '12px 16px 0',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            border: '1px solid #d946ef',
+                            background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.12), rgba(0, 0, 0, 0.25))',
+                            boxShadow: '0 4px 12px rgba(217, 70, 239, 0.15)',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '1rem' }}>🔮</span>
+                                <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#d946ef', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Smart Icebreakers</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {generateSmartIcebreakers(currentUser, user, user.mutuals || 0).map((ice, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.9)' }}>
+                                        <span>{ice}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="action-grid" style={isOwner ? { display: 'flex', justifyContent: 'center' } : {}}>
                         {isOwner ? (

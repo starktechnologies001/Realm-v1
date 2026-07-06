@@ -125,62 +125,62 @@ const styles = {
     container: {
         minHeight: '100vh',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#0a0a0a',
+        background: 'var(--bg-color)',
         position: 'relative', overflow: 'hidden',
         fontFamily: "'Inter', sans-serif"
     },
     ambientGlow: {
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        background: 'radial-gradient(circle at 50% 30%, rgba(0, 198, 255, 0.15), transparent 70%)',
+        background: 'radial-gradient(circle at 50% 30%, rgba(0, 198, 255, 0.08), transparent 70%)',
         zIndex: 0
     },
     card: {
-        background: 'rgba(30, 30, 30, 0.8)',
+        background: 'var(--glass-bg)',
         backdropFilter: 'blur(20px) saturate(180%)',
         WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
+        border: '1px solid var(--glass-border)',
         borderRadius: '24px',
         padding: '40px',
         width: '100%', maxWidth: '400px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1)',
         zIndex: 1,
         animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
     },
     header: { textAlign: 'center', marginBottom: '30px' },
     iconWrapper: {
         width: '64px', height: '64px', borderRadius: '20px',
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))',
-        border: '1px solid rgba(255,255,255,0.1)',
+        background: 'var(--btn-secondary-bg)',
+        border: '1px solid var(--glass-border)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        margin: '0 auto 20px auto', color: '#00d4ff',
-        boxShadow: '0 8px 32px rgba(0, 212, 255, 0.2)'
+        margin: '0 auto 20px auto', color: 'var(--brand-primary)',
+        boxShadow: '0 8px 32px rgba(0, 212, 255, 0.1)'
     },
-    title: { color: 'white', margin: '0 0 10px 0', fontSize: '1.8rem', fontWeight: 700 },
-    subtitle: { color: '#888', margin: 0, fontSize: '0.95rem' },
+    title: { color: 'var(--text-primary)', margin: '0 0 10px 0', fontSize: '1.8rem', fontWeight: 700 },
+    subtitle: { color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' },
     form: { display: 'flex', flexDirection: 'column', gap: '20px' },
     inputGroup: { display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' },
-    label: { color: '#aaa', fontSize: '0.9rem', fontWeight: 500, marginLeft: '4px' },
+    label: { color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 500, marginLeft: '4px' },
     input: {
         width: '100%', padding: '14px 16px',
-        background: 'rgba(0,0,0,0.3)',
-        border: '1px solid rgba(255,255,255,0.1)',
+        background: 'var(--input-bg)',
+        border: '1px solid var(--input-border)',
         borderRadius: '12px',
-        color: 'white', fontSize: '1rem',
+        color: 'var(--text-primary)', fontSize: '1rem',
         outline: 'none', transition: 'all 0.2s',
         boxSizing: 'border-box'
     },
     button: {
-        background: 'linear-gradient(135deg, #00C6FF, #0072FF)',
+        background: 'var(--brand-gradient)',
         color: 'white', border: 'none',
         padding: '16px', borderRadius: '14px',
         fontWeight: 600, fontSize: '1rem',
         cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s',
         marginTop: '10px',
-        boxShadow: '0 4px 20px rgba(0, 114, 255, 0.3)'
+        boxShadow: '0 4px 20px rgba(0, 114, 255, 0.2)'
     },
     backLink: {
         background: 'transparent', border: 'none',
-        color: '#666', fontSize: '0.9rem',
+        color: 'var(--text-secondary)', fontSize: '0.9rem',
         cursor: 'pointer', marginTop: '10px',
         padding: '10px',
         transition: 'color 0.2s'

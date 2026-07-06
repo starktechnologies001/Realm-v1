@@ -397,6 +397,23 @@ const MessageBubble = ({
                             );
                         })()}
                     </div>
+                ) : msg.message_type === 'sticker' ? (
+                    /* ── Premium Sticker ── */
+                    <div className="msg-sticker-container" style={{ textAlign: isMe ? 'right' : 'left' }}>
+                        <span style={{
+                            fontSize: '3.5rem',
+                            display: 'block',
+                            lineHeight: 1.1,
+                            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.25))',
+                            marginBottom: '4px',
+                        }}>
+                            {msg.content}
+                        </span>
+                        <div style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'center', gap: '4px', opacity: 0.6, fontSize: '0.7rem' }}>
+                            <span>{formatTime(msg.created_at)}</span>
+                            <MessageStatusTick status={deliveryStatus} isSender={isMe} />
+                        </div>
+                    </div>
                 ) : (
                     <div className="msg-text-container">
                         <span className="msg-text">{parsedThoughtReply ? parsedThoughtReply.reply : msg.content}</span>

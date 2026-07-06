@@ -4,13 +4,24 @@
   --bg-secondary: #f5f3f0;
   --text-primary: #1d1d1f;
   --text-secondary: #6e6e73;
+  --text-placeholder: #a1a1aa;
 
   --brand-primary: #0084ff;
   --brand-secondary: #00d4ff;
   --brand-gradient: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
 
   --glass-bg: rgba(250, 248, 245, 0.85);
-  --glass-border: rgba(0, 0, 0, 0.1);
+  --glass-border: rgba(0, 0, 0, 0.08);
+
+  --input-bg: #ffffff;
+  --input-border: rgba(0, 0, 0, 0.12);
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.06);
+  --btn-secondary-bg: #e5e7eb;
+  --btn-secondary-text: #1f2937;
+  --icon-color: #1d1d1f;
+  --modal-bg: #ffffff;
+  --modal-border: rgba(0, 0, 0, 0.08);
 
   /* Spacing */
   --spacing-sm: 8px;
@@ -36,12 +47,23 @@ html[data-theme="dark"] {
   --bg-secondary: #1a1a1a;
   --text-primary: #ffffff;
   --text-secondary: #b0b0b0;
+  --text-placeholder: #737373;
 
   --glass-bg: rgba(0, 0, 0, 0.85);
   --glass-border: rgba(255, 255, 255, 0.15);
   
   --brand-primary: #0a84ff;
   --brand-secondary: #64d2ff;
+
+  --input-bg: #1a1a1a;
+  --input-border: rgba(255, 255, 255, 0.15);
+  --card-bg: #121212;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.08);
+  --btn-secondary-text: #f4f4f5;
+  --icon-color: #ffffff;
+  --modal-bg: #1c1c1e;
+  --modal-border: rgba(255, 255, 255, 0.15);
 }
 
 /* System Theme - Auto detect */
@@ -51,12 +73,23 @@ html[data-theme="dark"] {
     --bg-secondary: #1a1a1a;
     --text-primary: #ffffff;
     --text-secondary: #b0b0b0;
+    --text-placeholder: #737373;
 
     --glass-bg: rgba(0, 0, 0, 0.85);
     --glass-border: rgba(255, 255, 255, 0.15);
     
     --brand-primary: #0a84ff;
     --brand-secondary: #64d2ff;
+
+    --input-bg: #1a1a1a;
+    --input-border: rgba(255, 255, 255, 0.15);
+    --card-bg: #121212;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --btn-secondary-bg: rgba(255, 255, 255, 0.08);
+    --btn-secondary-text: #f4f4f5;
+    --icon-color: #ffffff;
+    --modal-bg: #1c1c1e;
+    --modal-border: rgba(255, 255, 255, 0.15);
   }
 }
 
@@ -73,6 +106,7 @@ body {
   /* Prevent bounce on mobile */
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button {
@@ -317,6 +351,81 @@ html[data-theme-premium="sunset_orange"] body {
   background-image: radial-gradient(circle at top left, #652b08, #1e0b00 70%) !important;
   background-attachment: fixed;
 }
+
+/* Aurora Borealis Theme */
+html[data-theme-premium="aurora"] {
+  --bg-color: #030d17 !important;
+  --bg-secondary: #071e2e !important;
+  --text-primary: #e8f9f5 !important;
+  --text-secondary: #34d399 !important;
+  --glass-bg: rgba(3, 25, 40, 0.65) !important;
+  --glass-border: rgba(52, 211, 153, 0.3) !important;
+  --brand-primary: #34d399 !important;
+  --brand-secondary: #6ee7b7 !important;
+}
+html[data-theme-premium="aurora"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 20%, rgba(16, 185, 129, 0.25) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 60%, rgba(139, 92, 246, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 90%, rgba(6, 182, 212, 0.15) 0%, transparent 55%),
+    linear-gradient(180deg, #030d17, #041520) !important;
+  background-attachment: fixed;
+}
+
+/* Emerald Forest Theme */
+html[data-theme-premium="emerald"] {
+  --bg-color: #021a0d !important;
+  --bg-secondary: #042914 !important;
+  --text-primary: #ecfdf5 !important;
+  --text-secondary: #4ade80 !important;
+  --glass-bg: rgba(2, 30, 14, 0.65) !important;
+  --glass-border: rgba(74, 222, 128, 0.3) !important;
+  --brand-primary: #22c55e !important;
+  --brand-secondary: #4ade80 !important;
+}
+html[data-theme-premium="emerald"] body {
+  background-image:
+    radial-gradient(circle at 25% 15%, rgba(34, 197, 94, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 75% 80%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
+    linear-gradient(160deg, #021a0d, #031210) !important;
+  background-attachment: fixed;
+}
+
+/* Glass Theme */
+html[data-theme-premium="glass_theme"] {
+  --bg-color: #0a0a1a !important;
+  --bg-secondary: #12122a !important;
+  --text-primary: #f0f4ff !important;
+  --text-secondary: #94a3b8 !important;
+  --glass-bg: rgba(255, 255, 255, 0.06) !important;
+  --glass-border: rgba(255, 255, 255, 0.12) !important;
+  --brand-primary: #818cf8 !important;
+  --brand-secondary: #a5b4fc !important;
+}
+html[data-theme-premium="glass_theme"] body {
+  background-image:
+    radial-gradient(circle at 30% 20%, rgba(99, 102, 241, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 70% 70%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+    linear-gradient(135deg, #0a0a1a, #080818) !important;
+  background-attachment: fixed;
+}
+
+/* Dark Plus Theme */
+html[data-theme-premium="dark_plus"] {
+  --bg-color: #0d0d0d !important;
+  --bg-secondary: #141414 !important;
+  --text-primary: #f5f5f5 !important;
+  --text-secondary: #737373 !important;
+  --glass-bg: rgba(20, 20, 20, 0.85) !important;
+  --glass-border: rgba(255, 255, 255, 0.06) !important;
+  --brand-primary: #0a84ff !important;
+  --brand-secondary: #409cff !important;
+}
+html[data-theme-premium="dark_plus"] body {
+  background-image: linear-gradient(180deg, #0d0d0d 0%, #111111 50%, #0a0a0a 100%) !important;
+  background-attachment: fixed;
+}
+
 
 /* Avatar Rings */
 @keyframes silverShimmer {
@@ -1030,4 +1139,507 @@ input:checked + .toggle-slider {
 }
 input:checked + .toggle-slider:before {
   transform: translateX(20px);
+}
+
+/* ==========================================================================
+   DIAMOND PREMIUM CUSTOM THEMES
+   ========================================================================== */
+
+/* Diamond Crystal Theme */
+html[data-theme-premium="diamond_crystal"] {
+  --bg-color: #0b1528 !important;
+  --bg-secondary: #12223f !important;
+  --text-primary: #e0f2fe !important;
+  --text-secondary: #38bdf8 !important;
+  --glass-bg: rgba(15, 32, 66, 0.6) !important;
+  --glass-border: rgba(56, 189, 248, 0.4) !important;
+  --brand-primary: #00e5ff !important;
+  --brand-secondary: #38bdf8 !important;
+}
+html[data-theme-premium="diamond_crystal"] body {
+  background-image: radial-gradient(circle at top left, #1d3557, #0b1528 75%) !important;
+  background-attachment: fixed;
+}
+
+/* Space Black Theme */
+html[data-theme-premium="space_black"] {
+  --bg-color: #050505 !important;
+  --bg-secondary: #0d0d0d !important;
+  --text-primary: #ffffff !important;
+  --text-secondary: #a3a3a3 !important;
+  --glass-bg: rgba(10, 10, 10, 0.8) !important;
+  --glass-border: rgba(255, 255, 255, 0.08) !important;
+  --brand-primary: #525252 !important;
+  --brand-secondary: #262626 !important;
+}
+html[data-theme-premium="space_black"] body {
+  background-image: linear-gradient(180deg, #020202 0%, #080808 100%) !important;
+  background-attachment: fixed;
+}
+
+/* Platinum Theme */
+html[data-theme-premium="platinum"] {
+  --bg-color: #1a1a1e !important;
+  --bg-secondary: #232329 !important;
+  --text-primary: #f3f4f6 !important;
+  --text-secondary: #9ca3af !important;
+  --glass-bg: rgba(30, 30, 35, 0.65) !important;
+  --glass-border: rgba(209, 213, 219, 0.25) !important;
+  --brand-primary: #e5e7eb !important;
+  --brand-secondary: #9ca3af !important;
+}
+html[data-theme-premium="platinum"] body {
+  background-image: radial-gradient(circle at top right, #2d2d34, #1a1a1e 80%) !important;
+  background-attachment: fixed;
+}
+
+/* Aurora Elite Theme */
+html[data-theme-premium="aurora_elite"] {
+  --bg-color: #040914 !important;
+  --bg-secondary: #0a142c !important;
+  --text-primary: #ecfdf5 !important;
+  --text-secondary: #10b981 !important;
+  --glass-bg: rgba(6, 17, 40, 0.6) !important;
+  --glass-border: rgba(16, 185, 129, 0.35) !important;
+  --brand-primary: #059669 !important;
+  --brand-secondary: #10b981 !important;
+}
+html[data-theme-premium="aurora_elite"] body {
+  background-image: 
+    radial-gradient(ellipse at 10% 20%, rgba(16, 185, 129, 0.3) 0%, transparent 60%),
+    radial-gradient(ellipse at 90% 80%, rgba(59, 130, 246, 0.25) 0%, transparent 60%),
+    linear-gradient(180deg, #040914, #060e22) !important;
+  background-attachment: fixed;
+}
+
+/* Royal Diamond Theme */
+html[data-theme-premium="royal_diamond"] {
+  --bg-color: #090514 !important;
+  --bg-secondary: #160a2b !important;
+  --text-primary: #fae8ff !important;
+  --text-secondary: #d946ef !important;
+  --glass-bg: rgba(20, 8, 41, 0.65) !important;
+  --glass-border: rgba(217, 70, 239, 0.3) !important;
+  --brand-primary: #a855f7 !important;
+  --brand-secondary: #d946ef !important;
+}
+html[data-theme-premium="royal_diamond"] body {
+  background-image: radial-gradient(circle at 50% 0%, #3b0764, #090514 80%) !important;
+  background-attachment: fixed;
+}
+
+
+/* ==========================================================================
+   DIAMOND USERNAME STYLES & EFFECTS
+   ========================================================================== */
+
+/* Animated Diamond Gradient */
+.effect-username-diamond-gradient {
+  background: linear-gradient(90deg, #00d4ff, #d946ef, #00d4ff);
+  background-size: 200% auto;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: usernameShine 3s linear infinite !important;
+  font-weight: 800 !important;
+}
+
+@keyframes usernameShine {
+  to { background-position: 200% center; }
+}
+
+/* Shimmer Effect */
+.effect-username-shimmer {
+  position: relative;
+  background: linear-gradient(120deg, var(--text-primary) 35%, #ffffff 50%, var(--text-primary) 65%);
+  background-size: 200% auto;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: usernameShimmer 2.5s linear infinite !important;
+  font-weight: 700 !important;
+}
+
+@keyframes usernameShimmer {
+  0% { background-position: 100% center; }
+  100% { background-position: -100% center; }
+}
+
+/* Neon Pulse */
+.effect-username-neon-pulse {
+  color: #ffffff !important;
+  text-shadow: 0 0 4px #00d4ff, 0 0 10px #00d4ff, 0 0 18px #00d4ff !important;
+  animation: usernameNeonPulse 1.8s infinite alternate !important;
+}
+
+@keyframes usernameNeonPulse {
+  0% { text-shadow: 0 0 4px #00d4ff, 0 0 10px #00d4ff, 0 0 18px #00d4ff !important; }
+  100% { text-shadow: 0 0 2px #00d4ff, 0 0 6px #00d4ff, 0 0 10px #00d4ff !important; }
+}
+
+/* Crystal Glow */
+.effect-username-crystal-glow {
+  color: #e0f2fe !important;
+  text-shadow: 0 0 3px #38bdf8, 0 0 8px #7dd3fc !important;
+}
+
+
+/* ==========================================================================
+   DIAMOND AVATAR OUTFITS & ACCESSORIES (High-fidelity CSS/SVG)
+   ========================================================================== */
+
+/* Base Accessories overlays */
+.avatar-accessory-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 15;
+}
+
+/* Wings Behind Avatar Container */
+.avatar-wings-behind {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 155%;
+  height: 155%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M20,50 C5,-10 5,70 45,55 M80,50 C95,-10 95,70 55,55" fill="none" stroke="%2300d4ff" stroke-width="4" stroke-linecap="round" opacity="0.8"/><circle cx="50" cy="55" r="40" fill="none" stroke="none"/></svg>');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: -1;
+  pointer-events: none;
+  animation: wingHover 3s ease-in-out infinite alternate;
+}
+
+@keyframes wingHover {
+  0% { transform: translate(-50%, -52%) scale(1); opacity: 0.8; filter: drop-shadow(0 0 4px #00d4ff); }
+  100% { transform: translate(-50%, -48%) scale(1.05); opacity: 1; filter: drop-shadow(0 0 12px #d946ef); }
+}
+
+/* Diamond Crown Above */
+.avatar-crown-above {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.4rem;
+  z-index: 25;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.5));
+  animation: crownFloat 2s ease-in-out infinite alternate;
+}
+
+@keyframes crownFloat {
+  0% { transform: translateX(-50%) translateY(0) rotate(-3deg); }
+  100% { transform: translateX(-50%) translateY(-5px) rotate(3deg); }
+}
+
+/* Premium Masks Overlay */
+.avatar-mask-overlay {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.25rem;
+  z-index: 25;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+  animation: maskGlow 1.5s infinite alternate;
+}
+
+@keyframes maskGlow {
+  0% { filter: drop-shadow(0 0 2px #d946ef); }
+  100% { filter: drop-shadow(0 0 6px #00d4ff); }
+}
+
+/* Premium Jackets Outline */
+.avatar-jacket-overlay {
+  position: absolute;
+  bottom: -4px;
+  width: 90%;
+  left: 5%;
+  height: 25%;
+  background: linear-gradient(180deg, transparent, #0f172a 80%);
+  border-top: 2.5px solid #facc15;
+  border-radius: 4px 4px 50% 50%;
+  z-index: 24;
+  box-shadow: 0 0 8px #facc15;
+}
+
+/* Luxury Outfit Aura/Glow Overlay */
+.avatar-luxury-overlay {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid #00d4ff;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.4), inset 0 0 10px rgba(217, 70, 239, 0.4);
+  animation: luxurySpin 6s linear infinite;
+  z-index: 14;
+}
+
+@keyframes luxurySpin {
+  0% { transform: rotate(0deg); border-color: #00d4ff; }
+  50% { border-color: #d946ef; }
+  100% { transform: rotate(360deg); border-color: #00d4ff; }
+}
+
+/* Custom app icon style presets classes */
+.app-icon-preview {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+.app-icon-preview:hover {
+  transform: translateY(-2px) scale(1.05);
+}
+
+/* Custom background styles for Profile Page */
+.profile-page.style-bg-crystal {
+  background: radial-gradient(circle at top left, #0e203c, #050a14) !important;
+}
+.profile-page.style-bg-black {
+  background: #020202 !important;
+}
+.profile-page.style-bg-platinum {
+  background: radial-gradient(circle at top right, #25252b, #0f0f12) !important;
+}
+.profile-page.style-bg-aurora {
+  background: linear-gradient(180deg, #020612, #040914) !important;
+}
+.profile-page.style-bg-royal {
+  background: radial-gradient(circle at 50% 0%, #20043c, #050209) !important;
+}
+
+/* ==========================================================================
+   GOLD PREMIUM CUSTOM STYLES (Animated Themes, Backgrounds, Accessories)
+   ========================================================================== */
+
+/* Shifting gradient animation */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Gold Theme: Galaxy */
+html[data-theme-premium="galaxy"] {
+  --bg-color: #0b0914 !important;
+  --bg-secondary: #1a162e !important;
+  --text-primary: #fae8ff !important;
+  --text-secondary: #c084fc !important;
+  --glass-bg: rgba(26, 22, 46, 0.6) !important;
+  --glass-border: rgba(192, 132, 252, 0.4) !important;
+  --brand-primary: #a855f7 !important;
+  --brand-secondary: #d946ef !important;
+}
+html[data-theme-premium="galaxy"] body {
+  background: linear-gradient(135deg, #09090e, #2e0854, #4c0082) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 15s ease infinite !important;
+  background-attachment: fixed;
+}
+
+/* Gold Theme: Neon */
+html[data-theme-premium="neon"] {
+  --bg-color: #000000 !important;
+  --bg-secondary: #0d0d0d !important;
+  --text-primary: #ffffff !important;
+  --text-secondary: #ff007f !important;
+  --glass-bg: rgba(10, 10, 10, 0.75) !important;
+  --glass-border: rgba(255, 0, 127, 0.3) !important;
+  --brand-primary: #ff007f !important;
+  --brand-secondary: #00f0ff !important;
+}
+html[data-theme-premium="neon"] body {
+  background: linear-gradient(135deg, #000000, #1a001a, #001a1a) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 10s ease infinite !important;
+  background-attachment: fixed;
+}
+
+/* Gold Theme: Cyberpunk */
+html[data-theme-premium="cyberpunk"] {
+  --bg-color: #0c000e !important;
+  --bg-secondary: #18001e !important;
+  --text-primary: #ffffff !important;
+  --text-secondary: #fde047 !important;
+  --glass-bg: rgba(24, 0, 30, 0.7) !important;
+  --glass-border: rgba(253, 224, 71, 0.3) !important;
+  --brand-primary: #fde047 !important;
+  --brand-secondary: #a855f7 !important;
+}
+html[data-theme-premium="cyberpunk"] body {
+  background: linear-gradient(135deg, #0f0011, #25002e, #0c000e) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 12s ease infinite !important;
+  background-attachment: fixed;
+}
+
+/* Gold Theme: Royal Black */
+html[data-theme-premium="royal_black"] {
+  --bg-color: #050505 !important;
+  --bg-secondary: #0d0d0d !important;
+  --text-primary: #f5f5f7 !important;
+  --text-secondary: #f59e0b !important;
+  --glass-bg: rgba(13, 13, 13, 0.8) !important;
+  --glass-border: rgba(245, 158, 11, 0.25) !important;
+  --brand-primary: #d97706 !important;
+  --brand-secondary: #f59e0b !important;
+}
+html[data-theme-premium="royal_black"] body {
+  background: linear-gradient(135deg, #020202, #0d0903, #050505) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 18s ease infinite !important;
+  background-attachment: fixed;
+}
+
+/* Gold Theme: Aurora Motion */
+html[data-theme-premium="aurora_motion"] {
+  --bg-color: #030811 !important;
+  --bg-secondary: #081226 !important;
+  --text-primary: #f0fdf4 !important;
+  --text-secondary: #10b981 !important;
+  --glass-bg: rgba(8, 18, 38, 0.65) !important;
+  --glass-border: rgba(16, 185, 129, 0.3) !important;
+  --brand-primary: #059669 !important;
+  --brand-secondary: #10b981 !important;
+}
+html[data-theme-premium="aurora_motion"] body {
+  background: linear-gradient(135deg, #030a16, #06221c, #051611) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 14s ease infinite !important;
+  background-attachment: fixed;
+}
+
+/* Animated Profile Backgrounds */
+.bg-animated-galaxy {
+  background: linear-gradient(135deg, #09090e, #2e0854, #4c0082) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 10s ease infinite !important;
+}
+.bg-animated-ocean {
+  background: linear-gradient(135deg, #021a36, #0e7490, #0891b2) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 8s ease infinite !important;
+}
+.bg-animated-fire {
+  background: linear-gradient(135deg, #1c0000, #7f1d1d, #b91c1c, #ea580c) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 6s ease infinite !important;
+}
+.bg-animated-snow {
+  background: linear-gradient(135deg, #0f172a, #1e293b, #3b82f6, #93c5fd) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 12s ease infinite !important;
+}
+.bg-animated-neon {
+  background: linear-gradient(135deg, #000000, #4c1d95, #c026d3, #0284c7) !important;
+  background-size: 300% 300% !important;
+  animation: gradientShift 8s ease infinite !important;
+}
+
+/* Gold Accessories styling */
+.avatar-halo-above {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%) rotateX(60deg);
+  width: 40px;
+  height: 12px;
+  border: 3.5px solid #facc15;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #facc15, inset 0 0 5px #facc15;
+  z-index: 24;
+  animation: haloFloat 2s ease-in-out infinite alternate;
+}
+@keyframes haloFloat {
+  0% { transform: translateX(-50%) rotateX(60deg) translateY(0); filter: brightness(1); }
+  100% { transform: translateX(-50%) rotateX(60deg) translateY(-4px); filter: brightness(1.3); }
+}
+
+.avatar-sunglasses-overlay {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.35rem;
+  z-index: 25;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  pointer-events: none;
+}
+
+.avatar-headphones-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 95%;
+  height: 95%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M10,50 A40,40 0 0,1 90,50" fill="none" stroke="%23f43f5e" stroke-width="6" stroke-linecap="round"/><rect x="5" y="42" width="12" height="20" rx="4" fill="%23f43f5e"/><rect x="83" y="42" width="12" height="20" rx="4" fill="%23f43f5e"/></svg>');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 22;
+  pointer-events: none;
+  animation: headphonePulse 1s infinite alternate;
+}
+@keyframes headphonePulse {
+  0% { transform: translate(-50%, -50%) scale(0.98); filter: drop-shadow(0 0 2px #f43f5e); }
+  100% { transform: translate(-50%, -50%) scale(1.02); filter: drop-shadow(0 0 8px #f43f5e); }
+}
+
+.avatar-premium-caps-overlay {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  height: 35%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><path d="M15,45 C15,10 85,10 85,45 Z" fill="%23facc15"/><rect x="35" y="40" width="60" height="8" rx="4" fill="%23eab308"/></svg>');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 24;
+  pointer-events: none;
+}
+
+/* Gold Gradient Usernames */
+.effect-username-gold-gradient {
+  background: linear-gradient(90deg, #fef08a, #facc15, #ca8a04);
+  background-size: 200% auto;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: usernameShine 3s linear infinite !important;
+  font-weight: 800 !important;
+}
+
+.effect-username-neon-gradient {
+  background: linear-gradient(90deg, #ff007f, #00f0ff, #ff007f);
+  background-size: 200% auto;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: usernameShine 2.5s linear infinite !important;
+  font-weight: 800 !important;
+}
+
+.effect-username-rainbow {
+  background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000);
+  background-size: 200% auto;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: usernameShine 4s linear infinite !important;
+  font-weight: 800 !important;
+}
+
+.effect-username-glow {
+  color: #ffffff !important;
+  text-shadow: 0 0 5px #facc15, 0 0 15px #f59e0b !important;
+  font-weight: 700 !important;
 }

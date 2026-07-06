@@ -39,33 +39,74 @@ export const recordProfileView = async (profileOwnerId, viewerId) => {
     }
 };
 
-// Achievements definition list
+// Achievement rarity tiers: common, rare, epic, legendary
+// Achievement categories: social, explorer, activity, special
 export const ACHIEVEMENTS = [
-    { id: 'first_friend', title: 'First Friend', icon: '🤝', desc: 'Add your first friend on Nearo' },
-    { id: 'first_thought', title: 'First Thought', icon: '💭', desc: 'Share your first map thought' },
-    { id: 'msg_100', title: '100 Messages', icon: '💬', desc: 'Send 100 messages to friends' },
-    { id: 'butterfly', title: 'Social Butterfly', icon: '🦋', desc: 'Have 5 or more friends' },
-    { id: 'community', title: 'Community Builder', icon: '🏢', desc: 'Have 10 or more friends' },
-    { id: 'thought_creator', title: 'Thought Creator', icon: '🎨', desc: 'Share 3 or more map thoughts' }
+    // ── Social ──────────────────────────────────────────────────────────────
+    { id: 'first_friend', title: 'First Friend', icon: '🤝', desc: 'Add your first friend on Nearo', rarity: 'common', category: 'social', hint: 'Connect with someone near you' },
+    { id: 'butterfly', title: 'Social Butterfly', icon: '🦋', desc: 'Have 5 or more friends', rarity: 'rare', category: 'social', hint: 'Make 5 friends on Nearo' },
+    { id: 'community', title: 'Community Builder', icon: '🏢', desc: 'Have 10 or more friends', rarity: 'epic', category: 'social', hint: 'Grow your circle to 10 friends' },
+    { id: 'social_star', title: 'Social Star', icon: '⭐', desc: 'Have 15 or more friends', rarity: 'legendary', category: 'social', hint: 'Reach 15 friends to become a Social Star' },
+    { id: 'msg_100', title: '100 Messages', icon: '💬', desc: 'Send 100 messages to friends', rarity: 'rare', category: 'activity', hint: 'Chat more with your friends' },
+    { id: 'chat_champion', title: 'Chat Champion', icon: '🏆', desc: 'Send 500 messages', rarity: 'epic', category: 'activity', hint: 'Send 500 messages total' },
+
+    // ── Explorer ─────────────────────────────────────────────────────────────
+    { id: 'first_thought', title: 'First Thought', icon: '💭', desc: 'Share your first map thought', rarity: 'common', category: 'explorer', hint: 'Post a thought on the map' },
+    { id: 'thought_creator', title: 'Thought Creator', icon: '🎨', desc: 'Share 3 or more map thoughts', rarity: 'rare', category: 'explorer', hint: 'Post 3 thoughts on the map' },
+    { id: 'thought_leader', title: 'Thought Leader', icon: '🧠', desc: 'Post 10 or more thoughts', rarity: 'epic', category: 'explorer', hint: 'Share 10 thoughts with the community' },
+    { id: 'nearby_explorer', title: 'Nearby Explorer', icon: '🗺️', desc: 'Viewed 20+ profiles on the map', rarity: 'rare', category: 'explorer', hint: 'Explore 20 profiles near you on the map' },
+    { id: 'explorer', title: 'Explorer', icon: '🧭', desc: 'Opened the map 10+ times', rarity: 'common', category: 'explorer', hint: 'Keep exploring the map around you' },
+
+    // ── Special ──────────────────────────────────────────────────────────────
+    { id: 'early_supporter', title: 'Early Supporter', icon: '🚀', desc: 'Joined Nearo as an early supporter', rarity: 'legendary', category: 'special', hint: 'Join Nearo early to earn this badge' },
 ];
+
+// Rarity display metadata
+export const RARITY_META = {
+    common:    { label: 'Common',    color: '#9ca3af', glow: 'rgba(156,163,175,0.3)',   ring: 'rgba(156,163,175,0.5)' },
+    rare:      { label: 'Rare',      color: '#3b82f6', glow: 'rgba(59,130,246,0.35)',   ring: 'rgba(59,130,246,0.6)' },
+    epic:      { label: 'Epic',      color: '#a855f7', glow: 'rgba(168,85,247,0.35)',   ring: 'rgba(168,85,247,0.6)' },
+    legendary: { label: 'Legendary', color: '#f59e0b', glow: 'rgba(245,158,11,0.4)',   ring: 'rgba(245,158,11,0.7)' },
+};
 
 // Helper to check which achievements are unlocked
 export const checkUnlockedAchievements = (profile, friendsCount, thoughtsCount = 0) => {
     const unlocked = [];
+    
+    // Social
     if (friendsCount > 0) unlocked.push('first_friend');
-    if (profile?.status_message || thoughtsCount > 0) unlocked.push('first_thought');
     if (friendsCount >= 5) unlocked.push('butterfly');
     if (friendsCount >= 10) unlocked.push('community');
+    if (friendsCount >= 15) unlocked.push('social_star');
+
+    // Thoughts / activity
+    if (profile?.status_message || thoughtsCount > 0) unlocked.push('first_thought');
     if (thoughtsCount >= 3) unlocked.push('thought_creator');
+    if (thoughtsCount >= 10) unlocked.push('thought_leader');
     
-    // Check local storage or profile field for simulated message count
+    // Messages
     const simulatedMsgCount = parseInt(localStorage.getItem(`msg_count_${profile?.id}`) || '0', 10);
-    if (simulatedMsgCount >= 100 || profile?.message_count >= 100) {
-        unlocked.push('msg_100');
+    if (simulatedMsgCount >= 100 || profile?.message_count >= 100) unlocked.push('msg_100');
+    if (simulatedMsgCount >= 500 || profile?.message_count >= 500) unlocked.push('chat_champion');
+    
+    // Explorer (map opens tracked via localStorage by MapHome)
+    const mapOpenCount = parseInt(localStorage.getItem(`map_opens_${profile?.id}`) || '0', 10);
+    if (mapOpenCount >= 10) unlocked.push('explorer');
+
+    // Nearby explorer (profile views from map tracked via localStorage)
+    const mapProfileViews = parseInt(localStorage.getItem(`map_profile_views_${profile?.id}`) || '0', 10);
+    if (mapProfileViews >= 20) unlocked.push('nearby_explorer');
+
+    // Early Supporter — joined before Jan 1 2026
+    if (profile?.created_at) {
+        const joinDate = new Date(profile.created_at);
+        const cutoff = new Date('2026-01-01T00:00:00Z');
+        if (joinDate < cutoff) unlocked.push('early_supporter');
     }
     
     return unlocked;
 };
+
 
 // Calculate deterministic match score for Diamond Elite members
 export const calculateSmartMatchScore = (profileA, profileB) => {

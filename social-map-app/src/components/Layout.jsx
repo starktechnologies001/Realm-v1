@@ -267,7 +267,7 @@ export default function Layout() {
     const swipeHandlers = useSwipeNavigation();
 
     if (checkingAuth) {
-        return <div style={{height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#121212', color: '#fff'}}>Loading...</div>;
+        return <div style={{height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-color)', color: 'var(--text-primary)'}}>Loading...</div>;
     }
 
     return (

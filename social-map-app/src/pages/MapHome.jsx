@@ -3199,6 +3199,35 @@ export default function MapHome() {
             statusDotHTML = `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #FFCC00; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 21;"></div>`;
         }
 
+        let momentHTML = '';
+        const momentVal = u?.nearby_moment;
+        const momentExpiry = u?.nearby_moment_expires_at;
+        const hasMoment = momentVal && momentExpiry && (new Date(momentExpiry).getTime() > Date.now());
+
+        if (hasMoment) {
+            const emojiMatch = momentVal.match(/^([\p{Emoji}\u200d\u200d\ufe0f]+)/u);
+            const emoji = emojiMatch ? emojiMatch[1] : '📍';
+            momentHTML = `<div class="moment-badge" style="
+                position: absolute;
+                bottom: -4px;
+                left: -4px;
+                font-size: 1.05rem;
+                line-height: 1;
+                z-index: 22;
+                background: #00d4ff;
+                border: 1.5px solid #ffffff;
+                border-radius: 50%;
+                width: 22px;
+                height: 22px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 0 10px #00d4ff, 0 2px 5px rgba(0,0,0,0.3);
+                pointer-events: none;
+                animation: markerPulseSlow 2s infinite alternate;
+            ">${emoji}</div>`;
+        }
+
         const icon = L.divIcon({
             className: 'custom-avatar-icon',
             html: `
@@ -3207,6 +3236,7 @@ export default function MapHome() {
                     <div class="${className}" style="${style}"></div>
                     ${moodHTML}
                     ${statusDotHTML}
+                    ${momentHTML}
                 </div>
             `,
             iconSize: [45, 45],
@@ -5080,11 +5110,11 @@ export default function MapHome() {
 
                             {/* Gender Select */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Gender</label>
+                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Gender</label>
                                 <select 
                                     value={diamondFilters.gender}
                                     onChange={e => setDiamondFilters(prev => ({ ...prev, gender: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
                                 >
                                     <option value="All">All</option>
                                     <option value="Male">Male</option>
@@ -5095,33 +5125,33 @@ export default function MapHome() {
 
                             {/* Age Range Select */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Age Range ({diamondFilters.ageMin} - {diamondFilters.ageMax})</label>
+                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Age Range ({diamondFilters.ageMin} - {diamondFilters.ageMax})</label>
                                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
                                     <input 
                                         type="number"
                                         min={18} max={99}
                                         value={diamondFilters.ageMin}
                                         onChange={e => setDiamondFilters(prev => ({ ...prev, ageMin: Math.max(18, parseInt(e.target.value) || 18) }))}
-                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', outline: 'none' }}
+                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', textAlign: 'center', outline: 'none' }}
                                     />
-                                    <span style={{ color: '#aaa' }}>to</span>
+                                    <span style={{ color: 'var(--text-secondary)' }}>to</span>
                                     <input 
                                         type="number"
                                         min={18} max={99}
                                         value={diamondFilters.ageMax}
                                         onChange={e => setDiamondFilters(prev => ({ ...prev, ageMax: Math.min(99, parseInt(e.target.value) || 99) }))}
-                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', outline: 'none' }}
+                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', textAlign: 'center', outline: 'none' }}
                                     />
                                 </div>
                             </div>
 
                             {/* Relationship Status Select */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Relationship Status</label>
+                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Relationship Status</label>
                                 <select 
                                     value={diamondFilters.relationshipStatus}
                                     onChange={e => setDiamondFilters(prev => ({ ...prev, relationshipStatus: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
                                 >
                                     <option value="All">All</option>
                                     <option value="Single">Single</option>
@@ -5134,13 +5164,13 @@ export default function MapHome() {
 
                             {/* Interests search */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Interests (comma separated)</label>
+                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Interests (comma separated)</label>
                                 <input 
                                     type="text"
                                     placeholder="Gym, Coffee, Travel..."
                                     value={diamondFilters.interests}
                                     onChange={e => setDiamondFilters(prev => ({ ...prev, interests: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
                                 />
                             </div>
 
@@ -5198,7 +5228,7 @@ export default function MapHome() {
 
                             {/* Distance range */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Distance Limit: {diamondFilters.distanceMax} km</label>
+                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Distance Limit: {diamondFilters.distanceMax} km</label>
                                 <input 
                                     type="range"
                                     min={0.5} max={10} step={0.5}
@@ -5240,7 +5270,7 @@ export default function MapHome() {
                                     setShowDiamondFilterPanel(false);
                                     showToast("Filters reset! 🔓");
                                 }}
-                                style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
+                                style={{ flex: 1, background: 'var(--btn-secondary-bg)', color: 'var(--btn-secondary-text)', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
                             >
                                 Reset
                             </button>
