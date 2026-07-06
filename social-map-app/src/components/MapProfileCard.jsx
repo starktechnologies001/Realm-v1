@@ -35,10 +35,10 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     // Calculate if user is online (active in last 5 minutes)
     const userLastActive = user.lastActive || user.last_active || user.last_seen || user.lastSeen;
     const diffMs = userLastActive ? Date.now() - new Date(userLastActive).getTime() : null;
-    const isOnline = diffMs != null && !isNaN(diffMs) && diffMs < 5 * 60 * 1000 && !user.hide_online_status;
+    const isOnline = diffMs != null && !isNaN(diffMs) && diffMs < 5 * 60 * 1000 && !user.hide_online_status && !user.hide_active_status;
 
     const getLastActive = (dateStr) => {
-        if (!dateStr || user.hide_last_seen) return null;
+        if (!dateStr || user.hide_last_seen || user.hide_active_status) return null;
         const diff = Date.now() - new Date(dateStr).getTime();
         if (diff < 5 * 60 * 1000 && !user.hide_online_status) return 'Active now';
         if (diff < 60 * 60 * 1000 && canShowLastSeen) return 'Recently active';
@@ -53,7 +53,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const distanceMeters = calculateDistance(myLat, myLng, theirLat, theirLng);
 
     // Show a fuzzy "nearby" label — never an exact distance
-    const distanceStr = distanceMeters != null ? nearbyLabel(distanceMeters) : null;
+    const distanceStr = (distanceMeters != null && !user.hide_distance) ? nearbyLabel(distanceMeters) : null;
 
     // Interaction States
     const [isFullPhoto, setIsFullPhoto] = useState(false);
@@ -391,14 +391,9 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                             </span>
                                         )}
                                         {user.subscription_tier === 'diamond' && (
-                                            <>
-                                                <span className="badge-pill status diamond" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
-                                                    💎 Diamond Elite
-                                                </span>
-                                                <span className="badge-pill status early-access" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>
-                                                    🧪 Early Access Member
-                                                </span>
-                                            </>
+                                            <span className="badge-pill status diamond" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                                                💎 Diamond Elite
+                                            </span>
                                         )}
                                         {!user.hide_status && !user.hide_relationship_status && (user.relationshipStatus || user.relationship_status) && (
                                             <span className="badge-pill status" style={{ background: 'rgba(255, 105, 180, 0.15)', color: '#ff69b4', border: '1px solid rgba(255, 105, 180, 0.3)' }}>

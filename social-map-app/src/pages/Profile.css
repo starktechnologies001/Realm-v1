@@ -1251,3 +1251,39 @@ html[data-theme="dark"] .icon-delete {
     gap: 6px;
 }
 
+.profile-visitors-card {
+    margin: 0 16px 16px 16px;
+    background: var(--card-bg, #ffffff);
+    border: 1px solid rgba(0,0,0,0.04);
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+}
+.profile-visitors-card .visitor-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary, #1d1d1f);
+}
+.profile-visitors-card .visitor-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary, #86868b);
+}
+.profile-visitors-card .visitor-btn {
+    background: var(--btn-sec-bg, #f5f5f7);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    color: var(--text-primary, #1d1d1f);
+    padding: 6px 14px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.profile-visitors-card .visitor-btn:hover {
+    background: var(--btn-sec-hover, #e8e8ed);
+    transform: translateY(-1px);
+}
+
+

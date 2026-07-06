@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D } from '../utils/avatarUtils';
+import confetti from 'canvas-confetti';
 
 export default function PokeNotifications({ currentUser }) {
     const [pendingPokes, setPendingPokes] = useState([]);
@@ -107,6 +108,13 @@ export default function PokeNotifications({ currentUser }) {
                             sessionStorage.removeItem(dismissedKey);
                             setShowNotifications(true);
                             
+                            // Confetti burst for premium pokes!
+                            if (newPoke.is_diamond_poke) {
+                                confetti({ particleCount: 100, spread: 80, colors: ['#06b6d4', '#22d3ee', '#ffffff'], origin: { y: 0.15, x: 0.85 } });
+                            } else if (newPoke.is_super_poke) {
+                                confetti({ particleCount: 80, spread: 60, colors: ['#facc15', '#fbbf24', '#ffffff'], origin: { y: 0.15, x: 0.85 } });
+                            }
+
                             // Play notification sound
                             const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
                             audio.play().catch(e => console.log(e));
@@ -146,6 +154,13 @@ export default function PokeNotifications({ currentUser }) {
                                  sessionStorage.removeItem(dismissedKey);
                                  setShowNotifications(true);
                                  
+                                 // Confetti burst for premium pokes!
+                                 if (newPoke.is_diamond_poke) {
+                                     confetti({ particleCount: 100, spread: 80, colors: ['#06b6d4', '#22d3ee', '#ffffff'], origin: { y: 0.15, x: 0.85 } });
+                                 } else if (newPoke.is_super_poke) {
+                                     confetti({ particleCount: 80, spread: 60, colors: ['#facc15', '#fbbf24', '#ffffff'], origin: { y: 0.15, x: 0.85 } });
+                                 }
+
                                  // Play sound
                                  const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
                                  audio.play().catch(e => console.log(e));

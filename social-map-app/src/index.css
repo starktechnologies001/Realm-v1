@@ -319,9 +319,24 @@ html[data-theme-premium="sunset_orange"] body {
 }
 
 /* Avatar Rings */
+@keyframes silverShimmer {
+  0% {
+    border-color: #d1d5db;
+    box-shadow: 0 0 0 2px #f3f4f6, 0 0 4px rgba(209, 213, 219, 0.4), 0 4px 12px rgba(0,0,0,0.3) !important;
+  }
+  50% {
+    border-color: #f3f4f6;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 12px rgba(243, 244, 246, 0.8), 0 4px 16px rgba(0,0,0,0.4) !important;
+  }
+  100% {
+    border-color: #d1d5db;
+    box-shadow: 0 0 0 2px #f3f4f6, 0 0 4px rgba(209, 213, 219, 0.4), 0 4px 12px rgba(0,0,0,0.3) !important;
+  }
+}
+
 .avatar-ring-silver {
   border: 3.5px solid #d1d5db !important;
-  box-shadow: 0 0 0 2px #f3f4f6, 0 4px 12px rgba(0,0,0,0.3) !important;
+  animation: silverShimmer 2.5s infinite ease-in-out !important;
 }
 
 .avatar-ring-gold {

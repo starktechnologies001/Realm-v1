@@ -27,18 +27,15 @@ export function useSubscription() {
                 // Actually fetch from profiles to get the latest synced tier
                 const { data: profile, error } = await supabase
                     .from('profiles')
-                    .select('subscription_tier')
+                    .select('*')
                     .eq('id', session.user.id)
                     .single();
 
-                if (!error && profile?.subscription_tier) {
-                    setTier(profile.subscription_tier);
+                if (!error && profile) {
+                    setTier(profile.subscription_tier || 'free');
                     
-                    // Update local storage
-                    if (cachedUser) {
-                        cachedUser.subscription_tier = profile.subscription_tier;
-                        localStorage.setItem('currentUser', JSON.stringify(cachedUser));
-                    }
+                    // Update local storage entirely to sync all premium custom attributes
+                    localStorage.setItem('currentUser', JSON.stringify(profile));
                 }
             } catch (err) {
                 console.error("Error fetching subscription:", err);

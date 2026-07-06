@@ -350,7 +350,12 @@ export default function UserProfilePage() {
     const joinedDate = formatJoinDate(details.joinedAt);
     const isFriend = user.friendshipStatus === 'accepted';
     const isPublic = details.is_public;
-    const canSeeFullProfile = isFriend || isPublic;
+    let canSeeFullProfile = isFriend || isPublic;
+    if (user.profile_view_policy === 'nobody') {
+        canSeeFullProfile = false;
+    } else if (user.profile_view_policy === 'friends') {
+        canSeeFullProfile = isFriend;
+    }
 
     return (
         <div style={styles.page}>
@@ -385,8 +390,8 @@ export default function UserProfilePage() {
                 {/* Online badge */}
                 <div style={{
                     ...styles.onlineDot,
-                    background: (user.is_location_on && !user.hide_online_status) ? '#30d158' : '#555',
-                    boxShadow: (user.is_location_on && !user.hide_online_status) ? '0 0 0 2px #1c1c1e, 0 0 10px rgba(48,209,88,0.6)' : '0 0 0 2px #1c1c1e'
+                    background: (user.is_location_on && !user.hide_online_status && !user.hide_active_status) ? '#30d158' : '#555',
+                    boxShadow: (user.is_location_on && !user.hide_online_status && !user.hide_active_status) ? '0 0 0 2px #1c1c1e, 0 0 10px rgba(48,209,88,0.6)' : '0 0 0 2px #1c1c1e'
                 }} />
             </div>
 
@@ -402,10 +407,7 @@ export default function UserProfilePage() {
                     {user.subscription_tier === 'silver' && <span className="premium-badge silver" style={{ marginLeft: 8 }}>🥈 Silver Member</span>}
                     {user.subscription_tier === 'gold' && <span className="premium-badge gold" style={{ marginLeft: 8 }}>🥇 Gold Elite</span>}
                     {user.subscription_tier === 'diamond' && (
-                        <>
-                            <span className="premium-badge diamond" style={{ marginLeft: 8 }}>💎 Diamond Elite</span>
-                            <span className="premium-badge early-access" style={{ marginLeft: 8, background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>🧪 Early Access Member</span>
-                        </>
+                        <span className="premium-badge diamond" style={{ marginLeft: 8 }}>💎 Diamond Elite</span>
                     )}
                     {isFriend && <span style={styles.friendBadge}>🤝 Friend</span>}
                     {!isFriend && isPublic && <span style={styles.publicBadge}>🌍 Public</span>}
@@ -540,6 +542,28 @@ export default function UserProfilePage() {
                     </div>
                 )}
             </div>
+
+            {!canSeeFullProfile && (
+                <div style={{
+                    backgroundColor: 'rgba(24, 24, 27, 0.4)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    borderRadius: '24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 12,
+                    textAlign: 'center',
+                    padding: '30px 20px',
+                    margin: '0 16px 20px 16px'
+                }}>
+                    <span style={{ fontSize: '2.2rem', filter: 'drop-shadow(0 4px 8px rgba(139, 92, 246, 0.3))' }}>🔒</span>
+                    <h3 style={{ margin: 0, color: '#fff', fontSize: '1.25rem', fontWeight: 800 }}>Private Profile</h3>
+                    <p style={{ margin: 0, fontSize: '0.88rem', color: '#a1a1aa', lineHeight: 1.5, maxWidth: '280px' }}>
+                        This user's privacy policy restricts profile access. Send a Poke request to connect and view details!
+                    </p>
+                </div>
+            )}
 
             {/* Action Buttons — BELOW bio */}
             {currentUser?.id !== user?.id && (

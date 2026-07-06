@@ -45,7 +45,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
         joinedAt: user.created_at || null,
         mutuals: 0,
         username: user.username || user.name, // fallback
-        isPublic: false
+        isPublic: false,
+        thought_bubble_style: user.thought_bubble_style || 'default',
+        thought_bubble_color: user.thought_bubble_color || null
     });
 
     // Fetch Details & Mutuals
@@ -53,10 +55,17 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
         if (!user || !currentUser) return;
 
         const fetchExtendedDetails = async () => {
+             // Record view
+             if (user.id !== currentUser.id) {
+                 import('../utils/premiumUtils').then(({ recordProfileView }) => {
+                     recordProfileView(user.id, currentUser.id);
+                 }).catch(err => console.warn(err));
+             }
+
              // 1. Fetch Profile Columns
              const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, interests, birth_date, created_at, username, full_name, is_public, relationship_status, hide_relationship_status, hide_online_status, hide_mood, hide_last_seen, hide_birthday, hide_institute, institute, subscription_tier, avatar_effect')
+                .select('bio, interests, birth_date, created_at, username, full_name, is_public, relationship_status, hide_relationship_status, hide_online_status, hide_mood, hide_last_seen, hide_birthday, hide_institute, institute, subscription_tier, avatar_effect, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy')
                 .eq('id', user.id)
                 .maybeSingle();
             
@@ -96,7 +105,12 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                      hide_institute: profile.hide_institute,
                      institute: profile.institute,
                      subscription_tier: profile.subscription_tier,
-                     avatar_effect: profile.avatar_effect
+                     avatar_effect: profile.avatar_effect,
+                     thought_bubble_style: profile.thought_bubble_style || 'default',
+                     thought_bubble_color: profile.thought_bubble_color || null,
+                     hide_distance: profile.hide_distance,
+                     hide_active_status: profile.hide_active_status,
+                     profile_view_policy: profile.profile_view_policy || 'everyone'
                  });
              }
         };
@@ -140,12 +154,18 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const institute = details.institute && !details.hide_institute ? details.institute : null;
     const isPublic = details.isPublic;
     const isFriend = user.friendshipStatus === 'accepted';
-    const canSeeFullProfile = isFriend || isPublic;
+    let canSeeFullProfile = isFriend || isPublic;
+    if (details.profile_view_policy === 'nobody') {
+        canSeeFullProfile = false;
+    } else if (details.profile_view_policy === 'friends') {
+        canSeeFullProfile = isFriend;
+    }
 
     // Check if the thought has expired (3 hours)
     const rawThoughtText = user.thought || user.status_message;
     const parsedThought = parseThought(rawThoughtText);
     const thoughtText = parsedThought.text;
+    const bubbleColor = parsedThought.color || details.thought_bubble_color || '#f3d9fa';
     const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
     const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;
@@ -215,7 +235,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                                 alt={user.name} 
                                 className="avatar-main"
                             />
-                             <div className={`status-dot-large ${(user.isLocationOn && !details.hide_online_status) ? 'online' : 'offline'}`} />
+                             <div className={`status-dot-large ${(user.isLocationOn && !details.hide_online_status && !details.hide_active_status) ? 'online' : 'offline'}`} />
                         </div>
                         
                         <h2 className="user-name">{user.name}</h2>
@@ -264,10 +284,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                                 <span className="premium-badge gold">🥇 Gold Elite</span>
                             )}
                             {(user.subscription_tier || details.subscription_tier) === 'diamond' && (
-                                <>
-                                    <span className="premium-badge diamond">💎 Diamond Elite</span>
-                                    <span className="premium-badge early-access" style={{ background: 'rgba(255, 149, 0, 0.15)', color: '#ff9500', border: '1px solid rgba(255, 149, 0, 0.3)' }}>🧪 Early Access Member</span>
-                                </>
+                                <span className="premium-badge diamond">💎 Diamond Elite</span>
                             )}
 
                             {isFriend && (
@@ -292,7 +309,12 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         {/* Uploaded Status / Thought */}
                         {(isPublic || isFriend) && displayThought && (
                             <div className="thought-bubble-container">
-                                <span className="thought-bubble">{displayThought}</span>
+                                <span 
+                                    className={`thought-bubble ${details.thought_bubble_style && details.thought_bubble_style !== 'default' ? `style-${details.thought_bubble_style}` : ''}`}
+                                    style={(!details.thought_bubble_style || details.thought_bubble_style === 'default') ? { backgroundColor: bubbleColor } : {}}
+                                >
+                                    {displayThought}
+                                </span>
                             </div>
                         )}
                     </div>
@@ -364,6 +386,16 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         </div>
                     )}
 
+                    {!canSeeFullProfile && (
+                        <div className="info-section" style={{ textAlign: 'center', padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', margin: '12px 0' }}>
+                            <span style={{ fontSize: '1.8rem' }}>🔒</span>
+                            <h4 style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>Private Profile</h4>
+                            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                                This user's privacy policy restricts profile access. Send a Poke request to connect!
+                            </p>
+                        </div>
+                    )}
+
                     {/* Actions */}
                     {!isOwner && (
                         <div className="action-buttons-container">
@@ -424,6 +456,14 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                         -webkit-backdrop-filter: blur(25px);
                         border: 1px solid var(--glass-border);
                         box-shadow: 0 40px 80px rgba(0,0,0,0.4);
+                    }
+
+                    .profile-card-diamond .user-name {
+                        color: #06b6d4 !important;
+                        text-shadow: 0 0 12px rgba(6, 182, 212, 0.5) !important;
+                    }
+                    .profile-card-diamond .user-handle {
+                        color: #cffafe !important;
                     }
 
                     .user-profile-card {

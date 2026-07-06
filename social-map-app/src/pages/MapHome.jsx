@@ -277,8 +277,9 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
                 expandedThoughtId === u.id // PASS isExpanded
             );
 
+            const isDiamond = u?.subscription_tier === 'diamond';
             const isBoosted = u?.thought_boosted_at && (new Date(u.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
-            const zIndexOffset = isBoosted ? 2000 : 100;
+            const zIndexOffset = isDiamond ? 5000 : isBoosted ? 2000 : 100;
 
             if (!marker) {
                 // Create native Leaflet marker
@@ -588,6 +589,9 @@ export default function MapHome() {
         interests: '',
         onlineOnly: false,
         distanceMax: 5,
+        premiumOnly: false,
+        verifiedOnly: false,
+        recentlyActiveOnly: false,
         enabled: false
     });
     const [showDiamondFilterPanel, setShowDiamondFilterPanel] = useState(false);
@@ -611,6 +615,25 @@ export default function MapHome() {
             return null;
         }
     });
+
+    useEffect(() => {
+        if (currentUser && currentUser.subscription_tier !== 'diamond') {
+            setDiamondFilters({
+                gender: 'All',
+                ageMin: 18,
+                ageMax: 99,
+                relationshipStatus: 'All',
+                interests: '',
+                onlineOnly: false,
+                distanceMax: 5,
+                premiumOnly: false,
+                verifiedOnly: false,
+                recentlyActiveOnly: false,
+                enabled: false
+            });
+        }
+    }, [currentUser?.subscription_tier]);
+
     const [toastMsg, setToastMsg] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportTarget, setReportTarget] = useState(null);
@@ -645,14 +668,16 @@ export default function MapHome() {
     const [showThoughtInput, setShowThoughtInput] = useState(false);
     const [myThought, setMyThought] = useState('');
     const [selectedColor, setSelectedColor] = useState('#f3d9fa'); // Lavender by default
+    const [selectedThoughtStyle, setSelectedThoughtStyle] = useState('default');
     const [selectedPrivacy, setSelectedPrivacy] = useState('everyone');
     const [isBoostSelected, setIsBoostSelected] = useState(false);
 
     useEffect(() => {
         if (showThoughtInput) {
             setIsBoostSelected(false);
+            setSelectedThoughtStyle(currentUser?.thought_bubble_style || 'default');
         }
-    }, [showThoughtInput]);
+    }, [showThoughtInput, currentUser?.thought_bubble_style]);
 
     const [thoughtReactions, setThoughtReactions] = useState({});
     const [expandedThoughtId, setExpandedThoughtId] = useState(null);
@@ -1599,7 +1624,7 @@ export default function MapHome() {
                     // Fetch all profiles with only needed fields
                     supabase
                         .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since, subscription_tier, avatar_effect, interests, birth_date')
+                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since, subscription_tier, avatar_effect, interests, birth_date, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy')
                         .neq('id', currentUser.id)
                         .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
                         .not('latitude', 'is', null)
@@ -1792,6 +1817,8 @@ export default function MapHome() {
                             visibility_mode: u.visibility_mode,
                             subscription_tier: u.subscription_tier || 'free',
                             avatar_effect: u.avatar_effect || 'none',
+                            thought_bubble_style: u.thought_bubble_style || 'default',
+                            thought_bubble_color: u.thought_bubble_color || null,
                             interests: u.interests || [],
                             birth_date: u.birth_date || null,
                             // PRIVACY CHECK: Only show story if public OR friends
@@ -2497,6 +2524,7 @@ export default function MapHome() {
         try {
             const updates = {
                 status_message: formattedThought,
+                thought_bubble_style: currentUser.subscription_tier !== 'free' ? selectedThoughtStyle : 'default',
                 last_active: now,
                 status_updated_at: now
             };
@@ -2504,7 +2532,8 @@ export default function MapHome() {
             let updatedUser = { 
                 ...currentUser, 
                 thought: formattedThought, 
-                thoughtTime: Date.now() 
+                thoughtTime: Date.now(),
+                thought_bubble_style: currentUser.subscription_tier !== 'free' ? selectedThoughtStyle : 'default'
             };
 
             if (isBoostSelected) {
@@ -2566,6 +2595,7 @@ export default function MapHome() {
                             thought: formattedThought,
                             status_updated_at: now,
                             lastActive: now,
+                            thought_bubble_style: currentUser.subscription_tier !== 'free' ? selectedThoughtStyle : 'default',
                             ...(isBoostSelected ? {
                                 thought_boosted_at: now,
                                 daily_thought_boost_count: updatedUser.daily_thought_boost_count,
@@ -3003,11 +3033,17 @@ export default function MapHome() {
         // Caching the icon object prevents React-Leaflet from destroying the DOM node and allows CSS transitions to run smoothly.
         const isGhost = isSelf && (currentUser?.visibility_mode === 'ghost' || currentUser?.is_ghost_mode);
         
+        // Retrieve user tier, effect and bubble style dynamically
+        const u = isSelf ? currentUser : nearbyUsers.find(usr => usr.id === id);
+        const tier = u?.subscription_tier || 'free';
+        const effect = u?.avatar_effect || 'none';
+        const styleTheme = u?.thought_bubble_style || 'default';
+
         const reactionsList = (id && thoughtReactions[id]) || [];
         const reactionsKey = reactionsList.map(r => `${r.user_id}:${r.reaction_type}`).sort().join(',');
         const repliesKey = isSelf ? thoughtReplies.length : 0;
         // Prefix invalidates old cached icons when HTML template changes
-        const cacheKey = `v8_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}_${thoughtUpdatedAt}_${reactionsKey}_${isExpanded}_${repliesKey}`;
+        const cacheKey = `v9_${url}_${isSelf}_${thought}_${name}_${status}_${isGhost}_${mood}_${moodUpdatedAt}_${animationDelay}_${activityStatus}_${id}_${thoughtUpdatedAt}_${reactionsKey}_${isExpanded}_${repliesKey}_${tier}_${effect}_${styleTheme}`;
         
         if (iconCache.current.has(cacheKey)) {
             return iconCache.current.get(cacheKey);
@@ -3015,11 +3051,6 @@ export default function MapHome() {
 
         let className = 'avatar-marker';
         let style = `background-image: url('${url}'); background-size: cover; background-position: center; border-radius: 50%;`;
-
-        // Retrieve user tier and effect dynamically
-        const u = isSelf ? currentUser : nearbyUsers.find(usr => usr.id === id);
-        const tier = u?.subscription_tier || 'free';
-        const effect = u?.avatar_effect || 'none';
 
         if (tier === 'silver') {
             className += ' avatar-ring-silver';
@@ -3076,22 +3107,7 @@ export default function MapHome() {
         };
         const bubbleBorderColor = getDarkerBorderColor(bubbleColor);
 
-        let expiryHTML = '';
-        if (thoughtText && thoughtUpdatedAt) {
-            const diffMs = Date.now() - new Date(thoughtUpdatedAt).getTime();
-            const diffHours = diffMs / (1000 * 60 * 60);
-            const remainingHours = Math.max(0, 3 - diffHours);
-            if (remainingHours > 0) {
-                let timeStr = '';
-                if (remainingHours < 1) {
-                    const mins = Math.round(remainingHours * 60);
-                    timeStr = `${mins}m`;
-                } else {
-                    timeStr = `${Math.round(remainingHours)}h`;
-                }
-                expiryHTML = `<span class="thought-expiry" style="font-size: 0.65rem; color: #8e8e93; margin-left: 6px; display: inline-flex; align-items: center; gap: 2px;">⏱️ ${timeStr}</span>`;
-            }
-        }
+        const expiryHTML = ''; // Disabling remaining time display on map thought bubbles per user request
 
         const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
         const reactionCounts = {};
@@ -3127,20 +3143,27 @@ export default function MapHome() {
         ` : '';
 
         const isBoosted = u?.thought_boosted_at && (new Date(u.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
-        const bubbleClasses = `thought-bubble ${isBoosted ? 'thought-boosted' : ''}`;
+        const bubbleStyle = u?.thought_bubble_style || 'default';
+        const styleClass = bubbleStyle !== 'default' ? `style-${bubbleStyle}` : '';
+        const bubbleClasses = `thought-bubble ${isBoosted ? 'thought-boosted' : ''} ${styleClass}`;
+        const isDefaultStyle = bubbleStyle === 'default';
+
+        const inlineBackgroundStyle = isDefaultStyle ? `background: ${bubbleColor} !important;` : '';
+        const inlineBorderStyle = isDefaultStyle ? `border: 1.2px solid ${isBoosted ? '#facc15' : bubbleBorderColor} !important;` : '';
+        const inlineColorStyle = isDefaultStyle ? 'color: #111827 !important;' : '';
 
         const thoughtHTML = thoughtText
-            ? `<div class="${bubbleClasses}" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${isBoosted ? '#facc15' : bubbleBorderColor}; background: ${bubbleColor} !important; border: 1.5px solid ${isBoosted ? '#facc15' : bubbleBorderColor} !important; color: #111827 !important; padding: 8px 32px 8px 12px !important; border-radius: 18px !important; pointer-events: auto !important; cursor: pointer;">
-                 <div class="thought-author" style="color: ${isSelf ? '#3b82f6' : '#64748b'} !important; font-weight: 800; font-size: 0.65rem; display: flex; align-items: center; justify-content: space-between; letter-spacing: 0.8px; text-transform: uppercase;">
+            ? `<div class="${bubbleClasses}" onclick="event.stopPropagation(); if(window.handleThoughtClick) window.handleThoughtClick('${id}');" style="--bubble-bg: ${bubbleColor}; --bubble-border: ${isBoosted ? '#facc15' : bubbleBorderColor}; ${inlineBackgroundStyle} ${inlineBorderStyle} ${inlineColorStyle} padding: 5px 24px 5px 8px !important; border-radius: 12px !important; pointer-events: auto !important; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+                 <div class="thought-author" style="${isDefaultStyle ? `color: ${isSelf ? '#3b82f6' : '#64748b'} !important;` : ''} font-weight: 800; font-size: 0.55rem; display: flex; align-items: center; justify-content: center; letter-spacing: 0.6px; text-transform: uppercase; text-align: center; width: 100%;">
                      <span>${isBoosted ? '🚀 Boosted' : name}</span>
                      ${expiryHTML}
                  </div>
-                 <div class="thought-content" style="color: #111827 !important; font-weight: 700; font-size: 0.85rem; letter-spacing: -0.015em; line-height: 1.35; margin-top: 1px;">
+                 <div class="thought-content" style="${inlineColorStyle} font-weight: 700; font-size: 0.72rem; letter-spacing: -0.015em; line-height: 1.25; margin-top: 0px; text-align: center; width: 100%;">
                     ${thoughtText}
                  </div>
                  ${reactionsHTML}
                  ${expandedBarHTML}
-                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thoughtText.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 4px; top: 8px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #666; padding: 4px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
+                 ${!isSelf ? `<button class="thought-reply-dots" onclick="event.stopPropagation(); if(window.handleThoughtReplyClick) window.handleThoughtReplyClick('${id}', \`${thoughtText.replace(/`/g, '\\`').replace(/"/g, '&quot;')}\`);" style="position: absolute; right: 2px; top: 4px; background: none; border: none; font-size: 1rem; cursor: pointer; color: #666; padding: 2px; display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; pointer-events: auto;" title="Reply to thought">⋮</button>` : ''}
                </div>`
             : '';
 
@@ -3300,6 +3323,24 @@ export default function MapHome() {
                     if (distKm > diamondFilters.distanceMax) return false;
                 }
 
+                // 7. Premium Users filter
+                if (diamondFilters.premiumOnly) {
+                    if (!u.subscription_tier || u.subscription_tier === 'free') return false;
+                }
+
+                // 8. Verified Users filter
+                if (diamondFilters.verifiedOnly) {
+                    if (!u.email_verified) return false;
+                }
+
+                // 9. Recently Active filter (active within last 24 hours)
+                if (diamondFilters.recentlyActiveOnly) {
+                    const lastAct = u.lastActive || u.last_seen || u.last_active;
+                    if (!lastAct) return false;
+                    const diff = Date.now() - new Date(lastAct).getTime();
+                    if (diff >= 24 * 60 * 60 * 1000) return false;
+                }
+
                 return true;
             });
             return visibleUsers;
@@ -3349,9 +3390,29 @@ export default function MapHome() {
     const searchResults = useMemo(() => {
         if (!searchQuery || searchQuery.trim().length === 0) return [];
         const query = searchQuery.toLowerCase().trim();
-        // Search against ALL nearby users (or potentially all valid users if we had them)
-        // For now, nearbyUsers is our client-side cache of "World" around us.
-        return nearbyUsers.filter(u => u.name.toLowerCase().includes(query));
+        return nearbyUsers
+            .filter(u => u.name && u.name.toLowerCase().includes(query))
+            .sort((a, b) => {
+                // Priority Discovery for Diamond Elite
+                const aDiamond = a.subscription_tier === 'diamond';
+                const bDiamond = b.subscription_tier === 'diamond';
+                if (aDiamond && !bDiamond) return -1;
+                if (!aDiamond && bDiamond) return 1;
+
+                // Boosted status (Gold)
+                const aBoosted = a.thought_boosted_at && (new Date(a.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+                const bBoosted = b.thought_boosted_at && (new Date(b.thought_boosted_at).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+                if (aBoosted && !bBoosted) return -1;
+                if (!aBoosted && bBoosted) return 1;
+
+                // Premium status (Gold/Silver)
+                const aPremium = a.subscription_tier === 'gold' || a.subscription_tier === 'silver';
+                const bPremium = b.subscription_tier === 'gold' || b.subscription_tier === 'silver';
+                if (aPremium && !bPremium) return -1;
+                if (!aPremium && bPremium) return 1;
+
+                return 0;
+            });
     }, [nearbyUsers, searchQuery]);
 
     const handleSearchResultClick = (user) => {
@@ -4244,8 +4305,38 @@ export default function MapHome() {
                                         className="search-result-item"
                                         onClick={() => handleSearchResultClick(user)}
                                     >
-                                        <img src={getAvatar2D(user.avatar)} alt={user.name} className="search-result-avatar" />
-                                        <span>{user.name}</span>
+                                        <div className={`search-result-avatar-container ${
+                                            user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                                            user.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                                            user.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                                        }`} style={{ 
+                                            width: '28px', 
+                                            height: '28px', 
+                                            padding: user.subscription_tier && user.subscription_tier !== 'free' ? '1.5px' : '0px', 
+                                            borderRadius: '50%', 
+                                            marginRight: '10px', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            flexShrink: 0
+                                        }}>
+                                            <img 
+                                                src={getAvatar2D(user.avatar)} 
+                                                alt={user.name} 
+                                                style={{ 
+                                                    width: '100%', 
+                                                    height: '100%', 
+                                                    borderRadius: '50%', 
+                                                    objectFit: 'cover' 
+                                                }} 
+                                            />
+                                        </div>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', fontWeight: 600, color: '#f4f4f5' }}>
+                                            {user.name}
+                                            {user.subscription_tier === 'silver' && <span style={{ fontSize: '0.8rem' }} title="Silver Member">🥈</span>}
+                                            {user.subscription_tier === 'gold' && <span style={{ fontSize: '0.8rem' }} title="Gold Member">🥇</span>}
+                                            {user.subscription_tier === 'diamond' && <span style={{ fontSize: '0.8rem' }} title="Diamond Member">💎</span>}
+                                        </span>
                                     </div>
                                 ))}
                             </div>
@@ -5066,6 +5157,45 @@ export default function MapHome() {
                                 </label>
                             </div>
 
+                            {/* Premium Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Premium Members Only 💎</span>
+                                <label className="toggle-switch">
+                                    <input 
+                                        type="checkbox"
+                                        checked={diamondFilters.premiumOnly}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, premiumOnly: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Verified Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Verified Users Only ✅</span>
+                                <label className="toggle-switch">
+                                    <input 
+                                        type="checkbox"
+                                        checked={diamondFilters.verifiedOnly}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, verifiedOnly: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            {/* Recently Active Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Active within 24h Only 🕒</span>
+                                <label className="toggle-switch">
+                                    <input 
+                                        type="checkbox"
+                                        checked={diamondFilters.recentlyActiveOnly}
+                                        onChange={e => setDiamondFilters(prev => ({ ...prev, recentlyActiveOnly: e.target.checked }))}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+
                             {/* Distance range */}
                             <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <label className="setting-label" style={{ color: '#aaa', fontSize: '0.8rem', fontWeight: 600 }}>Distance Limit: {diamondFilters.distanceMax} km</label>
@@ -5102,6 +5232,9 @@ export default function MapHome() {
                                         interests: '',
                                         onlineOnly: false,
                                         distanceMax: 5,
+                                        premiumOnly: false,
+                                        verifiedOnly: false,
+                                        recentlyActiveOnly: false,
                                         enabled: false
                                     });
                                     setShowDiamondFilterPanel(false);
@@ -5176,6 +5309,51 @@ export default function MapHome() {
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Premium Thought Style selection (Silver and above) */}
+                            {currentUser?.subscription_tier && currentUser?.subscription_tier !== 'free' ? (
+                                <div className="setting-section">
+                                    <label className="setting-label">Premium Theme</label>
+                                    <div className="theme-circles-row" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                        {[
+                                            { name: 'Default', value: 'default' },
+                                            { name: 'Purple Glow', value: 'purple' },
+                                            { name: 'Neon Blue', value: 'blue' },
+                                            { name: 'Glassmorphism', value: 'glass' },
+                                            { name: 'Sunset Gradient', value: 'gradient' }
+                                        ].map(themeObj => (
+                                            <button
+                                                key={themeObj.value}
+                                                type="button"
+                                                className={`theme-chip-btn ${selectedThoughtStyle === themeObj.value ? 'selected' : ''}`}
+                                                onClick={() => setSelectedThoughtStyle(themeObj.value)}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    borderRadius: '20px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    background: selectedThoughtStyle === themeObj.value ? 'rgba(0,132,255,0.15)' : 'rgba(255,255,255,0.05)',
+                                                    border: selectedThoughtStyle === themeObj.value ? '1.5px solid #0084ff' : '1.5px solid rgba(255,255,255,0.1)',
+                                                    color: selectedThoughtStyle === themeObj.value ? '#0084ff' : '#ccc',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                            >
+                                                {themeObj.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="setting-section" style={{ opacity: 0.7, cursor: 'pointer' }} onClick={() => { setShowThoughtInput(false); navigate('/subscription'); }}>
+                                    <label className="setting-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        Premium Theme <span style={{ fontSize: '0.8rem' }}>🔒</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '4px' }}>
+                                        Unlock Purple Glow, Glassmorphism, and Gradients with Silver Premium!
+                                    </div>
+                                </div>
+                            )}
                             
                             {/* Privacy selector */}
                             <div className="setting-section">

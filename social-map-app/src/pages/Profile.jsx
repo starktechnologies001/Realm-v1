@@ -63,13 +63,17 @@ export default function Profile() {
 
     // Profile states
     const [friendsCount, setFriendsCount] = useState(0);
+    const [thoughtsCount, setThoughtsCount] = useState(0);
     const [unlockedAchievements, setUnlockedAchievements] = useState([]);
+    const [visitors, setVisitors] = useState([]);
 
     const { 
         locationEnabled,
         startLocation,
         stopLocation
     } = useLocationContext();
+    const isGoldOrAbove = user?.subscription_tier === 'gold' || user?.subscription_tier === 'diamond';
+    const isDiamond = user?.subscription_tier === 'diamond';
 
     const [cropImage, setCropImage] = useState(null); // State for cropping
 
@@ -185,7 +189,35 @@ export default function Profile() {
                     .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
                 setFriendsCount(count || 0);
 
+                // Fetch actual thoughts count
+                const { count: tCount } = await supabase
+                    .from('stories')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', user.id);
+                setThoughtsCount(tCount || 0);
 
+                // 2. Fetch profile visitors (last 30 days)
+                const { data: vData } = await supabase
+                    .from('profile_views')
+                    .select('created_at, viewer:profiles!viewer_id(id, username, full_name, avatar_url, gender, subscription_tier)')
+                    .eq('profile_owner_id', user.id)
+                    .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+                    .order('created_at', { ascending: false });
+
+                let unique = [];
+                if (vData) {
+                    const seen = new Set();
+                    vData.forEach(v => {
+                        if (v.viewer && !seen.has(v.viewer.id)) {
+                            seen.add(v.viewer.id);
+                            unique.push({
+                                created_at: v.created_at,
+                                visitor: v.viewer
+                            });
+                        }
+                    });
+                }
+                setVisitors(unique);
 
                 // 3. Compute achievements
                 import('../utils/premiumUtils').then(({ checkUnlockedAchievements }) => {
@@ -623,7 +655,7 @@ export default function Profile() {
                 </div>
                 <div className="stats-item">
                     <span className="stats-icon">💭</span>
-                    <span className="stats-value">18 Thoughts</span>
+                    <span className="stats-value">{thoughtsCount} Thoughts</span>
                 </div>
                 <div className="stats-item" onClick={() => navigate('/profile/streak')} style={{ cursor: 'pointer' }}>
                     <span className="stats-icon">🔥</span>
@@ -684,6 +716,89 @@ export default function Profile() {
                     onClick={() => navigate('/profile/insights')}
                 />
             </div>
+
+            {/* Profile Visitors Section */}
+            {user.subscription_tier && user.subscription_tier !== 'free' ? (
+                <div className="profile-visitors-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #71717a)' }}>
+                            👀 Recent Profile Visitors
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#7C3AED', fontWeight: 600, cursor: 'pointer' }} onClick={() => navigate('/profile/insights')}>
+                            View Analytics &rarr;
+                        </span>
+                    </div>
+
+                    {visitors.length === 0 ? (
+                        <div style={{ color: 'var(--text-secondary, #71717a)', fontSize: '0.85rem', textAlign: 'center', padding: '10px 0' }}>
+                            No visitors in the last 30 days.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {visitors.slice(0, 5).map((v, idx) => {
+                                const visitorProfile = v.visitor || {};
+                                const name = visitorProfile.full_name || visitorProfile.username || 'Visitor';
+                                const avatar = getAvatar2D(visitorProfile.avatar_url || (visitorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : visitorProfile.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR));
+                                const tier = visitorProfile.subscription_tier || 'free';
+                                return (
+                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div className={`avatar-container ${
+                                                tier === 'silver' ? 'avatar-ring-silver' :
+                                                tier === 'gold' ? 'avatar-ring-gold' :
+                                                tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                                            }`} style={{ width: '36px', height: '36px', padding: tier !== 'free' ? '1.5px' : '0px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <img src={avatar} alt={name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span className="visitor-name">
+                                                    {name}
+                                                </span>
+                                                <span className="visitor-time">
+                                                    {formatRelativeTime(v.created_at)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            className="visitor-btn"
+                                            onClick={() => navigate('/chat', { state: { targetUser: visitorProfile } })}
+                                        >
+                                            Message
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="profile-visitors-card" style={{
+                    margin: '0 16px 16px 16px',
+                    background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    padding: '20px',
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                    cursor: 'pointer'
+                }} onClick={() => navigate('/subscription')}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#a1a1aa' }}>
+                            👀 Profile Visitors
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 700 }}>
+                            🔒 Locked
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
+                        <span style={{ fontSize: '1.2rem', color: '#f4f4f5', fontWeight: 700 }}>
+                            {visitors.length} {visitors.length === 1 ? 'person' : 'people'} viewed your profile this week
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#a1a1aa', fontWeight: 500 }}>
+                            Upgrade to Silver to see who viewed you.
+                        </span>
+                    </div>
+                </div>
+            )}
 
             <div className="scroll-content">
 
@@ -1564,9 +1679,63 @@ export default function Profile() {
                                             <span className="toggle-slider"></span>
                                         </label>
                                     </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Distance</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_distance || false}
+                                                onChange={async (e) => await updateProfile({ hide_distance: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Hide Active Status</span>
+                                        <label className="toggle-switch">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={user.hide_active_status || false}
+                                                onChange={async (e) => await updateProfile({ hide_active_status: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    {/* Invisible Browsing (Diamond gated) */}
+                                    <div className="toggle-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: isDiamond ? 1 : 0.6 }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <span>Invisible Browsing 🕶️</span>
+                                            <span style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>{!isDiamond ? "Requires Diamond Elite" : "Browse profiles without logging visits"}</span>
+                                        </div>
+                                        <label className="toggle-switch" style={{ pointerEvents: isDiamond ? 'auto' : 'none' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                disabled={!isDiamond}
+                                                checked={user.invisible_browsing || false}
+                                                onChange={async (e) => await updateProfile({ invisible_browsing: e.target.checked })}
+                                            />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    {/* Profile View Policy selector */}
+                                    <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                                        <label className="setting-label" style={{ fontSize: '0.88rem', fontWeight: 600 }}>Who can view your profile?</label>
+                                        <select 
+                                            value={user.profile_view_policy || 'everyone'}
+                                            onChange={async (e) => await updateProfile({ profile_view_policy: e.target.value })}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#2c2c2e', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', outline: 'none' }}
+                                        >
+                                            <option value="everyone">Everyone</option>
+                                            <option value="friends">Friends Only</option>
+                                            <option value="nobody">Nobody</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div className="modal-footer">
-                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Done</button>
+                                    <button onClick={() => { setActiveModal('privacy-settings'); }} className="btn-sec">Back</button>
+                                    <button onClick={() => setActiveModal(null)} className="btn-pri">Done</button>
                                 </div>
                             </>
                         )}
@@ -1630,6 +1799,20 @@ export default function Profile() {
                                         value={user.visibility_mode === 'ghost' ? 'Ghost Mode' : user.visibility_mode === 'friends' ? 'Friends Only' : 'Public'}
                                         hasArrow={true}
                                         onClick={() => { setActiveModal(null); navigate('/visibility-settings'); }}
+                                    />
+                                    <MenuItem
+                                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+                                        label="Advanced Privacy Controls"
+                                        value={isGoldOrAbove ? "Manage custom privacy toggles" : "🔒 Gold Feature"}
+                                        hasArrow={true}
+                                        onClick={() => {
+                                            if (!isGoldOrAbove) {
+                                                setActiveModal(null);
+                                                navigate('/subscription');
+                                            } else {
+                                                setActiveModal('advanced-privacy');
+                                            }
+                                        }}
                                     />
                                     <MenuItem
                                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
