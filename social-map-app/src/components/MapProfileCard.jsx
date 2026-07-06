@@ -26,7 +26,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const parsedThought = parseThought(rawThoughtText);
     const thoughtText = parsedThought.text;
     const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
-    const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
+    const isThoughtExpired = !thoughtText || !thoughtTime || (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;
 
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
@@ -245,13 +245,28 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                 }}
             >
                 <motion.div 
-                    className="user-profile-card glass-panel"
-                    initial={{ y: "100%" }}
-                    animate={{ y: 0 }}
-                    exit={{ y: "100%" }}
-                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                    className={`user-profile-card glass-panel premium-${user.subscription_tier || 'free'}`}
+                    initial={{ y: "100%", scale: (user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 0.97 : 1 }}
+                    animate={{ y: 0, scale: 1 }}
+                    exit={{ y: "100%", scale: (user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 0.97 : 1 }}
+                    transition={{ type: "spring", damping: 25, stiffness: 280 }}
                     onClick={e => e.stopPropagation()}
                 >
+                    {user.subscription_tier === 'diamond' && (
+                        <>
+                            <div className="diamond-particles">
+                                <span style={{ left: '10%', animationDelay: '0s', animationDuration: '6s' }}></span>
+                                <span style={{ left: '30%', animationDelay: '1.5s', animationDuration: '5s' }}></span>
+                                <span style={{ left: '55%', animationDelay: '3s', animationDuration: '7s' }}></span>
+                                <span style={{ left: '75%', animationDelay: '4.5s', animationDuration: '6s' }}></span>
+                                <span style={{ left: '90%', animationDelay: '2s', animationDuration: '8s' }}></span>
+                            </div>
+                            <div className="vip-label">💎 VIP</div>
+                        </>
+                    )}
+                    {user.subscription_tier === 'gold' && (
+                        <div className="vip-label gold">🥇 GOLD</div>
+                    )}
                     <div className="card-drag-handle" />
                     
                     <div className="card-header">
@@ -1420,6 +1435,258 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         letter-spacing: 0.5px;
                         display: inline-flex;
                         align-items: center;
+                    }
+
+                    /* =========================================
+                       PREMIUM CARD GLOBAL STYLES
+                       ========================================= */
+                    
+                    /* VIP Label */
+                    .vip-label {
+                        position: absolute;
+                        top: 24px;
+                        right: 24px;
+                        background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+                        color: #ffffff;
+                        font-size: 0.72rem;
+                        font-weight: 800;
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        letter-spacing: 0.5px;
+                        box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35);
+                        z-index: 10;
+                        animation: bounceSoft 2s infinite alternate;
+                    }
+                    .vip-label.gold {
+                        background: linear-gradient(135deg, #facc15, #ca8a04);
+                        color: #000000;
+                        box-shadow: 0 4px 12px rgba(234, 179, 8, 0.35);
+                    }
+                    
+                    @keyframes bounceSoft {
+                        0% { transform: translateY(0); }
+                        100% { transform: translateY(-4px); }
+                    }
+
+                    /* =========================================
+                       SILVER PREMIUM CARD
+                       ========================================= */
+                    .user-profile-card.premium-silver {
+                        background: linear-gradient(135deg, rgba(30, 30, 35, 0.95), rgba(15, 15, 20, 0.97)) !important;
+                        border: 1px solid rgba(209, 213, 219, 0.15) !important;
+                        box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+                        animation: silverFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                    }
+                    @keyframes silverFadeUp {
+                        0% { opacity: 0; transform: translateY(80px); }
+                        100% { opacity: 1; transform: translateY(0); }
+                    }
+                    .premium-silver .avatar-large-container img {
+                        border: 2.5px solid #cbd5e1 !important;
+                        box-shadow: 0 0 15px rgba(203, 213, 225, 0.4) !important;
+                    }
+                    .premium-silver .action-btn.primary-action {
+                        background: linear-gradient(135deg, #cbd5e1, #94a3b8) !important;
+                        color: #0f172a !important;
+                        font-weight: 700 !important;
+                    }
+                    .premium-silver .action-btn.primary-action:hover {
+                        background: linear-gradient(135deg, #e2e8f0, #cbd5e1) !important;
+                        transform: translateY(-2px);
+                    }
+                    .premium-silver .action-btn:not(.primary-action) {
+                        background: rgba(255,255,255,0.06) !important;
+                        border: 1px solid rgba(209, 213, 219, 0.2) !important;
+                        color: #e2e8f0 !important;
+                    }
+                    .premium-silver .action-btn:not(.primary-action):hover {
+                        background: rgba(255,255,255,0.12) !important;
+                        transform: translateY(-2px);
+                    }
+
+                    /* =========================================
+                       GOLD PREMIUM CARD
+                       ========================================= */
+                    .user-profile-card.premium-gold {
+                        background: linear-gradient(135deg, rgba(20, 20, 25, 0.98), rgba(10, 10, 12, 0.99)) !important;
+                        border: 1px solid transparent !important;
+                        position: relative;
+                        box-shadow: 0 -12px 50px rgba(0, 0, 0, 0.6) !important;
+                    }
+                    /* Gold animated border */
+                    .user-profile-card.premium-gold::before {
+                        content: '';
+                        position: absolute;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        border-radius: inherit;
+                        padding: 1.5px;
+                        background: linear-gradient(135deg, #fef08a, #ca8a04, #b45309, #fef08a);
+                        background-size: 300% 300%;
+                        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                        -webkit-mask-composite: xor;
+                        mask-composite: exclude;
+                        pointer-events: none;
+                        z-index: 10;
+                        animation: goldBorderAnim 6s linear infinite;
+                    }
+                    @keyframes goldBorderAnim {
+                        0% { background-position: 0% 50%; }
+                        50% { background-position: 100% 50%; }
+                        100% { background-position: 0% 50%; }
+                    }
+                    /* Gold shine sweep */
+                    .user-profile-card.premium-gold::after {
+                        content: '';
+                        position: absolute;
+                        top: 0; left: -150%; width: 60%; height: 100%;
+                        background: linear-gradient(90deg, transparent, rgba(254, 240, 138, 0.18), transparent);
+                        transform: skewX(-25deg);
+                        pointer-events: none;
+                        z-index: 2;
+                        animation: goldShineSweep 3s ease-in-out infinite;
+                    }
+                    @keyframes goldShineSweep {
+                        0% { left: -150%; }
+                        30% { left: 150%; }
+                        100% { left: 150%; }
+                    }
+                    .premium-gold .avatar-large-container img {
+                        border: 3px solid #facc15 !important;
+                        box-shadow: 0 0 20px rgba(250, 204, 21, 0.5), 0 0 0 4px rgba(250, 204, 21, 0.1) !important;
+                        animation: goldGlow 3s ease-in-out infinite alternate;
+                    }
+                    @keyframes goldGlow {
+                        0% { box-shadow: 0 0 15px rgba(250, 204, 21, 0.4), 0 0 0 2px rgba(250, 204, 21, 0.05); }
+                        100% { box-shadow: 0 0 28px rgba(250, 204, 21, 0.75), 0 0 0 6px rgba(250, 204, 21, 0.15); }
+                    }
+                    .premium-gold .action-btn.primary-action {
+                        background: linear-gradient(135deg, #facc15, #eab308) !important;
+                        color: #000000 !important;
+                        font-weight: 750 !important;
+                        box-shadow: 0 4px 15px rgba(234, 179, 8, 0.4) !important;
+                        border: none !important;
+                    }
+                    .premium-gold .action-btn.primary-action:hover {
+                        background: linear-gradient(135deg, #fef08a, #facc15) !important;
+                        box-shadow: 0 6px 20px rgba(234, 179, 8, 0.6) !important;
+                        transform: translateY(-2px);
+                    }
+                    .premium-gold .action-btn:not(.primary-action) {
+                        background: rgba(250, 204, 21, 0.06) !important;
+                        border: 1px solid rgba(250, 204, 21, 0.25) !important;
+                        color: #fef08a !important;
+                    }
+                    .premium-gold .action-btn:not(.primary-action):hover {
+                        background: rgba(250, 204, 21, 0.12) !important;
+                        transform: translateY(-2px);
+                    }
+
+                    /* =========================================
+                       DIAMOND VIP PREMIUM CARD
+                       ========================================= */
+                    .user-profile-card.premium-diamond {
+                        background: linear-gradient(135deg, rgba(8, 10, 15, 0.99), rgba(3, 4, 6, 1)) !important;
+                        border: 1px solid transparent !important;
+                        position: relative;
+                        box-shadow: 0 -12px 60px rgba(6, 182, 212, 0.15), 0 -12px 40px rgba(0, 0, 0, 0.8) !important;
+                        animation: diamondVIPOpening 0.8s cubic-bezier(0.19, 1, 0.22, 1) !important;
+                    }
+                    @keyframes diamondVIPOpening {
+                        0% { transform: translateY(100%) scale(0.95); opacity: 0; }
+                        100% { transform: translateY(0) scale(1); opacity: 1; }
+                    }
+                    /* Diamond animated border */
+                    .user-profile-card.premium-diamond::before {
+                        content: '';
+                        position: absolute;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        border-radius: inherit;
+                        padding: 2px;
+                        background: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6, #06b6d4);
+                        background-size: 300% 300%;
+                        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                        -webkit-mask-composite: xor;
+                        mask-composite: exclude;
+                        pointer-events: none;
+                        z-index: 10;
+                        animation: diamondBorderAnim 5s linear infinite;
+                    }
+                    @keyframes diamondBorderAnim {
+                        0% { background-position: 0% 50%; }
+                        50% { background-position: 100% 50%; }
+                        100% { background-position: 0% 50%; }
+                    }
+                    /* Diamond crystalline reflection shine sweep */
+                    .user-profile-card.premium-diamond::after {
+                        content: '';
+                        position: absolute;
+                        top: 0; left: -180%; width: 70%; height: 100%;
+                        background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.25), rgba(139, 92, 246, 0.15), transparent);
+                        transform: skewX(-30deg);
+                        pointer-events: none;
+                        z-index: 2;
+                        animation: diamondShineSweep 4s ease-in-out infinite;
+                    }
+                    @keyframes diamondShineSweep {
+                        0% { left: -180%; }
+                        40% { left: 180%; }
+                        100% { left: 180%; }
+                    }
+                    /* Floating particles */
+                    .diamond-particles {
+                        position: absolute;
+                        top: 0; left: 0; width: 100%; height: 100%;
+                        overflow: hidden;
+                        pointer-events: none;
+                        z-index: 0;
+                    }
+                    .diamond-particles span {
+                        position: absolute;
+                        bottom: -10px;
+                        width: 4px; height: 4px;
+                        background: #06b6d4;
+                        border-radius: 50%;
+                        box-shadow: 0 0 8px #06b6d4;
+                        opacity: 0.5;
+                        animation: floatUp 6s linear infinite;
+                    }
+                    @keyframes floatUp {
+                        0% { transform: translateY(0) scale(1); opacity: 0; }
+                        10% { opacity: 0.55; }
+                        90% { opacity: 0.55; }
+                        100% { transform: translateY(-320px) scale(0.6); opacity: 0; }
+                    }
+                    .premium-diamond .avatar-large-container img {
+                        border: 3px solid #06b6d4 !important;
+                        box-shadow: 0 0 25px rgba(6, 182, 212, 0.6), 0 0 0 4px rgba(6, 182, 212, 0.1) !important;
+                        animation: diamondGlow 3s ease-in-out infinite alternate;
+                    }
+                    @keyframes diamondGlow {
+                        0% { box-shadow: 0 0 15px rgba(6, 182, 212, 0.4), 0 0 0 2px rgba(6, 182, 212, 0.05); }
+                        100% { box-shadow: 0 0 35px rgba(6, 182, 212, 0.8), 0 0 0 7px rgba(139, 92, 246, 0.2); }
+                    }
+                    .premium-diamond .action-btn.primary-action {
+                        background: linear-gradient(135deg, #06b6d4, #7c3aed) !important;
+                        color: #ffffff !important;
+                        font-weight: 750 !important;
+                        box-shadow: 0 4px 20px rgba(6, 182, 212, 0.45) !important;
+                        border: none !important;
+                        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                    }
+                    .premium-diamond .action-btn.primary-action:hover {
+                        background: linear-gradient(135deg, #22d3ee, #8b5cf6) !important;
+                        box-shadow: 0 6px 28px rgba(6, 182, 212, 0.7) !important;
+                        transform: translateY(-2.5px);
+                    }
+                    .premium-diamond .action-btn:not(.primary-action) {
+                        background: rgba(6, 182, 212, 0.05) !important;
+                        border: 1px solid rgba(6, 182, 212, 0.3) !important;
+                        color: #a5f3fc !important;
+                    }
+                    .premium-diamond .action-btn:not(.primary-action):hover {
+                        background: rgba(6, 182, 212, 0.12) !important;
+                        border-color: rgba(6, 182, 212, 0.5) !important;
+                        transform: translateY(-2px);
                     }
                     
                 `}</style>

@@ -167,7 +167,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
     const thoughtText = parsedThought.text;
     const bubbleColor = parsedThought.color || details.thought_bubble_color || '#f3d9fa';
     const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
-    const isThoughtExpired = thoughtText && thoughtTime && (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
+    const isThoughtExpired = !thoughtText || !thoughtTime || (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
     const displayThought = isThoughtExpired ? null : thoughtText;
 
 

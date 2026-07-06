@@ -4,6 +4,7 @@ import { useCall } from '../context/CallContext';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { checkUnlockedAchievements, ACHIEVEMENTS, calculateSmartMatchScore } from '../utils/premiumUtils';
+import { parseThought } from '../utils/locationPrivacy';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
@@ -389,7 +390,12 @@ export default function UserProfilePage() {
         canSeeFullProfile = isFriend;
     }
 
-    const displayThought = user.thought || user.status_message;
+    const rawThoughtText = user.thought || user.status_message;
+    const parsedThought = parseThought(rawThoughtText);
+    const thoughtText = parsedThought ? parsedThought.text : null;
+    const thoughtTime = user.thoughtTime || user.status_updated_at || user.statusUpdatedAt;
+    const isThoughtExpired = !thoughtText || !thoughtTime || (new Date(thoughtTime).getTime() < Date.now() - 3 * 60 * 60 * 1000);
+    const displayThought = isThoughtExpired ? null : thoughtText;
 
     return (
         <div style={styles.page}>
