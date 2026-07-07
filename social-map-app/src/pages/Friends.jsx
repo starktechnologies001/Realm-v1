@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { useCall } from '../context/CallContext';
 import { blockUser } from '../utils/blockUtils';
+import FullProfileModal from '../components/FullProfileModal';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
@@ -20,6 +21,7 @@ export default function Friends() {
     // Unfriend Modal State
     const [showUnfriendModal, setShowUnfriendModal] = useState(false);
     const [friendToUnfriend, setFriendToUnfriend] = useState(null);
+    const [selectedUser, setSelectedUser] = useState(null);
 
     const navigate = useNavigate();
 
@@ -272,31 +274,45 @@ export default function Friends() {
 
     const handleCardAction = async (action, user) => {
         if (action === 'message') {
-            setViewingProfile(null);
+            setSelectedUser(null);
             navigate('/chat', { state: { targetUser: user } });
         } else if (action === 'call-audio') {
-            setViewingProfile(null);
+            setSelectedUser(null);
              // Ensure user object has all needed fields for call context
              // "user" from Friends list might be missing some profile fields, but startCall handles basic object
             startCall(user, 'audio');
         } else if (action === 'call-video') {
-            setViewingProfile(null);
+            setSelectedUser(null);
             startCall(user, 'video');
         } else if (action === 'block') {
-             if (window.confirm(`Are you sure you want to block ${user.name}? They will no longer see you on the map.`)) {
+             setSelectedUser(null);
+             if (window.confirm(`Are you sure you want to block ${user.username || user.name || 'this user'}? They will no longer see you on the map.`)) {
                 const { success, error } = await blockUser(currentUser.id, user.id);
                 if (success) {
                     alert("User blocked successfully.");
                     setFriends(prev => prev.filter(f => f.id !== user.id)); // Remove from local list
                     setRequests(prev => prev.filter(r => r.id !== user.id));
-                    setViewingProfile(null);
                 } else {
                     alert("Failed to block user. Please try again.");
                     console.error("Block error:", error);
                 }
              }
         } else if (action === 'report') {
-            alert("Report submitted. Thank you for keeping the community safe.");
+            setSelectedUser(null);
+            const reason = prompt("Reason for reporting:");
+            if (reason) {
+                try {
+                    await supabase.from('reports').insert({
+                        reporter_id: currentUser.id,
+                        reported_id: user.id,
+                        reason: reason
+                    });
+                    alert("Report submitted. Thank you for keeping the community safe.");
+                } catch (err) {
+                    console.error("Error reporting user:", err);
+                    alert("Failed to submit report.");
+                }
+            }
         }
     };
 
@@ -347,11 +363,15 @@ export default function Friends() {
                             <div className="list">
                                 {requests.map(req => (
                                     <div key={req.id} className="friend-card request">
-                                        <div className={`avatar-container ${
-                                            req.subscription_tier === 'silver' ? 'avatar-ring-silver' :
-                                            req.subscription_tier === 'gold' ? 'avatar-ring-gold' :
-                                            req.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
-                                        }`} style={{ padding: req.subscription_tier ? 2 : 0, borderRadius: '50%' }}>
+                                        <div 
+                                            className={`avatar-container ${
+                                                req.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                                                req.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                                                req.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
+                                            }`} 
+                                            style={{ padding: req.subscription_tier ? 2 : 0, borderRadius: '50%', cursor: 'pointer' }}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedUser(req); }}
+                                        >
                                             <img 
                                                 src={(() => {
                                                 let avatarUrl = req.avatar_url;
@@ -368,7 +388,11 @@ export default function Friends() {
                                                 decoding="sync"
                                             />
                                         </div>
-                                        <div className="info" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <div 
+                                            className="info" 
+                                            style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'pointer' }}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedUser(req); }}
+                                        >
                                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                                                 {req.username}
                                                 {req.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
@@ -484,6 +508,15 @@ export default function Friends() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {selectedUser && (
+                <FullProfileModal
+                    user={selectedUser}
+                    currentUser={currentUser}
+                    onClose={() => setSelectedUser(null)}
+                    onAction={handleCardAction}
+                />
             )}
 
             <style>{`

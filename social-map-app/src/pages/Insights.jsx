@@ -113,6 +113,13 @@ export default function Insights() {
                     .eq('receiver_id', user.id)
                     .eq('status', 'pending');
 
+                // 4b. Fetch actual super pokes count
+                const { count: superPokesCount } = await supabase
+                    .from('friendships')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('receiver_id', user.id)
+                    .eq('is_super_poke', true);
+
                 // 5. Fetch friends count
                 const { count: friendsCount } = await supabase
                     .from('friendships')
@@ -193,7 +200,7 @@ export default function Insights() {
                     profileViews: vData?.length || 0,
                     thoughtViews: tViews?.length || 0,
                     reactorsCount: rxData?.length || 0,
-                    superPokes: pokesCount || 0,
+                    superPokes: superPokesCount || 0,
                     newVisitors: newVisitorsVal,
                     totalChats: chatPartners.size,
                     friendRequests: pokesCount || 0,

@@ -289,17 +289,15 @@ export default function PokeNotifications({ currentUser }) {
                                 <div className="poke-info">
                                     <span className={`poke-title-label ${poke.is_diamond_poke ? 'diamond-poke-text' : poke.is_super_poke ? 'super-poke-text' : ''}`}>
                                         {poke.is_diamond_poke
-                                            ? '💎 Diamond Poke!'
+                                            ? '⚡💎 Super Poke'
                                             : poke.is_super_poke 
-                                                ? '⭐ Super Poke!' 
+                                                ? '⚡ Super Poke' 
                                                 : (unseenPokes.length > 1 ? `👋 Poke Request (+${unseenPokes.length - 1})` : '👋 Poke Request')}
                                     </span>
                                     <strong>
-                                        {poke.is_diamond_poke
-                                            ? `${poke.requester.username || poke.requester.full_name} Diamond Poked You`
-                                            : poke.is_super_poke 
-                                                ? `${poke.requester.username || poke.requester.full_name} Super Poked You` 
-                                                : (poke.requester.username || poke.requester.full_name)}
+                                        {poke.is_diamond_poke || poke.is_super_poke
+                                            ? `⚡ ${poke.requester.username || poke.requester.full_name} sent you a Super Poke`
+                                            : (poke.requester.username || poke.requester.full_name)}
                                     </strong>
                                 </div>
                                 <div className="poke-actions">
@@ -318,15 +316,39 @@ export default function PokeNotifications({ currentUser }) {
 
             <style>{`
                 .super-poke-highlight {
-                    background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(234, 179, 8, 0.2)) !important;
+                    background: linear-gradient(135deg, rgba(250, 204, 21, 0.22), rgba(234, 179, 8, 0.22)) !important;
                     border: 1.5px solid #facc15 !important;
                     box-shadow: 0 4px 15px rgba(250, 204, 21, 0.25) !important;
                     transform: scale(1.02);
+                    animation: lightningFlash 2s infinite alternate;
                 }
                 .super-poke-text {
                     color: #facc15 !important;
                     font-weight: 700;
                     text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+                }
+
+                .diamond-poke-highlight {
+                    background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.22)) !important;
+                    border: 1.5px solid #06b6d4 !important;
+                    box-shadow: 0 0 20px rgba(6, 182, 212, 0.35) !important;
+                    transform: scale(1.02);
+                    animation: crystalGlow 2.5s infinite alternate;
+                }
+                .diamond-poke-text {
+                    color: #06b6d4 !important;
+                    font-weight: 700;
+                    text-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+                }
+
+                @keyframes lightningFlash {
+                    0% { box-shadow: 0 4px 12px rgba(250, 204, 21, 0.25); filter: brightness(1); }
+                    100% { box-shadow: 0 4px 20px rgba(250, 204, 21, 0.5); filter: brightness(1.08); }
+                }
+
+                @keyframes crystalGlow {
+                    0% { box-shadow: 0 0 12px rgba(6, 182, 212, 0.25), 0 0 4px rgba(139, 92, 246, 0.15); }
+                    100% { box-shadow: 0 0 24px rgba(6, 182, 212, 0.55), 0 0 8px rgba(139, 92, 246, 0.3); }
                 }
 
                 .poke-badge {

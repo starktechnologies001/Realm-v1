@@ -4,9 +4,6 @@ self.addEventListener('push', function(event) {
   try {
     const data = event.data.json();
     
-    // Client-side Mute Check (redundant if Server filters, but good safety)
-    if (data.muted === true) return;
-
     const options = {
       body: data.body,
       icon: '/pwa-192x192.png', // Fallback to standard PWA icon location or vite.svg
@@ -20,7 +17,18 @@ self.addEventListener('push', function(event) {
     };
 
     event.waitUntil(
-      self.registration.showNotification(data.title, options)
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+        // Determine if the client app is currently active and focused in the foreground
+        const isAppActive = clientList.some(client => client.visibilityState === 'visible' && client.focused);
+        
+        // Suppress displaying on lockscreen if the channel is muted and app is NOT actively in focus
+        if (data.muted === true && !isAppActive) {
+          console.log('Muted push event suppressed: app is backgrounded/closed');
+          return;
+        }
+
+        return self.registration.showNotification(data.title, options);
+      })
     );
   } catch (err) {
     console.error('Error processing push event:', err);

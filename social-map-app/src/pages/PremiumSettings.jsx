@@ -265,8 +265,8 @@ export default function PremiumSettings() {
         <div style={{
             minHeight: '100vh',
             padding: '80px 20px 100px',
-            background: 'linear-gradient(135deg, #090e1a 0%, #03060c 100%)',
-            color: '#f4f4f5',
+            background: '#ffffff',
+            color: '#1d1d1f',
             fontFamily: 'Inter, system-ui, sans-serif'
         }}>
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
@@ -275,37 +275,32 @@ export default function PremiumSettings() {
             {!isGold && (
                 <div style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(5, 10, 20, 0.95)',
+                    background: 'rgba(255, 255, 255, 0.95)',
                     backdropFilter: 'blur(16px)', zIndex: 1000,
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '24px', textAlign: 'center'
+                    padding: '24px', textAlign: 'center', color: '#1d1d1f'
                 }}>
-                    <span style={{ fontSize: '4.5rem', filter: 'drop-shadow(0 0 15px #facc15)' }}>👑</span>
-                    <h2 style={{ fontSize: '2rem', fontWeight: 900, margin: '20px 0 10px', color: '#fef08a' }}>
-                        Gold Customizer Exclusive
-                    </h2>
-                    <p style={{ color: '#94a3b8', maxWidth: '380px', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '30px' }}>
-                        Unlock premium customizations: avatar accessories, background profile music, gradient usernames, and custom app icons.
+                    <span style={{ fontSize: '3rem', marginBottom: '16px', filter: 'drop-shadow(0 0 12px rgba(217,119,6,0.2))' }}>👑</span>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 900, margin: 0, color: '#d97706' }}>Gold Elite Customizer</h2>
+                    <p style={{ fontSize: '0.9rem', color: '#64748b', maxWidth: '300px', margin: '12px 0 24px', lineHeight: 1.5 }}>
+                        Upgrade to Gold Elite membership to access dynamic themes, custom profile backgrounds, avatars, and custom username styles.
                     </p>
                     <button 
                         onClick={() => navigate('/subscription')}
                         style={{
-                            background: 'linear-gradient(135deg, #facc15, #f59e0b)',
-                            color: '#000', border: 'none', borderRadius: '100px',
-                            padding: '16px 36px', fontSize: '1.05rem', fontWeight: 800,
-                            boxShadow: '0 0 20px rgba(250, 204, 21, 0.4)', cursor: 'pointer',
-                            transition: 'transform 0.2s'
+                            background: 'linear-gradient(135deg, #facc15, #eab308)',
+                            color: '#fff', border: 'none', borderRadius: '14px',
+                            padding: '14px 28px', fontSize: '0.92rem', fontWeight: 800,
+                            cursor: 'pointer', boxShadow: '0 8px 24px rgba(250,204,21,0.2)'
                         }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                     >
-                        Upgrade to Gold Member
+                        Unlock Now
                     </button>
                     <button 
-                        onClick={() => navigate(-1)}
+                        onClick={() => navigate('/profile')}
                         style={{
-                            background: 'transparent', border: 'none', color: '#64748b',
-                            marginTop: '20px', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer'
+                            background: 'none', border: 'none', color: '#64748b',
+                            marginTop: '20px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer'
                         }}
                     >
                         Go Back
@@ -317,21 +312,20 @@ export default function PremiumSettings() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
                 <button 
                     onClick={() => navigate('/profile')}
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 >
                     &larr;
                 </button>
                 <div>
-                    <h1 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: '#facc15' }}>👑 Premium customizer</h1>
-                    <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0' }}>Configure premium customization options</p>
+                    <h1 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: '#d97706' }}>👑 Premium customizer</h1>
+                    <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>Configure premium customization options</p>
                 </div>
             </div>
 
             {/* Grid Container */}
-            <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-
-                {/* Sub-navigation tabs */}
-                <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '24px', overflowX: 'auto' }}>
+            <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '24px', overflowX: 'auto' }}>
                     {tabs.map(t => (
                         <button
                             key={t.id}
@@ -340,7 +334,7 @@ export default function PremiumSettings() {
                                 background: activeTab === t.id ? 'rgba(250, 204, 21, 0.15)' : 'transparent',
                                 border: 'none',
                                 borderRadius: '100px',
-                                color: activeTab === t.id ? '#fff' : '#94a3b8',
+                                color: activeTab === t.id ? '#0f172a' : '#64748b',
                                 padding: '10px 18px',
                                 fontSize: '0.85rem',
                                 fontWeight: 700,
@@ -349,21 +343,20 @@ export default function PremiumSettings() {
                                 alignItems: 'center',
                                 gap: '6px',
                                 whiteSpace: 'nowrap',
-                                boxShadow: activeTab === t.id ? 'inset 0 0 0 1px rgba(250, 204, 21, 0.25)' : 'none'
+                                boxShadow: activeTab === t.id ? 'inset 0 0 0 1px rgba(250, 204, 21, 0.4)' : 'none'
                             }}
                         >
                             <span>{t.emoji}</span>
-                            <span>{t.label}</span>
+                            {t.label}
                         </button>
                     ))}
                 </div>
 
-                {/* CONDITIONAL TABS CONTENT */}
-
+                {/* Tab Contents */}
                 {activeTab === 'theme' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {/* Section: Premium Theme Store */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>🎨</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Premium Theme Store</h3>
@@ -372,7 +365,7 @@ export default function PremiumSettings() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {/* Gold Animated Themes */}
                                 <div>
-                                    <h4 style={{ fontSize: '0.78rem', color: '#facc15', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Gold Animated Themes</h4>
+                                    <h4 style={{ fontSize: '0.78rem', color: '#d97706', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Gold Animated Themes</h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '10px' }}>
                                         {GOLD_THEMES.map(t => {
                                             const isActive = theme === t.key;
@@ -382,14 +375,14 @@ export default function PremiumSettings() {
                                                     key={t.key}
                                                     onClick={() => {
                                                         if (locked) {
-                                                            setToastMsg('Upgrade to Gold to unlock animated themes! 👑');
+                                                            setToastMsg('Upgrade to Gold to unlock gold animated themes! 🥇');
                                                             return;
                                                         }
                                                         updateTheme(t.key);
                                                     }}
                                                     style={{
                                                         background: t.preview,
-                                                        border: isActive ? '2.5px solid #fff' : '1.5px solid rgba(255,255,255,0.1)',
+                                                        border: isActive ? '2.5px solid #d97706' : '1.5px solid #cbd5e1',
                                                         borderRadius: '16px', padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
                                                         opacity: locked ? 0.5 : 1
                                                     }}
@@ -405,7 +398,7 @@ export default function PremiumSettings() {
 
                                 {/* Diamond Exclusive Themes */}
                                 <div>
-                                    <h4 style={{ fontSize: '0.78rem', color: '#00d4ff', margin: '10px 0 10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Diamond Exclusive Themes</h4>
+                                    <h4 style={{ fontSize: '0.78rem', color: '#0284c7', margin: '10px 0 10px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Diamond Exclusive Themes</h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '10px' }}>
                                         {DIAMOND_THEMES.map(t => {
                                             const isActive = theme === t.key;
@@ -422,7 +415,7 @@ export default function PremiumSettings() {
                                                     }}
                                                     style={{
                                                         background: t.preview,
-                                                        border: isActive ? '2.5px solid #fff' : '1.5px solid rgba(255,255,255,0.1)',
+                                                        border: isActive ? '2.5px solid #0284c7' : '1.5px solid #cbd5e1',
                                                         borderRadius: '16px', padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
                                                         opacity: locked ? 0.5 : 1
                                                     }}
@@ -439,7 +432,7 @@ export default function PremiumSettings() {
                         </div>
 
                         {/* Section: Profile Page Backgrounds */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>🖼️</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Profile Page Backgrounds</h3>
@@ -454,7 +447,7 @@ export default function PremiumSettings() {
                                             onClick={() => handleSelectOption('profileBackgroundStyle', bg.key, bg.tier)}
                                             style={{
                                                 background: bg.style,
-                                                border: profileBg === bg.key ? '2.5px solid #fff' : '1.5px solid rgba(255,255,255,0.1)',
+                                                border: profileBg === bg.key ? '2.5px solid #0284c7' : '1.5px solid #cbd5e1',
                                                 borderRadius: '14px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
                                                 opacity: locked ? 0.5 : 1
                                             }}
@@ -468,7 +461,7 @@ export default function PremiumSettings() {
                         </div>
 
                         {/* Section: Profile Background Music */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)', marginBottom: '40px' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', marginBottom: '40px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>🎵</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Profile Background Music</h3>
@@ -487,7 +480,7 @@ export default function PremiumSettings() {
                                             handleSave('profileMusic', { profileMusic: val, profileMusicTitle: titleMap[val] });
                                         }
                                     }}
-                                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px', color: '#fff', outline: 'none' }}
+                                    style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px', color: '#0f172a', outline: 'none' }}
                                 >
                                     <option value="none">No Background Music</option>
                                     <option value="chill_beats">🎵 Chill Beats Loop</option>
@@ -504,18 +497,18 @@ export default function PremiumSettings() {
                                             placeholder="Enter direct audio url (.mp3)"
                                             value={customMusicUrl}
                                             onChange={e => setCustomMusicUrl(e.target.value)}
-                                            style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px', color: '#fff', fontSize: '0.85rem' }}
+                                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px', color: '#0f172a', fontSize: '0.85rem' }}
                                         />
                                         <input
                                             type="text"
                                             placeholder="Track Title (e.g. My Favorite Song)"
                                             value={musicTitle}
                                             onChange={e => setMusicTitle(e.target.value)}
-                                            style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px', color: '#fff', fontSize: '0.85rem' }}
+                                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px', color: '#0f172a', fontSize: '0.85rem' }}
                                         />
                                         <button
                                             onClick={() => handleSave('profileMusic', { profileMusic: customMusicUrl, profileMusicTitle: musicTitle || 'Custom Track' })}
-                                            style={{ background: '#fff', color: '#000', border: 'none', borderRadius: '10px', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
+                                            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
                                         >
                                             Save Custom Audio
                                         </button>
@@ -529,7 +522,7 @@ export default function PremiumSettings() {
                 {activeTab === 'accessories' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {/* Section: Avatar Accessories */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>👑</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Premium Avatar Accessories</h3>
@@ -543,15 +536,15 @@ export default function PremiumSettings() {
                                             key={acc.key}
                                             onClick={() => handleSelectOption('avatarAccessory', acc.key, acc.tier)}
                                             style={{
-                                                background: avatarAccessory === acc.key ? 'rgba(250, 204, 21, 0.08)' : 'rgba(255,255,255,0.02)',
-                                                border: avatarAccessory === acc.key ? '1.5px solid #facc15' : '1px solid rgba(255,255,255,0.06)',
+                                                background: avatarAccessory === acc.key ? 'rgba(250, 204, 21, 0.15)' : '#f1f5f9',
+                                                border: avatarAccessory === acc.key ? '1.5px solid #facc15' : '1px solid #cbd5e1',
                                                 borderRadius: '16px', padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
                                                 opacity: locked ? 0.5 : 1
                                             }}
                                         >
                                             {locked && <span style={{ position: 'absolute', top: '6px', right: '6px', fontSize: '0.7rem' }}>🔒</span>}
                                             <span style={{ fontSize: '1.8rem' }}>{acc.emoji}</span>
-                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>{acc.name}</span>
+                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>{acc.name}</span>
                                         </button>
                                     );
                                 })}
@@ -560,14 +553,14 @@ export default function PremiumSettings() {
 
                         {/* Section: Nearby Map Moments (Diamond Exclusive) */}
                         <div style={{ 
-                            background: 'rgba(15, 23, 42, 0.4)', 
-                            border: isDiamond ? '1px solid rgba(56, 189, 248, 0.25)' : '1px solid rgba(255, 255, 255, 0.05)', 
-                            borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)',
+                            background: '#f8fafc', 
+                            border: isDiamond ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid #e2e8f0', 
+                            borderRadius: '24px', padding: '24px',
                             position: 'relative', opacity: isDiamond ? 1 : 0.7,
                             marginBottom: '40px'
                         }}>
                             {!isDiamond && (
-                                <div style={{ position: 'absolute', top: 12, right: 16, background: '#00d4ff', color: '#000', borderRadius: '6px', fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px' }}>
+                                <div style={{ position: 'absolute', top: 12, right: 16, background: '#0ea5e9', color: '#fff', borderRadius: '6px', fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px' }}>
                                     DIAMOND ELITE
                                 </div>
                             )}
@@ -577,15 +570,15 @@ export default function PremiumSettings() {
                             </div>
                             
                             {activeMoment ? (
-                                <div style={{ background: 'rgba(0, 212, 255, 0.08)', border: '1.5px solid #00d4ff', borderRadius: '16px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ background: 'rgba(2, 132, 199, 0.08)', border: '1.5px solid #0ea5e9', borderRadius: '16px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
-                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#00d4ff', textTransform: 'uppercase' }}>Active Moment</span>
+                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Active Moment</span>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
                                             <span style={{ fontSize: '1.4rem' }}>{activeMoment.split(' ')[0]}</span>
-                                            <span style={{ fontWeight: 800, fontSize: '1.05rem' }}>{activeMoment}</span>
+                                            <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>{activeMoment}</span>
                                         </div>
                                         {momentExpiry && (
-                                            <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginTop: '6px' }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '6px' }}>
                                                 Expires at: {momentExpiry.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         )}
@@ -599,7 +592,7 @@ export default function PremiumSettings() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+                                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
                                         Broadcast a temporary moment to nearby map users. Perfect to invite someone to study, run, or grab pizza.
                                     </p>
 
@@ -617,9 +610,9 @@ export default function PremiumSettings() {
                                                     setMomentCustomText(''); 
                                                 }}
                                                 style={{
-                                                    background: momentPreset === m && !momentCustomText && isDiamond ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.03)',
-                                                    border: momentPreset === m && !momentCustomText && isDiamond ? '1.5px solid #00d4ff' : '1px solid rgba(255,255,255,0.08)',
-                                                    color: '#fff', borderRadius: '12px', padding: '10px 8px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                                                    background: momentPreset === m && !momentCustomText && isDiamond ? 'rgba(2, 132, 199, 0.15)' : '#f1f5f9',
+                                                    border: momentPreset === m && !momentCustomText && isDiamond ? '1.5px solid #0ea5e9' : '1px solid #cbd5e1',
+                                                    color: '#0f172a', borderRadius: '12px', padding: '10px 8px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
                                                 }}
                                             >
                                                 {m}
@@ -629,20 +622,20 @@ export default function PremiumSettings() {
 
                                     {/* Custom Moment Input */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>Or enter custom text:</label>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Or enter custom text:</label>
                                         <input 
                                             type="text"
                                             placeholder="☕ Studying nearby, 🍔 Lunch etc."
                                             disabled={!isDiamond}
                                             value={momentCustomText}
                                             onChange={e => setMomentCustomText(e.target.value)}
-                                            style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
+                                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px', color: '#0f172a', fontSize: '0.85rem', outline: 'none' }}
                                         />
                                     </div>
 
                                     {/* Duration selector */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>Duration:</label>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Duration:</label>
                                         <div style={{ display: 'flex', gap: '10px' }}>
                                             {[30, 60, 120, 180, 360].map(mins => (
                                                 <button
@@ -651,9 +644,9 @@ export default function PremiumSettings() {
                                                     onClick={() => setMomentDuration(mins)}
                                                     style={{
                                                         flex: 1,
-                                                        background: momentDuration === mins && isDiamond ? '#fff' : 'rgba(255,255,255,0.03)',
-                                                        border: momentDuration === mins && isDiamond ? '1px solid #fff' : '1px solid rgba(255,255,255,0.08)',
-                                                        color: momentDuration === mins && isDiamond ? '#000' : '#fff',
+                                                        background: momentDuration === mins && isDiamond ? '#0f172a' : '#f1f5f9',
+                                                        border: momentDuration === mins && isDiamond ? '1px solid #0f172a' : '1px solid #cbd5e1',
+                                                        color: momentDuration === mins && isDiamond ? '#fff' : '#0f172a',
                                                         borderRadius: '10px', padding: '8px 4px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
                                                     }}
                                                 >
@@ -665,7 +658,7 @@ export default function PremiumSettings() {
 
                                     <button 
                                         onClick={handlePostMoment}
-                                        style={{ background: isDiamond ? '#00d4ff' : 'rgba(255,255,255,0.1)', color: isDiamond ? '#000' : '#888', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '0.9rem', fontWeight: 800, cursor: isDiamond ? 'pointer' : 'default', marginTop: '6px' }}
+                                        style={{ background: isDiamond ? '#0ea5e9' : '#e2e8f0', color: isDiamond ? '#fff' : '#64748b', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '0.9rem', fontWeight: 800, cursor: isDiamond ? 'pointer' : 'default', marginTop: '6px' }}
                                     >
                                         {isDiamond ? 'Post Moment Live ⚡' : 'Locked — Diamond Only'}
                                     </button>
@@ -678,7 +671,7 @@ export default function PremiumSettings() {
                 {activeTab === 'username' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {/* Section: Animated Username Styles */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>✨</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Animated Username Styles</h3>
@@ -692,10 +685,10 @@ export default function PremiumSettings() {
                                             key={style.key}
                                             onClick={() => handleSelectOption('usernameEffect', style.key, style.tier)}
                                             style={{
-                                                background: usernameEffect === style.key ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)',
-                                                border: usernameEffect === style.key ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.06)',
+                                                background: usernameEffect === style.key ? 'rgba(124, 58, 237, 0.08)' : '#f1f5f9',
+                                                border: usernameEffect === style.key ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
                                                 borderRadius: '14px', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', position: 'relative',
-                                                opacity: locked ? 0.5 : 1
+                                                opacity: locked ? 0.5 : 1, color: '#0f172a'
                                             }}
                                         >
                                             {locked && <span style={{ position: 'absolute', top: '14px', right: '20px', fontSize: '0.75rem' }}>🔒</span>}
@@ -710,7 +703,7 @@ export default function PremiumSettings() {
                         </div>
 
                         {/* Section: Chat Appearance (Bubbles Customizer) */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)', marginBottom: '40px' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', marginBottom: '40px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>💬</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Chat Bubble Appearance</h3>
@@ -722,9 +715,9 @@ export default function PremiumSettings() {
                                         key={bubble.key}
                                         onClick={() => handleSelectOption('chatBubbleStyle', bubble.key, 'gold')}
                                         style={{
-                                            background: chatBubbleStyle === bubble.key ? 'rgba(250, 204, 21, 0.08)' : 'rgba(255,255,255,0.02)',
-                                            border: chatBubbleStyle === bubble.key ? '1.5px solid #facc15' : '1px solid rgba(255,255,255,0.06)',
-                                            borderRadius: '14px', padding: '14px 10px', fontSize: '0.8rem', fontWeight: 700, color: '#fff', cursor: 'pointer'
+                                            background: chatBubbleStyle === bubble.key ? 'rgba(250, 204, 21, 0.15)' : '#f1f5f9',
+                                            border: chatBubbleStyle === bubble.key ? '1.5px solid #facc15' : '1px solid #cbd5e1',
+                                            borderRadius: '14px', padding: '14px 10px', fontSize: '0.8rem', fontWeight: 700, color: '#0f172a', cursor: 'pointer'
                                         }}
                                     >
                                         {bubble.name}
@@ -738,7 +731,7 @@ export default function PremiumSettings() {
                 {activeTab === 'icons' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {/* Section: App Icon Changer */}
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '24px', padding: '24px', backdropFilter: 'blur(10px)', marginBottom: '40px' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', marginBottom: '40px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <span style={{ fontSize: '1.3rem' }}>📱</span>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>App Icons (Favicons)</h3>
@@ -753,15 +746,15 @@ export default function PremiumSettings() {
                                             onClick={() => handleSelectOption('appIcon', icon.key, icon.tier)}
                                             className="app-icon-preview"
                                             style={{
-                                                background: appIcon === icon.key ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.2)',
-                                                border: appIcon === icon.key ? '2px solid #fff' : '1px solid rgba(255,255,255,0.05)',
+                                                background: appIcon === icon.key ? 'rgba(250, 204, 21, 0.15)' : '#f1f5f9',
+                                                border: appIcon === icon.key ? '2px solid #facc15' : '1px solid #cbd5e1',
                                                 flexDirection: 'column', gap: '6px', height: '90px', position: 'relative',
-                                                opacity: locked ? 0.5 : 1
+                                                opacity: locked ? 0.5 : 1, cursor: 'pointer', borderRadius: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center'
                                             }}
                                         >
                                             {locked && <span style={{ position: 'absolute', top: '6px', right: '6px', fontSize: '0.7rem' }}>🔒</span>}
-                                            <span>{icon.emoji}</span>
-                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fff' }}>{icon.name}</span>
+                                            <span style={{ fontSize: '1.8rem' }}>{icon.emoji}</span>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f172a' }}>{icon.name}</span>
                                         </div>
                                     );
                                 })}

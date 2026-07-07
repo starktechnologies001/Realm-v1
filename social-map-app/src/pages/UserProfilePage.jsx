@@ -45,6 +45,9 @@ export default function UserProfilePage() {
     const [unlockedAchievements, setUnlockedAchievements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [audioPlaying, setAudioPlaying] = useState(false);
+    const [audioMuted, setAudioMuted] = useState(false);
+    const audioRef = React.useRef(null);
 
     // Single combined fetch — gets session + target profile in one go
     useEffect(() => {
@@ -287,13 +290,29 @@ export default function UserProfilePage() {
 
     const executePoke = async (pokeType) => {
         try {
+            const tier = currentUser?.subscription_tier || 'free';
+            const maxSuperPokes = tier === 'diamond' ? 10 : (tier === 'gold' ? 5 : 0);
+            
             if (pokeType === 'super') {
-                const lastPokeDay = currentUser.last_super_poke_at ? new Date(currentUser.last_super_poke_at).toDateString() : '';
-                const currentDay = new Date().toDateString();
-                const newCount = (lastPokeDay === currentDay) ? (currentUser.super_poke_count_today || 0) + 1 : 1;
+                if (tier !== 'gold' && tier !== 'diamond') {
+                    alert("⚠️ Super Pokes are a Gold & Diamond Elite feature. Please upgrade your plan!");
+                    return;
+                }
                 
-                if (newCount > 10) {
-                    alert("⚠️ You've reached your daily limit of 10 Super Pokes!");
+                const lastPokeTime = currentUser.last_super_poke_at ? new Date(currentUser.last_super_poke_at).getTime() : 0;
+                const isDayElapsed = Date.now() - lastPokeTime >= 24 * 60 * 60 * 1000;
+                const currentSuperPokeCount = isDayElapsed ? 0 : (currentUser.super_poke_count_today || 0);
+
+                if (currentSuperPokeCount >= maxSuperPokes) {
+                    const resetTimeRemainingMs = lastPokeTime ? (lastPokeTime + 24 * 60 * 60 * 1000) - Date.now() : 0;
+                    const resetHours = Math.max(1, Math.ceil(resetTimeRemainingMs / (1000 * 60 * 60)));
+                    alert(`⚠️ You've used all of today's Super Pokes. Your limit will reset in ${resetHours} hours.`);
+                    return;
+                }
+
+                // Enforce 30-second cooldown
+                if (lastPokeTime && Date.now() - lastPokeTime < 30 * 1000) {
+                    alert("⚠️ Cooldown active. Please wait 30 seconds before sending another Super Poke.");
                     return;
                 }
             } else if (pokeType === 'diamond') {
@@ -307,55 +326,40 @@ export default function UserProfilePage() {
                 }
             }
 
-            await supabase.from('friendships').insert({ 
+            const { error: insertError } = await supabase.from('friendships').insert({ 
                 requester_id: currentUser.id, 
                 receiver_id: user.id, 
                 status: 'pending',
                 is_super_poke: pokeType === 'super',
                 is_diamond_poke: pokeType === 'diamond'
             });
+
+            if (insertError) {
+                alert(`⚠️ Error: ${insertError.message}`);
+                return;
+            }
             
-            if (pokeType === 'super') {
-                const today = new Date().toISOString();
-                const lastPokeDay = currentUser.last_super_poke_at ? new Date(currentUser.last_super_poke_at).toDateString() : '';
-                const currentDay = new Date().toDateString();
-                const newCount = (lastPokeDay === currentDay) ? (currentUser.super_poke_count_today || 0) + 1 : 1;
-                
-                await supabase.from('profiles').update({
-                    super_poke_count_today: newCount,
-                    last_super_poke_at: today
-                }).eq('id', currentUser.id);
-                
+            // Sync counts from server
+            const { data: updatedProfile, error: profileError } = await supabase
+                .from('profiles')
+                .select('super_poke_count_today, last_super_poke_at, diamond_poke_count_today, last_diamond_poke_at')
+                .eq('id', currentUser.id)
+                .single();
+
+            if (!profileError && updatedProfile) {
                 const updated = {
                     ...currentUser,
-                    super_poke_count_today: newCount,
-                    last_super_poke_at: today
-                };
-                setCurrentUser(updated);
-                localStorage.setItem('currentUser', JSON.stringify(updated));
-            } else if (pokeType === 'diamond') {
-                const today = new Date().toISOString();
-                const lastPokeDay = currentUser.last_diamond_poke_at ? new Date(currentUser.last_diamond_poke_at).toDateString() : '';
-                const currentDay = new Date().toDateString();
-                const newCount = (lastPokeDay === currentDay) ? (currentUser.diamond_poke_count_today || 0) + 1 : 1;
-                
-                await supabase.from('profiles').update({
-                    diamond_poke_count_today: newCount,
-                    last_diamond_poke_at: today
-                }).eq('id', currentUser.id);
-                
-                const updated = {
-                    ...currentUser,
-                    diamond_poke_count_today: newCount,
-                    last_diamond_poke_at: today
+                    ...updatedProfile
                 };
                 setCurrentUser(updated);
                 localStorage.setItem('currentUser', JSON.stringify(updated));
             }
             
             setUser(u => ({ ...u, friendshipStatus: 'pending', requesterId: currentUser.id }));
+            alert("✨ Poke sent successfully!");
         } catch (err) {
             console.error("Error executing poke:", err);
+            alert("⚠️ Something went wrong executing the poke request.");
         }
     };
 
@@ -400,9 +404,6 @@ export default function UserProfilePage() {
     const displayThought = isThoughtExpired ? null : thoughtText;
 
     const customizations = getPremiumCustomizations(user);
-    const [audioPlaying, setAudioPlaying] = useState(false);
-    const [audioMuted, setAudioMuted] = useState(false);
-    const audioRef = React.useRef(null);
 
     // Resolve dynamic background style for Diamond/Gold members
     const getBgStyle = (styleKey) => {
@@ -841,78 +842,117 @@ export default function UserProfilePage() {
             )}
 
             {/* Super & Diamond Poke Selector */}
-            {showPokeSelector && (
-                <div style={styles.pokeSelectorOverlay} onClick={() => setShowPokeSelector(false)}>
-                    <div style={styles.pokeSelectorModal} onClick={e => e.stopPropagation()}>
-                        <h3 style={styles.pokeSelectorTitle}>Select Poke Type</h3>
-                        <p style={styles.pokeSelectorSubtitle}>
-                            {currentUser?.subscription_tier === 'diamond' 
-                                ? `Super Pokes: ${currentUser?.super_poke_count_today || 0}/10 | Diamond Pokes: ${currentUser?.diamond_poke_count_today || 0}/5`
-                                : `Daily Limit: ${currentUser?.super_poke_count_today || 0} / 10 Super Pokes used`}
-                        </p>
-                        <div style={styles.pokeOptions}>
-                            <button 
-                                style={styles.pokeOptionBtnNormal}
-                                onClick={() => {
-                                    setShowPokeSelector(false);
-                                    executePoke('normal');
-                                }}
-                            >
-                                <span style={{ fontSize: '1.5rem' }}>👋</span>
-                                <div>
-                                    <div style={{ fontWeight: 600 }}>Normal Poke</div>
-                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Send a friendly nudge</div>
-                                </div>
-                            </button>
-                            
-                            <button 
-                                style={{
-                                    ...styles.pokeOptionBtnSuper,
-                                    opacity: (currentUser?.super_poke_count_today || 0) >= 10 ? 0.5 : 1
-                                }}
-                                disabled={(currentUser?.super_poke_count_today || 0) >= 10}
-                                onClick={() => {
-                                    setShowPokeSelector(false);
-                                    executePoke('super');
-                                }}
-                            >
-                                <span style={{ fontSize: '1.5rem' }}>⭐</span>
-                                <div>
-                                    <div style={{ fontWeight: 600, color: '#facc15' }}>Super Poke</div>
-                                    <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#fffbeb' }}>
-                                        Priority placement & gold highlight
-                                    </div>
-                                </div>
-                            </button>
+            {showPokeSelector && (() => {
+                const tier = currentUser?.subscription_tier || 'free';
+                const isGold = tier === 'gold';
+                const isDiamond = tier === 'diamond';
+                const maxSuperPokes = isDiamond ? 10 : (isGold ? 5 : 0);
+                
+                const lastPokeTime = currentUser?.last_super_poke_at ? new Date(currentUser.last_super_poke_at).getTime() : 0;
+                const isDayElapsed = Date.now() - lastPokeTime >= 24 * 60 * 60 * 1000;
+                const currentSuperPokeCount = isDayElapsed ? 0 : (currentUser?.super_poke_count_today || 0);
+                const remainingSuperPokes = Math.max(0, maxSuperPokes - currentSuperPokeCount);
+                
+                const resetTimeRemainingMs = lastPokeTime ? (lastPokeTime + 24 * 60 * 60 * 1000) - Date.now() : 0;
+                const resetHours = Math.max(1, Math.ceil(resetTimeRemainingMs / (1000 * 60 * 60)));
+                
+                const isSuperPokeDisabled = remainingSuperPokes <= 0 || (tier !== 'gold' && tier !== 'diamond');
 
-                            {currentUser?.subscription_tier === 'diamond' && (
+                const superPokeButtonStyle = isDiamond
+                    ? {
+                        ...styles.pokeOptionBtnDiamond,
+                        boxShadow: '0 0 12px rgba(6, 182, 212, 0.4)',
+                        opacity: isSuperPokeDisabled ? 0.5 : 1
+                      }
+                    : {
+                        ...styles.pokeOptionBtnSuper,
+                        opacity: isSuperPokeDisabled ? 0.5 : 1
+                      };
+
+                return (
+                    <div style={styles.pokeSelectorOverlay} onClick={() => setShowPokeSelector(false)}>
+                        <div style={styles.pokeSelectorModal} onClick={e => e.stopPropagation()}>
+                            <h3 style={styles.pokeSelectorTitle}>Select Poke Type</h3>
+                            <p style={styles.pokeSelectorSubtitle}>
+                                {maxSuperPokes > 0 ? (
+                                    remainingSuperPokes <= 0 ? (
+                                        <span style={{ color: '#f87171', fontWeight: 600 }}>
+                                            You've used all of today's Super Pokes. Your limit will reset in {resetHours} hours.
+                                        </span>
+                                    ) : (
+                                        <span>
+                                            Super Pokes Remaining: <strong>{remainingSuperPokes} / {maxSuperPokes}</strong>
+                                        </span>
+                                    )
+                                ) : (
+                                    <span style={{ color: '#a1a1aa' }}>
+                                        Super Pokes are a Gold & Diamond Elite feature.
+                                    </span>
+                                )}
+                            </p>
+                            <div style={styles.pokeOptions}>
                                 <button 
-                                    style={{
-                                        ...styles.pokeOptionBtnDiamond,
-                                        opacity: (currentUser?.diamond_poke_count_today || 0) >= 5 ? 0.5 : 1
-                                    }}
-                                    disabled={(currentUser?.diamond_poke_count_today || 0) >= 5}
+                                    style={styles.pokeOptionBtnNormal}
                                     onClick={() => {
                                         setShowPokeSelector(false);
-                                        executePoke('diamond');
+                                        executePoke('normal');
                                     }}
                                 >
-                                    <span style={{ fontSize: '1.5rem' }}>💎</span>
+                                    <span style={{ fontSize: '1.5rem' }}>👋</span>
                                     <div>
-                                        <div style={{ fontWeight: 600, color: '#00d4ff' }}>Diamond Poke</div>
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#e0f7fa' }}>
-                                            VIP notification & cyan glow
+                                        <div style={{ fontWeight: 600 }}>Normal Poke</div>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Send a friendly nudge</div>
+                                    </div>
+                                </button>
+                                
+                                <button 
+                                    style={superPokeButtonStyle}
+                                    disabled={isSuperPokeDisabled}
+                                    onClick={() => {
+                                        setShowPokeSelector(false);
+                                        executePoke('super');
+                                    }}
+                                >
+                                    <span style={{ fontSize: '1.5rem' }}>⚡</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: isDiamond ? '#00d4ff' : '#facc15' }}>
+                                            ⚡ Super Poke {isDiamond ? '(Diamond Style)' : isGold ? '(Gold Style)' : ''}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#fffbeb' }}>
+                                            {isDiamond ? 'VIP Diamond notification & crystal glow' : 'Priority placement & gold highlight'}
                                         </div>
                                     </div>
                                 </button>
-                            )}
+
+                                {currentUser?.subscription_tier === 'diamond' && (
+                                    <button 
+                                        style={{
+                                            ...styles.pokeOptionBtnDiamond,
+                                            opacity: (currentUser?.diamond_poke_count_today || 0) >= 5 ? 0.5 : 1
+                                        }}
+                                        disabled={(currentUser?.diamond_poke_count_today || 0) >= 5}
+                                        onClick={() => {
+                                            setShowPokeSelector(false);
+                                            executePoke('diamond');
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '1.5rem' }}>💎</span>
+                                        <div>
+                                            <div style={{ fontWeight: 600, color: '#00d4ff' }}>Diamond Poke</div>
+                                            <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#e0f7fa' }}>
+                                                VIP notification & cyan glow
+                                            </div>
+                                        </div>
+                                    </button>
+                                )}
+                            </div>
+                            <button style={styles.pokeSelectorCancel} onClick={() => setShowPokeSelector(false)}>
+                                Cancel
+                            </button>
                         </div>
-                        <button style={styles.pokeSelectorCancel} onClick={() => setShowPokeSelector(false)}>
-                            Cancel
-                        </button>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             <style>{`
                 @keyframes spin { to { transform: rotate(360deg); } }

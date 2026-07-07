@@ -67,11 +67,27 @@ Deno.serve(async (req) => {
     const receiverProfile = receiverRes.data;
     const senderProfile = senderRes.data;
 
+    let isMuted = false;
+
     if (receiverProfile?.mute_settings?.mute_all) {
       const expiry = receiverProfile.mute_settings.muted_until;
       if (!expiry || new Date(expiry) > new Date()) {
-        console.log(`User ${receiverId} is globally muted.`);
-        return new Response("User Muted", { status: 200 });
+        isMuted = true;
+      }
+    }
+
+    // Check conversation-specific mute settings between sender and receiver
+    const { data: friendship } = await supabase
+      .from("friendships")
+      .select("requester_id, receiver_id, muted_until_by_requester, muted_until_by_receiver")
+      .or(`and(requester_id.eq.${senderId},receiver_id.eq.${receiverId}),and(requester_id.eq.${receiverId},receiver_id.eq.${senderId})`)
+      .maybeSingle();
+
+    if (friendship) {
+      const isReceiverRequester = friendship.requester_id === receiverId;
+      const mutedUntil = isReceiverRequester ? friendship.muted_until_by_requester : friendship.muted_until_by_receiver;
+      if (mutedUntil && new Date(mutedUntil) > new Date()) {
+        isMuted = true;
       }
     }
 
@@ -96,6 +112,7 @@ Deno.serve(async (req) => {
       url: notificationData.url,
       tag: notificationData.tag,
       icon: senderProfile?.avatar_url,
+      muted: isMuted,
     });
 
     await Promise.all(subscriptions.map(async (sub) => {

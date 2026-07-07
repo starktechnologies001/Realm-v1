@@ -142,9 +142,11 @@ export default function Subscription() {
                         <ul className="plan-features">
                             <li><span className="feature-icon">👁️</span> Who Viewed My Profile</li>
                             <li><span className="feature-icon">❤️</span> See Reactors</li>
-                            <li><span className="feature-icon">🥈</span> Silver Badge</li>
-                            <li><span className="feature-icon">⭕</span> Silver Ring</li>
+                            <li><span className="feature-icon">🥈</span> Silver Badge & Ring</li>
+                            <li><span className="feature-icon">🎟️</span> Silver Map Profile Card</li>
                             <li><span className="feature-icon">💭</span> Premium Thought Styles</li>
+                            <li><span className="feature-icon">🎨</span> Premium Themes</li>
+                            <li><span className="feature-icon">💬</span> Default Chat Style & Reset</li>
                         </ul>
                         <button 
                             className={`plan-action-btn silver-btn ${currentTier === 'silver' ? 'subscribed' : ''}`}
@@ -163,12 +165,15 @@ export default function Subscription() {
                         <div className="plan-desc">Advanced analytics, privacy tools, and premium gold aesthetics.</div>
                         <ul className="plan-features">
                             <li className="feature-highlight"><strong>Everything in Silver, plus:</strong></li>
-                            <li><span className="feature-icon">📊</span> Analytics</li>
-                            <li><span className="feature-icon">🔒</span> Advanced Privacy</li>
-                            <li><span className="feature-icon">⚡</span> Super Poke</li>
-                            <li><span className="feature-icon">🚀</span> Thought Boost</li>
-                            <li><span className="feature-icon">🥇</span> Gold Badge</li>
-                            <li><span className="feature-icon">⭕</span> Gold Ring</li>
+                            <li><span className="feature-icon">📊</span> Advanced Profile Analytics</li>
+                            <li><span className="feature-icon">🖼️</span> Custom Profile Backgrounds</li>
+                            <li><span className="feature-icon">🎵</span> Profile Background Music</li>
+                            <li><span className="feature-icon">👑</span> Premium Avatar Accessories</li>
+                            <li><span className="feature-icon">✨</span> Animated Username Styles</li>
+                            <li><span className="feature-icon">📱</span> App Custom Icons</li>
+                            <li><span className="feature-icon">⚡</span> 5 Daily Super Pokes</li>
+                            <li><span className="feature-icon">🥇</span> Gold Badge & Ring</li>
+                            <li><span className="feature-icon">🎟️</span> Golden Map Profile Card</li>
                         </ul>
                         <button 
                             className={`plan-action-btn gold-btn ${currentTier === 'gold' ? 'subscribed' : ''}`}
@@ -186,12 +191,14 @@ export default function Subscription() {
                         <div className="plan-desc">The ultimate VIP experience with invisible browsing and custom effects.</div>
                         <ul className="plan-features">
                             <li className="feature-highlight"><strong>Everything in Gold, plus:</strong></li>
+                            <li><span className="feature-icon">⚡</span> 10 Daily Super Pokes</li>
+                            <li><span className="feature-icon">📍</span> Nearby Map Moments (Broadcast)</li>
+                            <li><span className="feature-icon">💎</span> Diamond Exclusive Themes</li>
                             <li><span className="feature-icon">👻</span> Invisible Browsing</li>
                             <li><span className="feature-icon">🔍</span> Discovery Filters</li>
-                            <li><span className="feature-icon">✨</span> Avatar Effects</li>
+                            <li><span className="feature-icon">✨</span> Avatar Glow Effects</li>
                             <li><span className="feature-icon">🎟️</span> VIP Profile Card</li>
-                            <li><span className="feature-icon">💎</span> Diamond Badge</li>
-                            <li><span className="feature-icon">💫</span> Animated Diamond Ring</li>
+                            <li><span className="feature-icon">💫</span> Animated Diamond Ring & Badge</li>
                         </ul>
                         <button 
                             className={`plan-action-btn diamond-btn ${currentTier === 'diamond' ? 'subscribed' : ''}`}

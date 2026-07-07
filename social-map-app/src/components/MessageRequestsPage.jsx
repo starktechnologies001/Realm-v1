@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
 import Toast from './Toast';
+import FullProfileModal from './FullProfileModal';
 
 export default function MessageRequestsPage({ onClose, currentUser }) {
     const navigate = useNavigate();
@@ -12,6 +13,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [toastMsg, setToastMsg] = useState(null);
     const [processingId, setProcessingId] = useState(null);
+    const [selectedUser, setSelectedUser] = useState(null);
 
     const showToast = (msg) => {
         setToastMsg(msg);
@@ -55,7 +57,13 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                             username,
                             full_name,
                             avatar_url,
-                            gender
+                            gender,
+                            status,
+                            relationship_status,
+                            hide_status,
+                            show_last_seen,
+                            subscription_tier,
+                            avatar_effect
                         )
                     `)
                     .eq('receiver_id', localUser.id)
@@ -138,6 +146,66 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
         }
     };
 
+    const handleProfileModalAction = async (action, targetUser) => {
+        if (action === 'message') {
+            setSelectedUser(null);
+        } else if (action === 'call-audio' || action === 'call-video') {
+            setSelectedUser(null);
+            showToast("Accept the request to start a call");
+        } else if (action === 'block') {
+            setSelectedUser(null);
+            try {
+                const { data: existingFriendship } = await supabase
+                    .from('friendships')
+                    .select('id')
+                    .or(`and(requester_id.eq.${localUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${localUser.id})`)
+                    .maybeSingle();
+
+                if (existingFriendship) {
+                    await supabase
+                        .from('friendships')
+                        .update({ status: 'blocked', requester_id: localUser.id, receiver_id: targetUser.id })
+                        .eq('id', existingFriendship.id);
+                } else {
+                    await supabase
+                        .from('friendships')
+                        .insert({ requester_id: localUser.id, receiver_id: targetUser.id, status: 'blocked' });
+                }
+                showToast(`🚫 Blocked ${targetUser.username || targetUser.full_name}`);
+                setRequests(prev => prev.filter(r => r.sender.id !== targetUser.id));
+            } catch (err) {
+                console.error("Error blocking user:", err);
+                showToast("Failed to block user");
+            }
+        } else if (action === 'unfriend') {
+            setSelectedUser(null);
+            try {
+                await supabase.from('friendships')
+                    .delete()
+                    .or(`and(requester_id.eq.${localUser.id},receiver_id.eq.${targetUser.id}),and(requester_id.eq.${targetUser.id},receiver_id.eq.${localUser.id})`);
+                showToast("Friend request cancelled/removed");
+            } catch (err) {
+                console.error("Error unfriending:", err);
+            }
+        } else if (action === 'report') {
+            setSelectedUser(null);
+            const reason = prompt("Reason for reporting:");
+            if (reason) {
+                try {
+                    await supabase.from('reports').insert({
+                        reporter_id: localUser.id,
+                        reported_id: targetUser.id,
+                        reason: reason
+                    });
+                    showToast("Report submitted successfully ✅");
+                } catch (err) {
+                    console.error("Error reporting:", err);
+                    showToast("Failed to submit report");
+                }
+            }
+        }
+    };
+
     return (
         <AnimatePresence>
             <motion.div
@@ -182,8 +250,14 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                                         src={getAvatarHeadshot(request.sender.avatar_url)}
                                         alt={request.sender.username}
                                         className="request-avatar"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => setSelectedUser(request.sender)}
                                     />
-                                    <div className="request-info">
+                                    <div 
+                                        className="request-info"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => setSelectedUser(request.sender)}
+                                    >
                                         <h4>{request.sender.username || request.sender.full_name}</h4>
                                         <span className="request-time">
                                             {new Date(request.created_at).toLocaleDateString()}
@@ -222,6 +296,15 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                         ))
                     )}
                 </div>
+
+                {selectedUser && (
+                    <FullProfileModal
+                        user={selectedUser}
+                        currentUser={localUser}
+                        onClose={() => setSelectedUser(null)}
+                        onAction={handleProfileModalAction}
+                    />
+                )}
 
                 {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
 

@@ -42,12 +42,19 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     const diffMs = userLastActive ? Date.now() - new Date(userLastActive).getTime() : null;
     const isOnline = diffMs != null && !isNaN(diffMs) && diffMs < 5 * 60 * 1000 && !user.hide_online_status && !user.hide_active_status;
 
-    const getLastActive = (dateStr) => {
-        if (!dateStr || user.hide_last_seen || user.hide_active_status) return null;
-        const diff = Date.now() - new Date(dateStr).getTime();
+    const getLastActiveText = () => {
+        if (user.hide_last_seen || user.hide_active_status) return null;
+        if (!userLastActive) return null;
+        const diff = Date.now() - new Date(userLastActive).getTime();
         if (diff < 5 * 60 * 1000 && !user.hide_online_status) return 'Active now';
-        if (diff < 60 * 60 * 1000 && canShowLastSeen) return 'Recently active';
-        return null;
+        if (!canShowLastSeen) return null;
+        
+        const diffMins = Math.floor(diff / 60000);
+        if (diffMins < 60) return `Active ${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `Active ${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `Active ${diffDays}d ago`;
     };
 
     // Calculate Distance — prefer live GPS coords from userLocation, fall back to DB
@@ -269,9 +276,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                             <div className="vip-label">💎 VIP</div>
                         </>
                     )}
-                    {user.subscription_tier === 'gold' && (
-                        <div className="vip-label gold">🥇 GOLD</div>
-                    )}
+                    
                     <div className="card-drag-handle" />
                     
                     <div className="card-header">
@@ -412,6 +417,21 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                 💎 Diamond Elite
                                             </span>
                                         )}
+
+                                        {/* Active Status Badge */}
+                                        {getLastActiveText() && (
+                                            <span className="badge-pill status active-now" style={{ background: getLastActiveText() === 'Active now' ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 255, 255, 0.08)', color: getLastActiveText() === 'Active now' ? '#34C759' : 'rgba(255, 255, 255, 0.7)', border: getLastActiveText() === 'Active now' ? '1px solid rgba(52, 199, 89, 0.3)' : '1px solid rgba(255, 255, 255, 0.15)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getLastActiveText() === 'Active now' ? '#34C759' : '#8e8e93', display: 'inline-block' }} />
+                                                {getLastActiveText()}
+                                            </span>
+                                        )}
+
+                                        {/* Relationship Status Badge */}
+                                        {(user.relationship_status || user.relationshipStatus) && !(user.hide_relationship_status || user.hideRelationshipStatus) && (
+                                            <span className="badge-pill status relationship" style={{ background: 'rgba(244, 63, 94, 0.12)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.25)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                💕 {user.relationship_status || user.relationshipStatus}
+                                            </span>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -444,29 +464,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         </div>
                     )}
 
-                    {/* Smart Icebreakers (Diamond Elite gating) */}
-                    {currentUser?.subscription_tier === 'diamond' && currentUser?.id !== user?.id && (
-                        <div style={{
-                            margin: '12px 16px 0',
-                            padding: '10px 14px',
-                            borderRadius: '12px',
-                            border: '1px solid #d946ef',
-                            background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.12), rgba(0, 0, 0, 0.25))',
-                            boxShadow: '0 4px 12px rgba(217, 70, 239, 0.15)',
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
-                                <span style={{ fontSize: '1rem' }}>🔮</span>
-                                <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#d946ef', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Smart Icebreakers</span>
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {generateSmartIcebreakers(currentUser, user, user.mutuals || 0).map((ice, i) => (
-                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.9)' }}>
-                                        <span>{ice}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+
 
                     <div className="action-grid" style={isOwner ? { display: 'flex', justifyContent: 'center' } : {}}>
                         {isOwner ? (
@@ -1027,7 +1025,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     }
 
                     .badges-row {
-                        display: flex; justify-content: center; gap: 8px; margin-top: 24px;
+                        display: flex; justify-content: center; gap: 8px; margin-top: 24px; flex-wrap: wrap;
                     }
                     .badge-pill {
                         font-size: 0.78rem; padding: 6px 14px; border-radius: 100px;
@@ -1527,35 +1525,42 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                        SILVER PREMIUM CARD
                        ========================================= */
                     .user-profile-card.premium-silver {
-                        background: linear-gradient(135deg, rgba(30, 30, 35, 0.95), rgba(15, 15, 20, 0.97)) !important;
-                        border: 1px solid rgba(209, 213, 219, 0.15) !important;
-                        box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+                        background: linear-gradient(135deg, rgba(30, 30, 35, 0.9), rgba(15, 15, 20, 0.94)) !important;
+                        backdrop-filter: blur(20px) !important;
+                        -webkit-backdrop-filter: blur(20px) !important;
+                        border: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+                        box-shadow: 0 -12px 45px rgba(255, 255, 255, 0.04), 0 -12px 30px rgba(0, 0, 0, 0.6) !important;
                         animation: silverFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                        border-bottom: none !important;
                     }
                     @keyframes silverFadeUp {
-                        0% { opacity: 0; transform: translateY(80px); }
-                        100% { opacity: 1; transform: translateY(0); }
+                        0% { opacity: 0; transform: translateY(80px) scale(0.98); }
+                        100% { opacity: 1; transform: translateY(0) scale(1); }
                     }
                     .premium-silver .avatar-large-container img {
-                        border: 2.5px solid #cbd5e1 !important;
-                        box-shadow: 0 0 15px rgba(203, 213, 225, 0.4) !important;
+                        border: 3px solid #cbd5e1 !important;
+                        box-shadow: 0 0 18px rgba(203, 213, 225, 0.45), 0 0 0 3px rgba(203, 213, 225, 0.1) !important;
                     }
                     .premium-silver .action-btn.primary-action {
                         background: linear-gradient(135deg, #cbd5e1, #94a3b8) !important;
                         color: #0f172a !important;
                         font-weight: 700 !important;
+                        border: none !important;
+                        box-shadow: 0 4px 12px rgba(203, 213, 225, 0.25) !important;
                     }
                     .premium-silver .action-btn.primary-action:hover {
                         background: linear-gradient(135deg, #e2e8f0, #cbd5e1) !important;
                         transform: translateY(-2px);
+                        box-shadow: 0 6px 18px rgba(203, 213, 225, 0.4) !important;
                     }
                     .premium-silver .action-btn:not(.primary-action) {
-                        background: rgba(255,255,255,0.06) !important;
+                        background: rgba(255,255,255,0.05) !important;
                         border: 1px solid rgba(209, 213, 219, 0.2) !important;
                         color: #e2e8f0 !important;
                     }
                     .premium-silver .action-btn:not(.primary-action):hover {
-                        background: rgba(255,255,255,0.12) !important;
+                        background: rgba(255,255,255,0.1) !important;
+                        border-color: rgba(209, 213, 219, 0.35) !important;
                         transform: translateY(-2px);
                     }
 
@@ -1563,10 +1568,18 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                        GOLD PREMIUM CARD
                        ========================================= */
                     .user-profile-card.premium-gold {
-                        background: linear-gradient(135deg, rgba(20, 20, 25, 0.98), rgba(10, 10, 12, 0.99)) !important;
+                        background: linear-gradient(135deg, rgba(25, 22, 15, 0.94), rgba(12, 10, 8, 0.96)) !important;
+                        backdrop-filter: blur(25px) !important;
+                        -webkit-backdrop-filter: blur(25px) !important;
                         border: 1px solid transparent !important;
                         position: relative;
-                        box-shadow: 0 -12px 50px rgba(0, 0, 0, 0.6) !important;
+                        box-shadow: 0 -12px 50px rgba(250, 204, 21, 0.12), 0 -12px 40px rgba(0, 0, 0, 0.7) !important;
+                        animation: goldPopIn 0.7s cubic-bezier(0.19, 1, 0.22, 1) !important;
+                        border-bottom: none !important;
+                    }
+                    @keyframes goldPopIn {
+                        0% { transform: translateY(100%) scale(0.97); opacity: 0; }
+                        100% { transform: translateY(0) scale(1); opacity: 1; }
                     }
                     /* Gold animated border */
                     .user-profile-card.premium-gold::before {
@@ -1598,7 +1611,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         transform: skewX(-25deg);
                         pointer-events: none;
                         z-index: 2;
-                        animation: goldShineSweep 3s ease-in-out infinite;
+                        animation: goldShineSweep 3.5s ease-in-out infinite;
                     }
                     @keyframes goldShineSweep {
                         0% { left: -150%; }
@@ -1606,24 +1619,24 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         100% { left: 150%; }
                     }
                     .premium-gold .avatar-large-container img {
-                        border: 3px solid #facc15 !important;
-                        box-shadow: 0 0 20px rgba(250, 204, 21, 0.5), 0 0 0 4px rgba(250, 204, 21, 0.1) !important;
+                        border: 3.5px solid #facc15 !important;
+                        box-shadow: 0 0 22px rgba(250, 204, 21, 0.55), 0 0 0 4px rgba(250, 204, 21, 0.1) !important;
                         animation: goldGlow 3s ease-in-out infinite alternate;
                     }
                     @keyframes goldGlow {
                         0% { box-shadow: 0 0 15px rgba(250, 204, 21, 0.4), 0 0 0 2px rgba(250, 204, 21, 0.05); }
-                        100% { box-shadow: 0 0 28px rgba(250, 204, 21, 0.75), 0 0 0 6px rgba(250, 204, 21, 0.15); }
+                        100% { box-shadow: 0 0 32px rgba(250, 204, 21, 0.78), 0 0 0 6px rgba(250, 204, 21, 0.15); }
                     }
                     .premium-gold .action-btn.primary-action {
                         background: linear-gradient(135deg, #facc15, #eab308) !important;
                         color: #000000 !important;
                         font-weight: 750 !important;
-                        box-shadow: 0 4px 15px rgba(234, 179, 8, 0.4) !important;
+                        box-shadow: 0 4px 16px rgba(234, 179, 8, 0.45) !important;
                         border: none !important;
                     }
                     .premium-gold .action-btn.primary-action:hover {
                         background: linear-gradient(135deg, #fef08a, #facc15) !important;
-                        box-shadow: 0 6px 20px rgba(234, 179, 8, 0.6) !important;
+                        box-shadow: 0 6px 22px rgba(234, 179, 8, 0.65) !important;
                         transform: translateY(-2px);
                     }
                     .premium-gold .action-btn:not(.primary-action) {
@@ -1633,6 +1646,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                     }
                     .premium-gold .action-btn:not(.primary-action):hover {
                         background: rgba(250, 204, 21, 0.12) !important;
+                        border-color: rgba(250, 204, 21, 0.4) !important;
                         transform: translateY(-2px);
                     }
 

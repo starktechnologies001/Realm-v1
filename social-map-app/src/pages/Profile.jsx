@@ -470,18 +470,38 @@ export default function Profile() {
     const customizations = getPremiumCustomizations(user);
     const is3DAvatar = user.avatar_url?.includes('.glb');
 
-    // Apply profile background style if set
-    const getProfileBgClass = (styleKey) => {
-        if (styleKey === 'diamond_crystal') return 'style-bg-crystal';
-        if (styleKey === 'space_black') return 'style-bg-black';
-        if (styleKey === 'platinum') return 'style-bg-platinum';
-        if (styleKey === 'aurora_elite') return 'style-bg-aurora';
-        if (styleKey === 'royal_diamond') return 'style-bg-royal';
-        return '';
+    const getProfileBgStyle = (styleKey) => {
+        if (!styleKey || styleKey === 'default') return {};
+        
+        const backgroundMap = {
+            galaxy: 'linear-gradient(135deg, #09090e, #2e0854, #4c0082)',
+            ocean: 'linear-gradient(135deg, #021a36, #0e7490, #0891b2)',
+            fire: 'linear-gradient(135deg, #1c0000, #7f1d1d, #b91c1c, #ea580c)',
+            snow: 'linear-gradient(135deg, #0f172a, #1e293b, #3b82f6, #93c5fd)',
+            neon: 'linear-gradient(135deg, #000000, #4c1d95, #c026d3, #0284c7)',
+            diamond_crystal: 'radial-gradient(circle at top left, #0e203c, #050a14)',
+            space_black: '#050505',
+            platinum: 'radial-gradient(circle at top right, #25252b, #0f0f12)',
+            aurora_elite: 'linear-gradient(180deg, #020612, #040914)',
+            royal_diamond: 'radial-gradient(circle at 50% 0%, #20043c, #050209)',
+            sunset_gold: 'linear-gradient(135deg, #451a03, #1c0c02)',
+            cyberpunk: 'linear-gradient(135deg, #18001e, #05000a)'
+        };
+
+        const bg = backgroundMap[styleKey];
+        if (bg) {
+            return { background: bg, backgroundAttachment: 'fixed' };
+        }
+        return {};
     };
 
+    const hasCustomBg = customizations.profileBackgroundStyle && customizations.profileBackgroundStyle !== 'default';
+
     return (
-        <div className={`profile-page ${getProfileBgClass(customizations.profileBackgroundStyle)}`}>
+        <div 
+            className={`profile-page ${hasCustomBg ? 'has-custom-bg' : ''}`}
+            style={getProfileBgStyle(customizations.profileBackgroundStyle)}
+        >
             {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
             
             {/* Image Cropper Modal — load the cropper library only when user picks a photo */}

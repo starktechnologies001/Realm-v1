@@ -1173,8 +1173,6 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         />
                         <span className="audio-name">Me</span>
                     </div>
-                    
-                    <div className="audio-status">{status}</div>
                 </div>
             )}
 
@@ -1186,14 +1184,14 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                     title={muted ? 'Unmute' : 'Mute'}
                 >
                     {muted ? (
-                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                     ) : (
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                     )}
                 </button>
 
                 <button className="ctrl-btn hangup" onClick={() => endCall()} title="Hang Up">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(135deg)' }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                 </button>
 
                 {isVideoCall && (
@@ -1203,9 +1201,9 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         title={cameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
                     >
                         {cameraOff ? (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M21 21l-3.5-3.5m-2-2l-4.25-4.25-2.25-2.25-4-4L1 1"></path><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M21 21l-3.5-3.5m-2-2l-4.25-4.25-2.25-2.25-4-4L1 1"></path><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                         ) : (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                         )}
                     </button>
                 )}
@@ -1216,7 +1214,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                         onClick={switchCamera}
                         title="Switch Camera"
                     >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"></path><circle cx="13" cy="12" r="3"></circle></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2Z"></path><path d="m19 8 5-3v10l-5-3"></path></svg>
                     </button>
                 )}
 
@@ -1225,7 +1223,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                     onClick={onMinimize}
                     title="Minimize"
                 >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="4 14 10 14 10 20"></polyline>
                         <polyline points="20 10 14 10 14 4"></polyline>
                         <line x1="14" y1="10" x2="21" y2="3"></line>
@@ -1238,11 +1236,12 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 /* Call Overlay Premium Design */
                 .call-interface-overlay {
                     position: fixed; inset: 0; 
-                    background: #000;
+                    background: radial-gradient(circle at center, #18181b 0%, #09090b 100%);
                     z-index: 12000;
                     display: flex; flex-direction: column;
                     overflow: hidden;
-                    animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                 }
                 
                 @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
@@ -1264,58 +1263,90 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 
                 .remote-avatar-container::before {
                     content: '';
-                    position: absolute; inset: 0;
+                    position: absolute; inset: -10%;
                     background-image: var(--bg-image);
                     background-size: cover;
                     background-position: center;
-                    filter: blur(60px) brightness(0.6);
-                    opacity: 0.8;
+                    filter: blur(80px) brightness(0.4) saturate(140%);
+                    opacity: 0.85;
                     z-index: -1;
-                    transform: scale(1.2);
+                    transform: scale(1.15);
+                    animation: slowPulseBg 15s ease-in-out infinite alternate;
                 }
 
+                @keyframes slowPulseBg {
+                    0% { transform: scale(1.15) rotate(0deg); opacity: 0.8; }
+                    50% { transform: scale(1.22) rotate(3deg); opacity: 0.9; }
+                    100% { transform: scale(1.15) rotate(-3deg); opacity: 0.8; }
+                }
+ 
                 .remote-avatar {
-                    width: 180px; height: 180px; border-radius: 50%;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+                    width: 170px; height: 170px; border-radius: 50%;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
                     object-fit: cover;
-                    border: 4px solid rgba(255,255,255,0.2);
-                    margin-bottom: 32px;
-                    animation: pulse-avatar 3s ease-in-out infinite;
-                    background: #2c2c2e;
+                    border: 3.5px solid rgba(255,255,255,0.18);
+                    margin-bottom: 28px;
+                    animation: premiumAvatarPulse 3s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
+                    background: #18181b;
+                    z-index: 5;
                 }
                 
-                @keyframes pulse-avatar {
-                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255, 0.2); }
-                    50% { transform: scale(1.03); box-shadow: 0 0 0 15px rgba(255,255,255, 0); }
-                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255, 0); }
+                @keyframes premiumAvatarPulse {
+                    0% {
+                        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.12),
+                                    0 0 0 10px rgba(255, 255, 255, 0.08),
+                                    0 20px 50px rgba(0,0,0,0.6);
+                        transform: scale(1);
+                    }
+                    50% {
+                        box-shadow: 0 0 0 15px rgba(255, 255, 255, 0.06),
+                                    0 0 0 30px rgba(255, 255, 255, 0),
+                                    0 24px 60px rgba(0,0,0,0.7);
+                        transform: scale(1.02);
+                    }
+                    100% {
+                        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0),
+                                    0 0 0 0 rgba(255, 255, 255, 0),
+                                    0 20px 50px rgba(0,0,0,0.6);
+                        transform: scale(1);
+                    }
                 }
-
+ 
                 .remote-avatar-container h2 {
-                    font-size: 32px; font-weight: 800; color: white;
-                    letter-spacing: -0.5px; margin: 0;
-                    text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                    font-size: 26px; font-weight: 700; color: white;
+                    letter-spacing: -0.03em; margin: 0;
+                    text-shadow: 0 4px 16px rgba(0,0,0,0.5);
                 }
                 
                 .call-status-text {
-                    font-size: 16px; color: rgba(255,255,255,0.7);
-                    margin-top: 8px; font-weight: 500;
-                    letter-spacing: 0.5px; text-transform: uppercase;
+                    font-size: 13px; color: rgba(255,255,255,0.55);
+                    margin-top: 10px; font-weight: 600;
+                    letter-spacing: 2px; text-transform: uppercase;
+                    animation: textPulse 1.8s infinite alternate;
+                }
+
+                @keyframes textPulse {
+                    0% { opacity: 0.5; }
+                    100% { opacity: 0.9; }
                 }
                 
                 /* Local Video (PIP) */
                 .local-video {
                     position: absolute; top: 60px; right: 24px;
-                    width: 120px; height: 180px;
-                    background: #1a1a1a;
-                    border-radius: 24px;
+                    width: 100px; height: 150px;
+                    background: #09090b;
+                    border-radius: 20px;
                     overflow: hidden;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
-                    z-index: 10;
-                    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1.5px rgba(255,255,255,0.08);
+                    z-index: 110;
+                    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s;
                     cursor: grab;
                 }
-                .local-video:hover { transform: scale(1.05); }
-
+                .local-video:hover { 
+                    transform: scale(1.04) translateY(-2px);
+                    box-shadow: 0 24px 50px rgba(0,0,0,0.6), 0 0 0 1.5px rgba(255,255,255,0.15);
+                }
+ 
                 .local-avatar-img {
                     width: 100%; height: 100%;
                     object-fit: cover;
@@ -1325,77 +1356,112 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 /* Status Indicator */
                 .status-pill {
                     position: absolute; top: 60px; left: 24px;
-                    background: rgba(255, 255, 255, 0.15);
-                    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-                    padding: 8px 16px; border-radius: 30px;
+                    background: rgba(20, 20, 25, 0.6);
+                    backdrop-filter: blur(25px) saturate(180%);
+                    -webkit-backdrop-filter: blur(25px) saturate(180%);
+                    padding: 8px 16px; border-radius: 100px;
                     display: flex; align-items: center; gap: 8px;
-                    color: white; font-weight: 600; font-size: 14px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    z-index: 5;
+                    color: white; font-weight: 600; font-size: 13px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    z-index: 105;
+                    letter-spacing: 0.2px;
                 }
                 
-                .status-dot { width: 8px; height: 8px; background: #34c759; border-radius: 50%; box-shadow: 0 0 8px #34c759; }
-                .status-dot.connecting { background: #ff9f0a; box-shadow: 0 0 8px #ff9f0a; }
+                .status-dot { 
+                    width: 8px; height: 8px; background: #30d158; border-radius: 50%; 
+                    box-shadow: 0 0 10px #30d158, 0 0 20px #30d158;
+                    animation: greenGlowPulse 1.5s infinite alternate;
+                }
+                .status-dot.connecting { 
+                    background: #ff9f0a; 
+                    box-shadow: 0 0 10px #ff9f0a, 0 0 20px #ff9f0a; 
+                    animation: orangeGlowPulse 1.5s infinite alternate;
+                }
 
+                @keyframes greenGlowPulse {
+                    0% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 4px #30d158; }
+                    100% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 12px #30d158; }
+                }
+                @keyframes orangeGlowPulse {
+                    0% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 4px #ff9f0a; }
+                    100% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 12px #ff9f0a; }
+                }
+ 
                 /* Controls Bar */
                 .call-controls {
-                    position: absolute; bottom: 50px; left: 50%;
+                    position: absolute; bottom: 48px; left: 50%;
                     transform: translateX(-50%);
-                    display: flex; gap: 24px;
-                    padding: 18px 40px;
-                    background: rgba(20, 20, 20, 0.75);
-                    backdrop-filter: blur(24px) saturate(180%);
-                    -webkit-backdrop-filter: blur(24px) saturate(180%);
-                    border-radius: 60px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-                    border: 1px solid rgba(255,255,255,0.12);
-                    z-index: 20;
+                    display: flex; gap: 20px;
+                    padding: 16px 36px;
+                    background: rgba(20, 20, 25, 0.55);
+                    backdrop-filter: blur(25px) saturate(190%);
+                    -webkit-backdrop-filter: blur(25px) saturate(190%);
+                    border-radius: 100px;
+                    box-shadow: 0 24px 70px rgba(0,0,0,0.65), inset 0 1px 1px rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    z-index: 120;
                 }
-
+ 
                 .ctrl-btn {
-                    width: 60px; height: 60px;
+                    width: 54px; height: 54px;
                     border-radius: 50%; border: none;
-                    background: rgba(255,255,255,0.1);
-                    color: white; cursor: pointer;
+                    background: rgba(255,255,255,0.08);
+                    color: #f4f4f5; cursor: pointer;
                     display: flex; align-items: center; justify-content: center;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    border: 1px solid rgba(255,255,255,0.04);
                 }
                 
-                .ctrl-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
+                .ctrl-btn:hover { 
+                    background: rgba(255,255,255,0.15); 
+                    transform: translateY(-2px); 
+                    color: #ffffff;
+                    border-color: rgba(255,255,255,0.1);
+                }
                 .ctrl-btn:active { transform: scale(0.95); }
                 
-                .ctrl-btn svg { width: 28px; height: 28px; stroke-width: 2px; }
-
+                .ctrl-btn svg { width: 22px; height: 22px; stroke-width: 2.2px; }
+ 
                 .ctrl-btn.muted, .ctrl-btn.camera-off { 
-                    background: white; color: #1c1c1e;
-                    box-shadow: 0 0 20px rgba(255,255,255,0.4);
+                    background: #ffffff; color: #09090b;
+                    box-shadow: 0 0 15px rgba(255,255,255,0.3);
+                    border-color: #ffffff;
                 }
-
+                .ctrl-btn.muted:hover, .ctrl-btn.camera-off:hover {
+                    background: #f4f4f5;
+                }
+ 
                 .ctrl-btn.hangup {
-                    background: #ff3b30; width: 72px; height: 72px; margin: 0 12px;
+                    background: #ff3b30; width: 64px; height: 64px; margin: 0 10px;
+                    border-color: rgba(255,255,255,0.08);
+                    box-shadow: 0 6px 20px rgba(255, 59, 48, 0.3);
                 }
-                .ctrl-btn.hangup:hover { background: #ff453a; box-shadow: 0 8px 30px rgba(255, 59, 48, 0.5); transform: scale(1.1); }
+                .ctrl-btn.hangup:hover { 
+                    background: #ff453a; 
+                    box-shadow: 0 10px 30px rgba(255, 59, 48, 0.55); 
+                    transform: translateY(-2px) scale(1.05); 
+                }
                 
                 .ctrl-btn.minimize-btn {
-                    background: rgba(255,255,255,0.1);
+                    background: rgba(255,255,255,0.08);
                 }
                 .ctrl-btn.minimize-btn:hover {
-                    background: rgba(255,255,255,0.2);
+                    background: rgba(255,255,255,0.15);
                 }
                 
                 /* Mobile optimization */
                 @media (max-width: 480px) {
-                    .call-controls { width: 90%; justify-content: space-evenly; padding: 16px; bottom: 40px; }
-                    .ctrl-btn { width: 52px; height: 52px; }
-                    .ctrl-btn.hangup { width: 64px; height: 64px; }
-                    .local-video { width: 90px; height: 135px; top: 20px; right: 20px; }
+                    .call-controls { width: 92%; justify-content: space-evenly; padding: 12px; bottom: 32px; gap: 12px; }
+                    .ctrl-btn { width: 48px; height: 48px; }
+                    .ctrl-btn.hangup { width: 58px; height: 58px; }
+                    .local-video { width: 85px; height: 128px; top: 20px; right: 20px; }
                     .status-pill { top: 20px; left: 20px; }
                     
                     .audio-dual-layout { flex-direction: column; gap: 40px; }
                     .audio-avatar { width: 120px; height: 120px; }
                 }
-
+ 
                 /* Audio Dual Layout */
                 .audio-dual-layout {
                     flex: 1;
@@ -1406,12 +1472,12 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                     background: radial-gradient(circle at center, #1c1c1e 0%, #000000 100%);
                     position: relative;
                 }
-
+ 
                 .audio-avatar-wrapper {
                     display: flex; flex-direction: column; align-items: center; gap: 16px;
                     position: relative;
                 }
-
+ 
                 .audio-avatar {
                     width: 150px; height: 150px;
                     border-radius: 50%;
@@ -1424,16 +1490,16 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                 .audio-avatar.local {
                     border-color: rgba(52, 199, 89, 0.3); /* Green Tint for self */
                 }
-
+ 
                 .audio-avatar-wrapper.pulse .audio-avatar {
                     animation: pulse-ring 3s infinite;
                 }
-
+ 
                 .audio-name {
                     font-size: 1.2rem; font-weight: 700; color: white;
                     text-shadow: 0 2px 10px rgba(0,0,0,0.5);
                 }
-
+ 
                 .audio-status {
                     position: absolute;
                     bottom: 25%;
@@ -1442,7 +1508,7 @@ export default function CallOverlay({ callData, currentUser, onEnd, onMinimize, 
                     text-transform: uppercase;
                     letter-spacing: 1px;
                 }
-
+ 
                 @keyframes pulse-ring {
                     0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.1); }
                     50% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }

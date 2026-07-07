@@ -20,6 +20,7 @@ import IncomingCallPopup from '../components/IncomingCallPopup';
 import { initiateCall } from '../services/callSignalingService';
 import StatusView from '../components/StatusView';
 import StoryViewer from '../components/StoryViewer';
+import FullProfileModal from '../components/FullProfileModal';
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 import { mapEventChannel } from './MapHome'; // Instant map updates
@@ -1556,6 +1557,9 @@ const isVideoUrl = (url) => {
 function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: initialReplyToMessage, quickReplyText: initialQuickReplyText }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
+    const [showFullProfile, setShowFullProfile] = useState(false);
+    const [fullProfileUser, setFullProfileUser] = useState(null);
+    const [viewingStoryUser, setViewingStoryUser] = useState(null);
     const { startCall } = useCall();
 
     // Fix for mobile browser address bar layout shifts and page viewport shifts
@@ -1679,6 +1683,55 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     
     // Track partner's presence status
     const presence = usePresence(targetUser.id, currentUser.id);
+
+    const handleProfileModalAction = async (action, targetUser) => {
+        if (action === 'message') {
+            setShowFullProfile(false);
+        } else if (action === 'call-audio') {
+            setShowFullProfile(false);
+            startVoiceCall();
+        } else if (action === 'call-video') {
+            setShowFullProfile(false);
+            startVideoCall();
+        } else if (action === 'block') {
+            setShowFullProfile(false);
+            handleBlockAction();
+        } else if (action === 'unfriend') {
+            setShowFullProfile(false);
+            await handleMenuAction('unfriend');
+        } else if (action === 'report') {
+            setShowFullProfile(false);
+            const reason = prompt("Reason for reporting:");
+            if (reason) showToast("Report submitted successfully ✅");
+        } else if (action === 'view-story') {
+            // Fetch active stories for this user
+            const fetchStories = async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('stories')
+                        .select('*')
+                        .eq('user_id', targetUser.id)
+                        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+                        .order('created_at', { ascending: true });
+
+                    if (error) throw error;
+
+                    if (data && data.length > 0) {
+                        setViewingStoryUser({
+                            user: targetUser,
+                            stories: data
+                        });
+                    } else {
+                        showToast("No active stories");
+                    }
+                } catch (err) {
+                    console.error("Error fetching stories:", err);
+                    showToast("Failed to load stories");
+                }
+            };
+            fetchStories();
+        }
+    };
     
     // Subscribe to partner profile changes
     useEffect(() => {
@@ -2343,7 +2396,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         setChatTheme(newTheme);
         setChatBackground(null); 
         setShowChatThemeSelector(false);
-        const themeName = CHAT_THEMES[newTheme].name;
+        const themeName = newTheme === 'default' ? 'Default' : (CHAT_THEMES[newTheme]?.name || 'Default');
         
 
         
@@ -3433,7 +3486,33 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric' });
     };
 
-    const currentTheme = CHAT_THEMES[chatTheme] || CHAT_THEMES['clean_slate'];
+    const getResolvedTheme = (themeKey) => {
+        if (themeKey === 'default') {
+            const isGlobalDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                                 (document.documentElement.getAttribute('data-theme') === 'system' && 
+                                  window.matchMedia('(prefers-color-scheme: dark)').matches);
+            
+            const isPremium = ['silver', 'gold', 'diamond'].includes(currentUser?.subscription_tier);
+            const hasPremiumTheme = isPremium && currentUser?.premium_theme && currentUser?.premium_theme !== 'default';
+
+            return {
+                name: 'Default',
+                emoji: '⚙️',
+                fontColor: 'var(--text-primary)',
+                backgroundColor: 'transparent',
+                backgroundPattern: 'none',
+                bubbleSent: 'var(--bg-secondary)',
+                bubbleReceived: 'var(--glass-bg)',
+                accentColor: 'var(--brand-primary)',
+                iconColor: 'var(--text-primary)',
+                textColor: 'var(--text-primary)',
+                type: isGlobalDark || hasPremiumTheme ? 'dark' : 'light'
+            };
+        }
+        return CHAT_THEMES[themeKey] || CHAT_THEMES['clean_slate'];
+    };
+
+    const currentTheme = getResolvedTheme(chatTheme);
     // Friends can always chat. Message-request accepted users can chat only if they never had a friendship.
     // If they were friends and unfriended, canChat becomes false immediately via checkChatAccess.
     const canChat = (friendshipStatus === 'accepted') || requestAccepted || hasChattedBefore;
@@ -3657,7 +3736,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     <button onClick={onBack} className="back-btn">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                     </button>
-                    <div className="header-user">
+                    <div 
+                        className="header-user"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => { setFullProfileUser(partner || targetUser); setShowFullProfile(true); }}
+                    >
                         <div className={`avatar-wrapper ${
                             partner.subscription_tier === 'silver' ? 'avatar-ring-silver' :
                             partner.subscription_tier === 'gold' ? 'avatar-ring-gold' :
@@ -3844,16 +3927,67 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 <span style={{ fontSize: '0.65rem', marginLeft: '8px', background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', borderRadius: '8px', padding: '2px 8px', fontWeight: 700, verticalAlign: 'middle' }}>🥈 Silver</span>
                             )}
                         </h3>
-                        {/* Silver Paywall overlay */}
+                        {/* If not premium, show Default option and then the Silver Paywall */}
                         {!['silver','gold','diamond'].includes(currentUser?.subscription_tier) ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px 16px' }}>
-                                <div style={{ fontSize: '2.5rem' }}>🎨</div>
-                                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Premium Chat Themes</div>
-                                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'center', maxWidth: '260px', lineHeight: 1.5 }}>Unlock beautiful chat themes shared with your friends. Available from Silver membership and above.</div>
-                                <button onClick={() => { setShowChatThemeSelector(false); navigate('/subscription'); }} style={{ background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', border: 'none', borderRadius: '100px', padding: '10px 24px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', marginTop: '4px' }}>🥈 Upgrade to Silver</button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                    <div
+                                        className={`theme-card ${chatTheme === 'default' ? 'active' : ''}`}
+                                        onClick={() => handleChatThemeChange('default')}
+                                        style={{
+                                            background: 'var(--bg-secondary)',
+                                            borderColor: chatTheme === 'default' ? 'var(--brand-primary)' : 'transparent',
+                                            width: '100%',
+                                            maxWidth: '180px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <div className="theme-emoji">⚙️</div>
+                                        <div className="theme-name" style={{ color: 'var(--text-primary)' }}>
+                                            Default
+                                        </div>
+                                        <div className="theme-preview">
+                                            <div className="preview-bubble sent" style={{ background: 'var(--bg-secondary)' }}>
+                                                <span style={{ color: 'var(--text-primary)' }}>Hi!</span>
+                                            </div>
+                                            <div className="preview-bubble received" style={{ background: 'var(--glass-bg)' }}>
+                                                <span style={{ color: 'var(--text-primary)' }}>Hello</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '16px 16px', borderTop: '1px solid var(--glass-border)' }}>
+                                    <div style={{ fontSize: '2rem' }}>🎨</div>
+                                    <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Premium Chat Themes</div>
+                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'center', maxWidth: '260px', lineHeight: 1.5 }}>Unlock beautiful chat themes shared with your friends. Available from Silver membership and above.</div>
+                                    <button onClick={() => { setShowChatThemeSelector(false); navigate('/subscription'); }} style={{ background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', color: '#0f172a', border: 'none', borderRadius: '100px', padding: '10px 24px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', marginTop: '4px' }}>🥈 Upgrade to Silver</button>
+                                </div>
                             </div>
                         ) : (
                             <div className="theme-grid">
+                                {/* Default option card for premium users */}
+                                <div
+                                    className={`theme-card ${chatTheme === 'default' ? 'active' : ''}`}
+                                    onClick={() => handleChatThemeChange('default')}
+                                    style={{
+                                        background: 'var(--bg-secondary)',
+                                        borderColor: chatTheme === 'default' ? 'var(--brand-primary)' : 'transparent'
+                                    }}
+                                >
+                                    <div className="theme-emoji">⚙️</div>
+                                    <div className="theme-name" style={{ color: 'var(--text-primary)' }}>
+                                        Default
+                                    </div>
+                                    <div className="theme-preview">
+                                        <div className="preview-bubble sent" style={{ background: 'var(--bg-secondary)' }}>
+                                            <span style={{ color: 'var(--text-primary)' }}>Hi!</span>
+                                        </div>
+                                        <div className="preview-bubble received" style={{ background: 'var(--glass-bg)' }}>
+                                            <span style={{ color: 'var(--text-primary)' }}>Hello</span>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {Object.keys(CHAT_THEMES).map((themeKey) => {
                                     const themeData = CHAT_THEMES[themeKey];
                                     return (
@@ -3986,7 +4120,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             </svg>
                         </div>
                         <h3>No messages yet</h3>
-                        <p>Start a conversation with <strong>{partner.username}</strong></p>
+                        <p>Start a conversation with <strong style={{ cursor: 'pointer', color: 'var(--theme-accent, #0084ff)' }} onClick={() => { setFullProfileUser(partner || targetUser); setShowFullProfile(true); }}>{partner.username}</strong></p>
                         <button className="tap-to-chat-btn" onClick={() => document.querySelector('.msg-input')?.focus()}>
                             Tap to chat
                         </button>
@@ -4463,6 +4597,23 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         <button onClick={() => setShowMuteMenu(false)} className="cancel-btn">Cancel</button>
                     </div>
                 </div>
+            )}
+
+            {showFullProfile && fullProfileUser && (
+                <FullProfileModal
+                    user={fullProfileUser}
+                    currentUser={currentUser}
+                    onClose={() => setShowFullProfile(false)}
+                    onAction={handleProfileModalAction}
+                />
+            )}
+
+            {viewingStoryUser && (
+                <StoryViewer 
+                    userStories={viewingStoryUser} 
+                    currentUser={currentUser}
+                    onClose={() => setViewingStoryUser(null)}
+                />
             )}
 
             <style>{`
