@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { getAvatar2D } from '../utils/avatarUtils';
 import { canViewStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 // Helper to safely format dates, particularly for mobile Safari/WebViews
 const formatSafeDate = (dateStr) => {
@@ -105,7 +106,7 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
             // 1. Fetch Profile Details (Bio, Joined, Interests, etc)
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, created_at, birth_date, interests, username, hide_birthday')
+                .select('bio, created_at, birth_date, interests, username, hide_birthday, is_verified, verified_at')
                 .eq('id', user.id)
                 .maybeSingle();
 
@@ -158,7 +159,9 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 bio: profile?.bio || 'No bio set.',
                 birthDate: profile?.hide_birthday ? null : formatSafeDate(profile?.birth_date),
                 interests: profile?.interests || [],
-                username: profile?.username || user.username 
+                username: profile?.username || user.username,
+                is_verified: profile?.is_verified || user.is_verified || false,
+                verified_at: profile?.verified_at || user.verified_at || null,
             });
         };
 
@@ -264,7 +267,10 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                                 }} 
                             />
                         )}
-                        <h2>{user.username || user.name}</h2>
+                        <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            {user.username || user.name}
+                            <VerifiedBadgeInline user={{ is_verified: stats.is_verified || user.is_verified, verified_at: stats.verified_at || user.verified_at }} size={16} />
+                        </h2>
                         {/* Show @handle only if name differs from username (e.g. old data) */}
                         {stats.username && stats.username !== (user.username || user.name) && <span className="fp-username">@{stats.username}</span>}
 

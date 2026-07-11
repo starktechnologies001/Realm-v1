@@ -1,6 +1,140 @@
-import React, { useRef, memo, useEffect } from 'react';
+import React, { useRef, memo, useEffect, useState } from 'react';
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion';
 import MessageStatusTick from './MessageStatusTick';
+
+const formatAudioTime = (secs) => {
+    if (isNaN(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+const VoicePlayBubble = ({ url, isMe, createdAt, deliveryStatus, formatTime }) => {
+    const audioRef = useRef(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [playbackRate, setPlaybackRate] = useState(1);
+
+    const handlePlayPause = (e) => {
+        e.stopPropagation();
+        if (!audioRef.current) return;
+        if (isPlaying) {
+            audioRef.current.pause();
+        } else {
+            if (!audioRef.current.src) {
+                audioRef.current.src = url;
+            }
+            audioRef.current.play().catch(err => console.warn('Audio play error:', err));
+        }
+    };
+
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+        }
+    };
+
+    const handleLoadedMetadata = () => {
+        if (audioRef.current) {
+            setDuration(audioRef.current.duration);
+        }
+    };
+
+    const handleSpeedToggle = (e) => {
+        e.stopPropagation();
+        if (!audioRef.current) return;
+        let nextRate = 1;
+        if (playbackRate === 1) nextRate = 1.5;
+        else if (playbackRate === 1.5) nextRate = 2;
+        else nextRate = 1;
+
+        setPlaybackRate(nextRate);
+        audioRef.current.playbackRate = nextRate;
+    };
+
+    const handleSeek = (e, seconds) => {
+        e.stopPropagation();
+        if (!audioRef.current) return;
+        const newTime = Math.max(0, Math.min(duration || audioRef.current.duration || Infinity, audioRef.current.currentTime + seconds));
+        audioRef.current.currentTime = newTime;
+        setCurrentTime(newTime);
+    };
+
+    const handleEnded = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+    };
+
+    const WAVE_BARS = [5, 10, 16, 12, 8, 14, 20, 15, 10, 12, 18, 14, 9, 12, 16, 11, 7, 10, 14, 8];
+    const progressPercent = duration ? (currentTime / duration) : 0;
+
+    const handleWaveformClick = (e) => {
+        e.stopPropagation();
+        if (!audioRef.current || !duration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+        audioRef.current.currentTime = percentage * duration;
+        setCurrentTime(percentage * duration);
+    };
+
+    return (
+        <div className={`voice-bubble-container ${isMe ? 'voice-bubble-sent' : 'voice-bubble-received'}`}>
+            <audio
+                ref={audioRef}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onEnded={handleEnded}
+                preload="metadata"
+            />
+            <div className="voice-row">
+                <button 
+                    className="voice-play-btn" 
+                    onClick={handlePlayPause}
+                    style={{ background: isMe ? '#ffffff' : '#0084ff', color: isMe ? '#0084ff' : '#ffffff' }}
+                >
+                    {isPlaying ? '⏸' : '▶️'}
+                </button>
+                
+                <div className="voice-waveform" onClick={handleWaveformClick}>
+                    {WAVE_BARS.map((height, idx) => {
+                        const barProgress = idx / WAVE_BARS.length;
+                        const isActive = progressPercent >= barProgress;
+                        return (
+                            <div 
+                                key={idx}
+                                className={`voice-wave-bar ${isActive ? 'active' : ''}`}
+                                style={{ height: `${height}px` }}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+            
+            <div className="voice-controls-row">
+                <span className="voice-duration">
+                    {isPlaying ? `${formatAudioTime(currentTime)} / ` : ''}{formatAudioTime(duration || audioRef.current?.duration)}
+                </span>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button className="voice-seek-btn" onClick={(e) => handleSeek(e, -10)}>⏪ 10s</button>
+                    <button className="voice-seek-btn" onClick={(e) => handleSeek(e, 10)}>⏩ 10s</button>
+                    <span className="voice-speed-badge" onClick={handleSpeedToggle}>
+                        {playbackRate}x
+                    </span>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', marginTop: '2px', opacity: 0.85 }}>
+                <span className="msg-time-inline" style={{ fontSize: '0.7em', margin: 0 }}>{formatTime(createdAt)}</span>
+                <MessageStatusTick status={deliveryStatus} isSender={isMe} />
+            </div>
+        </div>
+    );
+};
 
 const MessageBubble = ({ 
     msg, 
@@ -414,6 +548,14 @@ const MessageBubble = ({
                             <MessageStatusTick status={deliveryStatus} isSender={isMe} />
                         </div>
                     </div>
+                ) : msg.message_type === 'audio' ? (
+                    <VoicePlayBubble
+                        url={imageUrl}
+                        isMe={isMe}
+                        createdAt={msg.created_at}
+                        deliveryStatus={deliveryStatus}
+                        formatTime={formatTime}
+                    />
                 ) : (
                     <div className="msg-text-container">
                         <span className="msg-text">{parsedThoughtReply ? parsedThoughtReply.reply : msg.content}</span>

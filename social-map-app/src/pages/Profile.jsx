@@ -15,6 +15,7 @@ import { uploadToStorage } from '../utils/fileUpload';
 import { premiumTiers, ACHIEVEMENTS, RARITY_META } from '../utils/premiumUtils';
 import { useTheme, SILVER_THEMES, PREMIUM_THEME_KEYS } from '../context/ThemeContext';
 import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 import './Profile.css';
 
 const formatRelativeTime = (dateStr) => {
@@ -524,8 +525,13 @@ export default function Profile() {
                 </Suspense>
             )}
 
+            {/* Cover Banner — shown only when no custom background */}
+            {!hasCustomBg && (
+                <div className={`profile-cover-banner ${user.subscription_tier === 'gold' ? 'cover-gold' : user.subscription_tier === 'diamond' ? 'cover-diamond' : ''}`} />
+            )}
+
             {/* Header Card */}
-            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''} ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`}>
+            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''} ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`} style={hasCustomBg ? { marginTop: '20px' } : {}}>
                 <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
                     {is3DAvatar ? (
                         <div className="avatar-3d-container" style={{ position: 'relative' }}>
@@ -661,7 +667,10 @@ export default function Profile() {
                 
                 <div className="profile-info">
                     <div className="profile-username" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <span className={getUsernameEffectClass(customizations.usernameEffect)}>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span className={getUsernameEffectClass(customizations.usernameEffect)}>@{user.username || user.full_name?.toLowerCase().replace(/\s/g, '')}</span>
+                            <VerifiedBadgeInline user={user} size={16} />
+                        </span>
                         {user.subscription_tier === 'silver' && <span className="premium-badge silver">🥈 Silver Member</span>}
                         {user.subscription_tier === 'gold' && <span className="premium-badge gold">🥇 Gold Elite</span>}
                         {user.subscription_tier === 'diamond' && <span className="premium-badge diamond">💎 Diamond Elite</span>}
@@ -1047,6 +1056,20 @@ export default function Profile() {
                     />
 
                     <MenuItem
+                        icon={
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" fill="#1877F2" />
+                                <path d="m9 12 2 2 4-4" stroke="white" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        }
+                        label="Verification"
+                        value={user.is_verified ? '✅ Verified' : 'Get Verified'}
+                        hasArrow={true}
+                        iconClass="icon-notif"
+                        onClick={() => navigate('/profile/verification')}
+                    />
+
+                    <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
                         label="Privacy"
                         value="Manage visibility, locations & password"
@@ -1079,9 +1102,18 @@ export default function Profile() {
                         onClick={() => navigate('/legal/safety')}
                     />
 
-                    <MenuItem 
+                    <MenuItem
+                        icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
+                        label="Help & Support"
+                        value="Help Center, FAQ, Contact Us"
+                        hasArrow={true}
+                        iconClass="icon-notif"
+                        onClick={() => navigate('/profile/help')}
+                    />
+
+                    <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>}
-                        label="Terms of Service" 
+                        label="Terms of Service"
                         hasArrow={true}
                         iconClass="icon-safety"
                         onClick={() => navigate('/legal/terms')}

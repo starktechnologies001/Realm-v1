@@ -8,6 +8,7 @@ import { nearbyLabel, parseThought } from '../utils/locationPrivacy';
 import { calculateSmartMatchScore } from '../utils/premiumUtils';
 import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
 import { generateSmartIcebreakers } from '../utils/smartIcebreakers';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 
 export default function MapProfileCard({ user, onClose, onAction, currentUser, userLocation, showToast, reactions = [], onToggleReaction, initialShowReactors = false, friendshipsMapRef, replies = [] }) {
@@ -375,11 +376,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                         <div className="user-info-area">
                             <h2 style={{ cursor: 'default' }}>
                                 <span className={`username-text ${getUsernameEffectClass(customizations.usernameEffect)}`}>{user.username || user.name}</span>
-                                {user.email_verified && (
-                                    <span className="verified-badge" title="Email Verified">
-                                        ✔ Verified
-                                    </span>
-                                )}
+                                <VerifiedBadgeInline user={user} size={15} />
                                 {/* Mood emoji — shown if set and not expired (6h) */}
                                 {(() => {
                                     if (!user.mood || !user.moodUpdatedAt || user.hide_mood) return null;

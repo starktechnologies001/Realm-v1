@@ -4,6 +4,7 @@ import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERI
 import { supabase } from '../supabaseClient';
 import { parseThought } from '../utils/locationPrivacy';
 import { calculateSmartMatchScore } from '../utils/premiumUtils';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 // Helper to format date
 // Helper to format date safely for mobile Safari
@@ -47,7 +48,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
         username: user.username || user.name, // fallback
         isPublic: false,
         thought_bubble_style: user.thought_bubble_style || 'default',
-        thought_bubble_color: user.thought_bubble_color || null
+        thought_bubble_color: user.thought_bubble_color || null,
+        is_verified: user.is_verified || false,
+        verified_at: user.verified_at || null,
     });
 
     // Fetch Details & Mutuals
@@ -65,7 +68,7 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
              // 1. Fetch Profile Columns
              const { data: profile } = await supabase
                 .from('profiles')
-                .select('bio, interests, birth_date, created_at, username, full_name, is_public, relationship_status, hide_relationship_status, hide_online_status, hide_mood, hide_last_seen, hide_birthday, hide_institute, institute, subscription_tier, avatar_effect, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy')
+                .select('bio, interests, birth_date, created_at, username, full_name, is_public, relationship_status, hide_relationship_status, hide_online_status, hide_mood, hide_last_seen, hide_birthday, hide_institute, institute, subscription_tier, avatar_effect, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy, is_verified, verified_at')
                 .eq('id', user.id)
                 .maybeSingle();
             
@@ -110,7 +113,9 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                      thought_bubble_color: profile.thought_bubble_color || null,
                      hide_distance: profile.hide_distance,
                      hide_active_status: profile.hide_active_status,
-                     profile_view_policy: profile.profile_view_policy || 'everyone'
+                     profile_view_policy: profile.profile_view_policy || 'everyone',
+                     is_verified: profile.is_verified || false,
+                     verified_at: profile.verified_at || null,
                  });
              }
         };
@@ -238,7 +243,10 @@ export default function UserProfileCard({ user, onClose, onAction, currentUser }
                              <div className={`status-dot-large ${(user.isLocationOn && !details.hide_online_status && !details.hide_active_status) ? 'online' : 'offline'}`} />
                         </div>
                         
-                        <h2 className="user-name">{user.name}</h2>
+                        <h2 className="user-name" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            {user.name}
+                            <VerifiedBadgeInline user={{ is_verified: details.is_verified || user.is_verified, verified_at: details.verified_at || user.verified_at }} size={16} />
+                        </h2>
                         <span className="user-handle">@{details.username}</span>
                         
 

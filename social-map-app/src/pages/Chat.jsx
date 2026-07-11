@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { motion, AnimatePresence } from 'framer-motion';
 import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
@@ -25,6 +26,7 @@ import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 import { mapEventChannel } from './MapHome'; // Instant map updates
 import { parseThought } from '../utils/locationPrivacy';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID; // Moved to environment variable for security
 
@@ -265,7 +267,7 @@ export default function Chat() {
 
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active, subscription_tier, avatar_effect, hide_online_status, hide_last_seen')
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active, subscription_tier, avatar_effect, hide_online_status, hide_last_seen, is_verified, verified_at')
             .in('id', validPartnerIds);
 
         if (!profiles) {
@@ -1760,6 +1762,272 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const activeChatChannelRef = useRef(null);
 
     const [input, setInput] = useState('');
+
+    // Real-time Typing Status
+    const [typingUsers, setTypingUsers] = useState([]);
+    const isTypingRef = useRef(false);
+    const typingTimeoutRef = useRef(null);
+    const typingChannelRef = useRef(null);
+
+    const sendTypingStatus = (isTyping) => {
+        if (!currentUser || !partner) return;
+        const channelName = `typing-${[currentUser.id, partner.id].sort().join('-')}`;
+        
+        const channel = typingChannelRef.current || supabase.channel(channelName);
+        if (!typingChannelRef.current) {
+            typingChannelRef.current = channel;
+        }
+
+        channel.send({
+            type: 'broadcast',
+            event: 'typing',
+            payload: {
+                userId: currentUser.id,
+                isTyping,
+                username: currentUser.username || currentUser.full_name || 'Someone'
+            }
+        });
+    };
+
+    const stopTyping = () => {
+        if (isTypingRef.current) {
+            isTypingRef.current = false;
+            sendTypingStatus(false);
+        }
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+        }
+    };
+
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        setInput(val);
+
+        if (hasPendingSentRequest) return;
+
+        // Auto-stop if empty or only whitespace
+        if (!val.trim()) {
+            stopTyping();
+            return;
+        }
+
+        // Notify partner immediately when we start typing
+        if (!isTypingRef.current) {
+            isTypingRef.current = true;
+            sendTypingStatus(true);
+        }
+
+        // Refresh inactivity timer (3 seconds)
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+            stopTyping();
+        }, 3000);
+    };
+
+    // Voice Recording Status
+    const [isRecording, setIsRecording] = useState(false);
+    const [isRecordPaused, setIsRecordPaused] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const recordingIntervalRef = useRef(null);
+
+    const startAudioRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunksRef.current = [];
+            
+            let mimeType = 'audio/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/mp4';
+            }
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/ogg';
+            }
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = ''; 
+            }
+
+            const recorder = new MediaRecorder(stream, {
+                mimeType,
+                audioBitsPerSecond: 64000
+            });
+
+            mediaRecorderRef.current = recorder;
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                }
+            };
+
+            recorder.onstop = async () => {
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            recorder.start(150); 
+            
+            setIsRecording(true);
+            setIsRecordPaused(false);
+            setRecordingTime(0);
+
+            if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = setInterval(() => {
+                setRecordingTime(t => t + 1);
+            }, 1000);
+
+            // Also stop typing status when recording starts
+            stopTyping();
+
+        } catch (err) {
+            console.error('Error starting voice recording:', err);
+            showToast("Microphone access is required to record voice messages.");
+        }
+    };
+
+    const pauseAudioRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.pause();
+            setIsRecordPaused(true);
+            if (recordingIntervalRef.current) {
+                clearInterval(recordingIntervalRef.current);
+                recordingIntervalRef.current = null;
+            }
+        }
+    };
+
+    const resumeAudioRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+            mediaRecorderRef.current.resume();
+            setIsRecordPaused(false);
+            if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = setInterval(() => {
+                setRecordingTime(t => t + 1);
+            }, 1000);
+        }
+    };
+
+    const cancelAudioRecording = () => {
+        if (mediaRecorderRef.current) {
+            if (mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+            }
+        }
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+        setIsRecording(false);
+        setIsRecordPaused(false);
+        setRecordingTime(0);
+        audioChunksRef.current = [];
+    };
+
+    const sendAudioRecording = async () => {
+        if (!mediaRecorderRef.current) return;
+        
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+
+        mediaRecorderRef.current.onstop = async () => {
+            const stream = mediaRecorderRef.current.stream;
+            stream.getTracks().forEach(track => track.stop());
+
+            const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType || 'audio/webm' });
+            if (audioBlob.size < 100) return;
+
+            setUploading(true);
+            try {
+                const fileName = `${Date.now()}.webm`;
+                const filePath = `voice-messages/${currentUser.id}/${fileName}`;
+                
+                const { error: uploadError } = await supabase.storage
+                    .from('chat-images')
+                    .upload(filePath, audioBlob, {
+                        contentType: 'audio/webm',
+                        cacheControl: '3600'
+                    });
+
+                if (uploadError) throw uploadError;
+
+                const { data: urlData } = supabase.storage
+                    .from('chat-images')
+                    .getPublicUrl(filePath);
+
+                const audioUrl = urlData.publicUrl;
+
+                await sendMessage('audio', '🎵 Voice Message', audioUrl);
+
+            } catch (err) {
+                console.error('Error uploading voice message:', err);
+                showToast("Failed to upload voice message.");
+            } finally {
+                setUploading(false);
+                setIsRecording(false);
+                setIsRecordPaused(false);
+                setRecordingTime(0);
+                audioChunksRef.current = [];
+            }
+        };
+
+        mediaRecorderRef.current.stop();
+    };
+
+    const formatAudioTime = (secs) => {
+        const m = Math.floor(secs / 60);
+        const s = Math.floor(secs % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    useEffect(() => {
+        if (!currentUser || !partner) return;
+
+        const channelName = `typing-${[currentUser.id, partner.id].sort().join('-')}`;
+        const channel = supabase.channel(channelName);
+        typingChannelRef.current = channel;
+
+        channel
+            .on('broadcast', { event: 'typing' }, (payload) => {
+                const { userId, isTyping, username } = payload.payload;
+                if (userId === currentUser.id) return;
+
+                setTypingUsers(prev => {
+                    if (isTyping) {
+                        if (prev.some(u => u.id === userId)) return prev;
+                        return [...prev, { id: userId, username }];
+                    } else {
+                        return prev.filter(u => u.id !== userId);
+                    }
+                });
+            })
+            .subscribe();
+
+        return () => {
+            if (isTypingRef.current) {
+                // Send stop typing event immediately before removing channel
+                channel.send({
+                    type: 'broadcast',
+                    event: 'typing',
+                    payload: {
+                        userId: currentUser.id,
+                        isTyping: false,
+                        username: currentUser.username || currentUser.full_name || 'Someone'
+                    }
+                });
+            }
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            supabase.removeChannel(channel);
+            typingChannelRef.current = null;
+        };
+    }, [currentUser?.id, partner?.id]);
+
+
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
     const chatMessagesRef = useRef(null);
@@ -3062,7 +3330,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         }
     }, [messages, scrollToBottom]);
 
+    // Scroll to bottom when typing list updates
+    useEffect(() => {
+        if (typingUsers.length > 0) {
+            scrollToBottom('smooth');
+        }
+    }, [typingUsers.length, scrollToBottom]);
+
     const sendMessage = async (type = 'text', content = null, imageUrl = null) => {
+        stopTyping();
         // Prevent sending if blocked
         if (blockStatus.blockedByMe) {
             showToast("You must unblock this user to send messages.");
@@ -3751,6 +4027,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         <div className="header-text">
                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {partner.username || partner.full_name || partner.name}
+                                <VerifiedBadgeInline user={partner?.fullProfile || partner} size={15} />
                                 {partner.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
                                 {partner.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
                                 {partner.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
@@ -4317,6 +4594,35 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         </React.Fragment>
                     );
                 })}
+                <AnimatePresence>
+                    {typingUsers.length > 0 && (
+                        <motion.div
+                            key="typing-indicator"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.2 }}
+                            className="typing-indicator-wrap"
+                        >
+                            <div className="typing-dots">
+                                <div className="typing-dot" />
+                                <div className="typing-dot" />
+                                <div className="typing-dot" />
+                            </div>
+                            <span className="typing-indicator-text">
+                                {(() => {
+                                    if (typingUsers.length === 1) {
+                                        return `${typingUsers[0].username} is typing...`;
+                                    } else if (typingUsers.length === 2) {
+                                        return `${typingUsers[0].username} and ${typingUsers[1].username} are typing...`;
+                                    } else {
+                                        return `${typingUsers.length} people are typing...`;
+                                    }
+                                })()}
+                            </span>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
                 <div ref={messagesEndRef} />
             </div>
 
@@ -4440,85 +4746,137 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     </div>
                 )}
                 
-                <div className="glass-input-bar">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        style={{ display: 'none' }}
-                        accept="image/*,video/*"
-                        multiple
-                        onChange={handleFileSelect}
-                    />
-                    {/* Hidden file inputs for attachment system */}
-                    <input
-                        type="file"
-                        ref={cameraInputRef}
-                        style={{ display: 'none' }}
-                        accept="image/*,video/*"
-                        capture="environment"
-                        onChange={handleFileSelect}
-                    />
-                    <input
-                        type="file"
-                        ref={galleryInputRef}
-                        style={{ display: 'none' }}
-                        accept="image/*,video/*"
-                        multiple
-                        onChange={handleFileSelect}
-                    />
-                    <input
-                        type="file"
-                        ref={documentInputRef}
-                        style={{ display: 'none' }}
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
-                        multiple
-                        onChange={handleFileSelect}
-                    />
-                    
-                    {/* Attachment "+" Button */}
-                    <button 
-                        onClick={() => setShowAttachmentPicker(true)} 
-                        className="input-icon-btn attachment-btn"
-                        title="Attach files"
-                        disabled={uploading || hasPendingSentRequest}
-                    >
-                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="16"></line>
-                            <line x1="8" y1="12" x2="16" y2="12"></line>
-                        </svg>
-                    </button>
+                <div className={`glass-input-bar ${isRecording ? 'recording-active' : ''}`}>
+                    {isRecording ? (
+                        <>
+                            {/* Waveform Animation */}
+                            <div className="recording-wave-container">
+                                <div className={`recording-wave-bar ${isRecordPaused ? 'paused' : ''}`} />
+                                <div className={`recording-wave-bar ${isRecordPaused ? 'paused' : ''}`} />
+                                <div className={`recording-wave-bar ${isRecordPaused ? 'paused' : ''}`} />
+                                <div className={`recording-wave-bar ${isRecordPaused ? 'paused' : ''}`} />
+                            </div>
+                            
+                            <span className="recording-timer">
+                                {formatAudioTime(recordingTime)}
+                            </span>
 
-                    {/* Premium Sticker Button */}
-                    <button
-                        onClick={() => { setShowStickerPanel(s => !s); }}
-                        className="input-icon-btn sticker-btn"
-                        title="Premium Stickers"
-                        disabled={uploading || hasPendingSentRequest}
-                        style={{ fontSize: '1.1rem', opacity: showStickerPanel ? 1 : 0.7 }}
-                    >
-                        🎭
-                    </button>
-                    
-                    {/* Existing Image Button */}
-                    <button onClick={() => fileInputRef.current.click()} disabled={uploading || hasPendingSentRequest} className="input-icon-btn">
-                        {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
-                    </button>
+                            <div style={{ flex: 1 }} />
 
-                    <input
-                                        ref={messageInputRef}
-                                        className="msg-input"
-                                        value={input}
-                                        onChange={e => setInput(e.target.value)}
-                                        onKeyPress={e => e.key === 'Enter' && sendMessage()}
-                                        onFocus={() => scrollToBottom('smooth')}
-                                        placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
-                                        disabled={uploading || hasPendingSentRequest}
-                                    />
-                    
-                    <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading) || hasPendingSentRequest}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-                    </button>
+                            {/* Discard Recording */}
+                            <button className="recording-btn cancel" onClick={cancelAudioRecording} title="Cancel">
+                                🗑️
+                            </button>
+
+                            {/* Pause/Resume Recording */}
+                            {isRecordPaused ? (
+                                <button className="recording-btn play" onClick={resumeAudioRecording} title="Resume">
+                                    ▶️
+                                </button>
+                            ) : (
+                                <button className="recording-btn pause" onClick={pauseAudioRecording} title="Pause">
+                                    ⏸
+                                </button>
+                            )}
+
+                            {/* Send Recording */}
+                            <button className="recording-btn send" onClick={sendAudioRecording} title="Send voice message">
+                                🚀
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                accept="image/*,video/*"
+                                multiple
+                                onChange={handleFileSelect}
+                            />
+                            {/* Hidden file inputs for attachment system */}
+                            <input
+                                type="file"
+                                ref={cameraInputRef}
+                                style={{ display: 'none' }}
+                                accept="image/*,video/*"
+                                capture="environment"
+                                onChange={handleFileSelect}
+                            />
+                            <input
+                                type="file"
+                                ref={galleryInputRef}
+                                style={{ display: 'none' }}
+                                accept="image/*,video/*"
+                                multiple
+                                onChange={handleFileSelect}
+                            />
+                            <input
+                                type="file"
+                                ref={documentInputRef}
+                                style={{ display: 'none' }}
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
+                                multiple
+                                onChange={handleFileSelect}
+                            />
+                            
+                            {/* Attachment "+" Button */}
+                            <button 
+                                onClick={() => setShowAttachmentPicker(true)} 
+                                className="input-icon-btn attachment-btn"
+                                title="Attach files"
+                                disabled={uploading || hasPendingSentRequest}
+                            >
+                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="16"></line>
+                                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                                </svg>
+                            </button>
+
+                            {/* Premium Sticker Button */}
+                            <button
+                                onClick={() => { setShowStickerPanel(s => !s); }}
+                                className="input-icon-btn sticker-btn"
+                                title="Premium Stickers"
+                                disabled={uploading || hasPendingSentRequest}
+                                style={{ fontSize: '1.1rem', opacity: showStickerPanel ? 1 : 0.7 }}
+                            >
+                                🎭
+                            </button>
+                            
+                            {/* Existing Image Button */}
+                            <button onClick={() => fileInputRef.current.click()} disabled={uploading || hasPendingSentRequest} className="input-icon-btn">
+                                {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
+                            </button>
+
+                            {/* Mic Recording Button */}
+                            <button 
+                                onClick={startAudioRecording} 
+                                disabled={uploading || hasPendingSentRequest} 
+                                className="input-icon-btn mic-btn"
+                                title="Record voice message"
+                                style={{ fontSize: '1.25rem' }}
+                            >
+                                🎤
+                            </button>
+
+                            <input
+                                ref={messageInputRef}
+                                className="msg-input"
+                                value={input}
+                                onChange={handleInputChange}
+                                onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                                onFocus={() => scrollToBottom('smooth')}
+                                placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
+                                disabled={uploading || hasPendingSentRequest}
+                            />
+                            
+                            <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading) || hasPendingSentRequest}>
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
             )}
@@ -5912,6 +6270,219 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     box-shadow: 0 10px 40px rgba(0,0,0,0.5);
                     animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
                     z-index: 1010; /* Above overlay */
+                }
+
+                /* Real-time Typing Indicator Styles */
+                .typing-indicator-wrap {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 14px;
+                    margin: 6px 16px 12px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                    border-radius: 18px;
+                    width: fit-content;
+                    max-width: 80%;
+                    align-self: flex-start;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                }
+
+                .typing-indicator-text {
+                    font-size: 0.82rem;
+                    color: rgba(255, 255, 255, 0.7);
+                    font-weight: 500;
+                    letter-spacing: -0.01em;
+                }
+
+                .typing-dots {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    margin-top: 1px;
+                }
+
+                .typing-dot {
+                    width: 5px;
+                    height: 5px;
+                    background-color: #0084ff;
+                    border-radius: 50%;
+                    opacity: 0.4;
+                    animation: typingBounce 1.4s infinite ease-in-out both;
+                }
+
+                .typing-dot:nth-child(1) {
+                    animation-delay: -0.32s;
+                }
+
+                .typing-dot:nth-child(2) {
+                    animation-delay: -0.16s;
+                }
+
+                @keyframes typingBounce {
+                    0%, 80%, 100% {
+                        transform: scale(0.7);
+                        opacity: 0.4;
+                    }
+                    40% {
+                        transform: scale(1.15);
+                        opacity: 1;
+                        background-color: #00c6ff;
+                    }
+                }
+
+                /* Voice Recording & Message Playback CSS Styles */
+                .recording-active {
+                    background: rgba(255, 59, 48, 0.15) !important;
+                    border-color: rgba(255, 59, 48, 0.4) !important;
+                }
+
+                .recording-timer {
+                    font-size: 0.88rem;
+                    font-weight: 700;
+                    color: #ff3b30;
+                    font-family: monospace;
+                    margin-left: 8px;
+                    animation: flashRed 1s infinite alternate;
+                }
+
+                .recording-wave-container {
+                    display: flex;
+                    align-items: center;
+                    gap: 3px;
+                    height: 18px;
+                    margin-left: 6px;
+                }
+
+                .recording-wave-bar {
+                    width: 3px;
+                    height: 100%;
+                    background: #ff3b30;
+                    border-radius: 2px;
+                    animation: pulseWave 0.8s infinite ease-in-out alternate;
+                }
+                .recording-wave-bar:nth-child(2) { animation-delay: 0.15s; height: 60%; }
+                .recording-wave-bar:nth-child(3) { animation-delay: 0.3s; height: 80%; }
+                .recording-wave-bar:nth-child(4) { animation-delay: 0.45s; height: 50%; }
+
+                .recording-wave-bar.paused {
+                    animation-play-state: paused !important;
+                    background: #8e8e93;
+                }
+
+                .recording-btn {
+                    background: none;
+                    border: none;
+                    font-size: 1.15rem;
+                    cursor: pointer;
+                    padding: 4px 10px;
+                    transition: transform 0.1s;
+                }
+                .recording-btn:active {
+                    transform: scale(0.85);
+                }
+
+                @keyframes pulseWave {
+                    0% { transform: scaleY(0.4); }
+                    100% { transform: scaleY(1.3); }
+                }
+
+                @keyframes flashRed {
+                    0% { opacity: 0.4; }
+                    100% { opacity: 1; }
+                }
+
+                /* Playback Bubble Styling */
+                .voice-bubble-container {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    padding: 8px 12px 6px;
+                    min-width: 200px;
+                    max-width: 280px;
+                    color: white;
+                }
+                .voice-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                .voice-play-btn {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 0.95rem;
+                    transition: transform 0.12s;
+                    flex-shrink: 0;
+                }
+                .voice-play-btn:active {
+                    transform: scale(0.9);
+                }
+                .voice-waveform {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                    flex: 1;
+                    height: 24px;
+                    cursor: pointer;
+                }
+                .voice-wave-bar {
+                    width: 2.5px;
+                    border-radius: 1px;
+                    background: rgba(255, 255, 255, 0.35);
+                    transition: background 0.1s;
+                }
+                .voice-wave-bar.active {
+                    background: #ffffff;
+                }
+                .voice-bubble-received {
+                    color: var(--text-primary, #ffffff);
+                }
+                .voice-bubble-received .voice-wave-bar {
+                    background: rgba(255, 255, 255, 0.25);
+                }
+                .voice-bubble-received .voice-wave-bar.active {
+                    background: #0084ff;
+                }
+                .voice-controls-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    font-size: 0.7rem;
+                    color: rgba(255, 255, 255, 0.65);
+                    margin-top: 2px;
+                    padding: 0 2px;
+                }
+                .voice-bubble-received .voice-controls-row {
+                    color: rgba(255, 255, 255, 0.65);
+                }
+                .voice-speed-badge {
+                    background: rgba(255, 255, 255, 0.15);
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    font-size: 0.65rem;
+                }
+                .voice-seek-btn {
+                    background: none;
+                    border: none;
+                    color: inherit;
+                    font-size: 0.65rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    padding: 0 4px;
+                    opacity: 0.75;
+                }
+                .voice-seek-btn:hover {
+                    opacity: 1;
                 }
             `}</style>
 

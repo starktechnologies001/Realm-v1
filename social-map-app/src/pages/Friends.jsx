@@ -5,6 +5,7 @@ import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERI
 import { useCall } from '../context/CallContext';
 import { blockUser } from '../utils/blockUtils';
 import FullProfileModal from '../components/FullProfileModal';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 export default function Friends() {
     const [requests, setRequests] = useState([]);
@@ -38,12 +39,12 @@ export default function Friends() {
         const [pendingResult, myFriendsResult] = await Promise.all([
             supabase
                 .from('friendships')
-                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect)')
+                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at)')
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending'),
             supabase
                 .from('friendships')
-                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect)')
+                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at)')
                 .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
                 .eq('status', 'accepted')
         ]);
@@ -395,6 +396,7 @@ export default function Friends() {
                                         >
                                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                                                 {req.username}
+                                                <VerifiedBadgeInline user={req} size={14} />
                                                 {req.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
                                                 {req.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
                                                 {req.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
@@ -454,6 +456,7 @@ export default function Friends() {
                                         <div className="info">
                                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
                                                 {friend.username}
+                                                <VerifiedBadgeInline user={friend} size={14} />
                                                 {friend.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
                                                 {friend.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
                                                 {friend.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}

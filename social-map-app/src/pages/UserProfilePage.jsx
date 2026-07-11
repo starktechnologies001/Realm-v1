@@ -7,6 +7,7 @@ import { checkUnlockedAchievements, ACHIEVEMENTS, calculateSmartMatchScore } fro
 import { parseThought } from '../utils/locationPrivacy';
 import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
 import { generateSmartIcebreakers } from '../utils/smartIcebreakers';
+import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
@@ -491,7 +492,10 @@ export default function UserProfilePage() {
 
             {/* Identity */}
             <div style={styles.identity}>
-                <h1 style={styles.name} className={getUsernameEffectClass(customizations.usernameEffect)}>{user.username || user.name}</h1>
+                <h1 style={{ ...styles.name, display: 'inline-flex', alignItems: 'center', gap: 6 }} className={getUsernameEffectClass(customizations.usernameEffect)}>
+                    {user.username || user.name}
+                    <VerifiedBadgeInline user={user} size={18} />
+                </h1>
                 <div style={styles.badgeRow}>
                     {details.relationship_status && !user.hide_relationship_status && (
                         <span style={styles.statusPill}>
