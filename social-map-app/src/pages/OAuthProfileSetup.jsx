@@ -8,7 +8,7 @@ import {
   DEFAULT_GENERIC_AVATAR 
 } from '../utils/avatarUtils';
 import ImageCropper from '../components/ImageCropper';
-import nearoLogo from '../assets/logo.png';
+const nearoLogo = '/logo.webp';
 
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 
@@ -251,7 +251,7 @@ export default function OAuthProfileSetup() {
       {showWelcomePopup && (
         <div className="welcome-popup-overlay">
           <div className="welcome-popup-card">
-            <img src={nearoLogo} alt="Nearo Logo" style={{ height: '46px', width: 'auto', objectFit: 'contain', marginBottom: '20px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />
+            <img src={nearoLogo} alt="Nearo Logo" width="128" height="46" decoding="async" style={{ height: '46px', width: 'auto', objectFit: 'contain', marginBottom: '20px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />
             <h2 className="welcome-popup-title">Welcome to Nearo 🎉</h2>
             <p className="welcome-popup-text">
               Discover and connect with people around you. Complete your setup to enter the map.

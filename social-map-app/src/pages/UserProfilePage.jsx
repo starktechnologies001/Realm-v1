@@ -478,7 +478,7 @@ export default function UserProfilePage() {
                             : '0 0 0 3px rgba(255,255,255,0.15), 0 12px 40px rgba(0,0,0,0.6)')
                     }}
                 >
-                    <img src={displayAvatar} alt={user.username || user.name} style={styles.avatarImg} fetchpriority="high" />
+                    <img src={displayAvatar} alt={user.username || user.name} style={styles.avatarImg} fetchpriority="high" decoding="sync" width="116" height="116" />
                     {/* Render Premium Accessories */}
                     <AvatarAccessories accessory={customizations.avatarAccessory} />
                 </div>
@@ -806,7 +806,7 @@ export default function UserProfilePage() {
                         <div style={styles.mediaGrid}>
                             {sharedMedia.slice(0, 6).map((m, i) => (
                                 <div key={i} style={styles.mediaItem} onClick={() => setPreviewImage(m.image_url)}>
-                                    <img src={m.image_url} alt="Shared" style={styles.mediaImg} />
+                                    <img src={m.image_url} alt="Shared" width="100" height="100" loading="lazy" decoding="async" style={styles.mediaImg} />
                                 </div>
                             ))}
                         </div>

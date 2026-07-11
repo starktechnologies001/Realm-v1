@@ -250,6 +250,10 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                                         src={getAvatarHeadshot(request.sender.avatar_url)}
                                         alt={request.sender.username}
                                         className="request-avatar"
+                                        width="40"
+                                        height="40"
+                                        loading="lazy"
+                                        decoding="async"
                                         style={{ cursor: 'pointer' }}
                                         onClick={() => setSelectedUser(request.sender)}
                                     />
@@ -353,8 +357,13 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                         
                         .request-info h4 {
                             margin: 0;
-                            font-size: 1rem;
+                            font-size: 0.95rem;
                             color: var(--text-primary);
+                        }
+                        @media (max-width: 480px) {
+                            .request-info h4 {
+                                font-size: 0.88rem;
+                            }
                         }
                         
                         .request-time {

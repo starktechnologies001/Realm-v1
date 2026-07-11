@@ -346,6 +346,10 @@ const MessageBubble = ({
                             <img 
                                 src={msg.reply_to_story.media_url} 
                                 alt="Story"
+                                width="32"
+                                height="42"
+                                loading="lazy"
+                                decoding="async"
                                 style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} 
                             />
                         </div>
@@ -427,6 +431,8 @@ const MessageBubble = ({
                                 className="sent-image" 
                                 onClick={() => onViewImage(imageUrl)}
                                 onLoad={onMediaLoad}
+                                loading="lazy"
+                                decoding="async"
                                 style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' ? '6px' : '0' }}
                             />
                         )}

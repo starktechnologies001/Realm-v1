@@ -9,7 +9,7 @@ import {
 } from '../utils/avatarUtils';
 // 🚀 ImageCropper is only needed after a user selects a photo — lazy load it
 const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
-import nearoLogo from '../assets/logo.png';
+const nearoLogo = '/logo.webp';
 
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
@@ -44,7 +44,7 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
-      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+      const siteUrl = window.location.origin;
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -480,7 +480,7 @@ export default function Login() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <img src={nearoLogo} className="app-title-logo" alt="Nearo Logo" />
+        <img src={nearoLogo} className="app-title-logo" alt="Nearo Logo" fetchpriority="high" decoding="sync" width="128" height="46" />
         <p className="app-subtitle">
           {isSignUp ? "Create your profile" : "Discover, Connect, Meet"}
         </p>

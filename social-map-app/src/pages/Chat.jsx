@@ -2,26 +2,24 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
-import AgoraRTC from "agora-rtc-sdk-ng";
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
 import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getBlockedUserIds, blockUser, unblockUser, isUserBlocked } from '../utils/blockUtils';
-import AttachmentPicker from '../components/AttachmentPicker';
-import PremiumStickersPanel from '../components/PremiumStickersPanel';
-import AttachmentPreview from '../components/AttachmentPreview';
-import MessageAttachment from '../components/MessageAttachment';
 import MessageBubble from '../components/MessageBubble';
 import { uploadToStorage, validateFile } from '../utils/fileUpload';
-import EmojiPicker from 'emoji-picker-react';
 import { usePresence } from '../hooks/usePresence';
 import { initializePresence, cleanupPresence } from '../services/presenceService';
 import { useIncomingCall } from '../hooks/useIncomingCall';
-import IncomingCallPopup from '../components/IncomingCallPopup';
 import { initiateCall } from '../services/callSignalingService';
-import StatusView from '../components/StatusView';
-import StoryViewer from '../components/StoryViewer';
-import FullProfileModal from '../components/FullProfileModal';
+
+const AttachmentPicker = React.lazy(() => import('../components/AttachmentPicker'));
+const PremiumStickersPanel = React.lazy(() => import('../components/PremiumStickersPanel'));
+const AttachmentPreview = React.lazy(() => import('../components/AttachmentPreview'));
+const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
+const StatusView = React.lazy(() => import('../components/StatusView'));
+const StoryViewer = React.lazy(() => import('../components/StoryViewer'));
+const FullProfileModal = React.lazy(() => import('../components/FullProfileModal'));
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 import { mapEventChannel } from './MapHome'; // Instant map updates
@@ -849,18 +847,111 @@ export default function Chat() {
             
             {/* Story Viewer Overlay */}
             {selectedStoryUser && (
-                <StoryViewer 
-                    userStories={selectedStoryUser} 
-                    currentUser={currentUser}
-                    onClose={() => {
-                        setSelectedStoryUser(null);
-                        setRefreshTrigger(prev => prev + 1); // Refresh status view
-                    }}
-                />
+                <React.Suspense fallback={null}>
+                    <StoryViewer 
+                        userStories={selectedStoryUser} 
+                        currentUser={currentUser}
+                        onClose={() => {
+                            setSelectedStoryUser(null);
+                            setRefreshTrigger(prev => prev + 1); // Refresh status view
+                        }}
+                    />
+                </React.Suspense>
             )}
         </>
     );
 }
+
+const ChatItemRow = React.memo(({ 
+    chat, 
+    selectionMode, 
+    isSelected, 
+    onClick, 
+    onTouchStart, 
+    onTouchEnd, 
+    idx 
+}) => {
+    return (
+        <div 
+            className={`chat-item ${chat.unread > 0 ? 'unread' : ''} ${selectionMode && isSelected ? 'selected' : ''}`}
+            onClick={() => onClick(chat)}
+            onTouchStart={() => onTouchStart(chat.id)}
+            onTouchEnd={onTouchEnd}
+            onMouseDown={() => onTouchStart(chat.id)}
+            onMouseUp={onTouchEnd}
+            onMouseLeave={onTouchEnd}
+        >
+            {selectionMode && (
+                <div className="selection-checkbox">
+                    <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => {}} // Handled by parent click
+                        aria-label={`Select chat with ${chat.name}`}
+                    />
+                </div>
+            )}
+            
+            <div className={`avatar-wrapper ${
+                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' ? 'avatar-ring-silver' :
+                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' ? 'avatar-ring-gold' :
+                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' ? 'avatar-ring-diamond' : ''
+            }`} style={{ padding: (chat.fullProfile?.subscription_tier || chat.subscription_tier) ? 2 : 0, borderRadius: '50%' }}>
+                <img 
+                    src={chat.avatar} 
+                    alt={chat.name} 
+                    className="chat-avatar" 
+                    width="46"
+                    height="46"
+                    loading={idx < 5 ? "eager" : "lazy"}
+                    decoding={idx < 5 ? "sync" : "async"}
+                />
+                {/* Only show green dot for users who are actually online */}
+                {chat.isOnline && <div className="online-badge"></div>}
+            </div>
+            
+            <div className="chat-info">
+                <div className="chat-header-row">
+                    <span className="chat-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {chat.name}
+                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
+                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
+                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                    </span>
+                    <div className="meta-info">
+                        {chat.isMuted && <span className="mute-icon">🔇</span>}
+                        <span className="chat-time">{chat.time}</span>
+                    </div>
+                </div>
+                <div className="chat-msg-row">
+                    <p className="chat-preview">
+                        {chat.lastMsg}
+                    </p>
+                    {chat.unread > 0 && (
+                        <span className="unread-badge">
+                            {chat.unread > 99 ? '99+' : chat.unread}
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}, (prevProps, nextProps) => {
+    return (
+        prevProps.selectionMode === nextProps.selectionMode &&
+        prevProps.isSelected === nextProps.isSelected &&
+        prevProps.idx === nextProps.idx &&
+        prevProps.chat.id === nextProps.chat.id &&
+        prevProps.chat.name === nextProps.chat.name &&
+        prevProps.chat.avatar === nextProps.chat.avatar &&
+        prevProps.chat.unread === nextProps.chat.unread &&
+        prevProps.chat.lastMsg === nextProps.chat.lastMsg &&
+        prevProps.chat.time === nextProps.chat.time &&
+        prevProps.chat.isOnline === nextProps.chat.isOnline &&
+        prevProps.chat.isMuted === nextProps.chat.isMuted &&
+        (prevProps.chat.fullProfile?.subscription_tier || prevProps.chat.subscription_tier) === (nextProps.chat.fullProfile?.subscription_tier || nextProps.chat.subscription_tier)
+    );
+});
 
 function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger, messageRequestsCount }) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -873,7 +964,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
     const longPressTimerRef = useRef(null);
     
     // Long-press handlers
-    const handleTouchStart = (chatId) => {
+    const handleTouchStart = useCallback((chatId) => {
         if (selectionMode) return; // Already in selection mode
         
         longPressTimerRef.current = setTimeout(() => {
@@ -883,30 +974,32 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
             setSelectionMode(true);
             setSelectedChats(new Set([chatId]));
         }, 1000); // 1 second
-    };
+    }, [selectionMode]);
     
-    const handleTouchEnd = () => {
+    const handleTouchEnd = useCallback(() => {
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
         }
-    };
+    }, []);
     
-    const handleChatItemClick = (chat) => {
+    const handleChatItemClick = useCallback((chat) => {
         if (selectionMode) {
             // Toggle selection
-            const newSelected = new Set(selectedChats);
-            if (newSelected.has(chat.id)) {
-                newSelected.delete(chat.id);
-            } else {
-                newSelected.add(chat.id);
-            }
-            setSelectedChats(newSelected);
+            setSelectedChats(prevSelected => {
+                const newSelected = new Set(prevSelected);
+                if (newSelected.has(chat.id)) {
+                    newSelected.delete(chat.id);
+                } else {
+                    newSelected.add(chat.id);
+                }
+                return newSelected;
+            });
         } else {
             // Normal chat open
             onSelectChat(chat);
         }
-    };
+    }, [selectionMode, onSelectChat]);
     
     const handleDeleteChats = async () => {
         if (!currentUser || selectedChats.size === 0) return;
@@ -983,8 +1076,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                         Chats
                     </button>
                     <button 
-                         className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
-                         onClick={() => setActiveTab('status')}
+                        className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('status')}
                     >
                         Status
                     </button>
@@ -1031,7 +1124,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
             <div className="chat-list-scroll">
                 {activeTab === 'status' ? (
-                    <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectStory} refreshTrigger={refreshTrigger} />
+                    <React.Suspense fallback={<div className="loading-state"><div className="spinner"></div><p>Loading Status...</p></div>}>
+                        <StatusView currentUser={currentUser} friends={chats} onSelectFriend={onSelectStory} refreshTrigger={refreshTrigger} />
+                    </React.Suspense>
                 ) : loading ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
@@ -1044,68 +1139,17 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                         <p>Start a conversation from your Friends list!</p>
                     </div>
                 ) : (
-                    filteredChats.map(chat => (
-                        <div 
-                            key={chat.id} 
-                            className={`chat-item ${chat.unread > 0 ? 'unread' : ''} ${selectionMode && selectedChats.has(chat.id) ? 'selected' : ''}`}
-                            onClick={() => handleChatItemClick(chat)}
-                            onTouchStart={() => handleTouchStart(chat.id)}
+                    filteredChats.map((chat, idx) => (
+                        <ChatItemRow
+                            key={chat.id}
+                            chat={chat}
+                            selectionMode={selectionMode}
+                            isSelected={selectedChats.has(chat.id)}
+                            onClick={handleChatItemClick}
+                            onTouchStart={handleTouchStart}
                             onTouchEnd={handleTouchEnd}
-                            onMouseDown={() => handleTouchStart(chat.id)}
-                            onMouseUp={handleTouchEnd}
-                            onMouseLeave={handleTouchEnd}
-                        >
-                            {selectionMode && (
-                                <div className="selection-checkbox">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={selectedChats.has(chat.id)}
-                                        onChange={() => {}} // Handled by parent click
-                                    />
-                                </div>
-                            )}
-                            
-                            <div className={`avatar-wrapper ${
-                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' ? 'avatar-ring-silver' :
-                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' ? 'avatar-ring-gold' :
-                                (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' ? 'avatar-ring-diamond' : ''
-                            }`} style={{ padding: (chat.fullProfile?.subscription_tier || chat.subscription_tier) ? 2 : 0, borderRadius: '50%' }}>
-                                <img 
-                                    src={chat.avatar} 
-                                    alt={chat.name} 
-                                    className="chat-avatar" 
-                                    loading="eager"
-                                    decoding="sync"
-                                />
-                                {/* Only show green dot for users who are actually online */}
-                                {chat.isOnline && <div className="online-badge"></div>}
-                            </div>
-                            
-                            <div className="chat-info">
-                                <div className="chat-header-row">
-                                    <span className="chat-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        {chat.name}
-                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
-                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
-                                        {(chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
-                                    </span>
-                                    <div className="meta-info">
-                                        {chat.isMuted && <span className="mute-icon">🔇</span>}
-                                        <span className="chat-time">{chat.time}</span>
-                                    </div>
-                                </div>
-                                <div className="chat-msg-row">
-                                    <p className="chat-preview">
-                                        {chat.lastMsg}
-                                    </p>
-                                    {chat.unread > 0 && (
-                                        <span className="unread-badge">
-                                            {chat.unread > 99 ? '99+' : chat.unread}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                            idx={idx}
+                        />
                     ))
                 )}
             </div>
@@ -1565,47 +1609,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const { startCall } = useCall();
 
     // Fix for mobile browser address bar layout shifts and page viewport shifts
+    // Lock scroll to prevent background document shifts
     useEffect(() => {
-        // Record scroll position of the chat list page
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
-
-        // Reset scroll to ensure layout viewport aligns with visual viewport
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
-        if (document.documentElement) {
-            document.documentElement.scrollTop = 0;
-        }
-
-        // Lock body scroll using position: fixed to prevent address bar/document shifts
         const originalOverflow = document.body.style.overflow;
-        const originalPosition = document.body.style.position;
-        const originalTop = document.body.style.top;
-        const originalWidth = document.body.style.width;
-        const originalHeight = document.body.style.height;
-
         document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.top = '0';
-        document.body.style.left = '0';
-        document.body.style.width = '100%';
-        document.body.style.height = '100%';
-
-        // Backup scroll reset on next tick
-        const timeoutId = setTimeout(() => {
-            window.scrollTo(0, 0);
-        }, 50);
 
         return () => {
-            // Restore original body styles
             document.body.style.overflow = originalOverflow;
-            document.body.style.position = originalPosition;
-            document.body.style.top = originalTop;
-            document.body.style.width = originalWidth;
-            document.body.style.height = originalHeight;
-
-            // Restore original scroll position on the chat list page
-            window.scrollTo(0, scrollY);
-            clearTimeout(timeoutId);
         };
     }, []);
 
@@ -4022,7 +4032,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             partner.subscription_tier === 'gold' ? 'avatar-ring-gold' :
                             partner.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
                         }`} style={{ padding: partner.subscription_tier ? 2 : 0, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" style={{ border: partner.subscription_tier ? '2px solid #1c1c1e' : 'none' }} />
+                            <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" width="36" height="36" fetchpriority="high" decoding="sync" style={{ border: partner.subscription_tier ? '2px solid #1c1c1e' : 'none' }} />
                         </div>
                         <div className="header-text">
                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -4827,7 +4837,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 title="Attach files"
                                 disabled={uploading || hasPendingSentRequest}
                             >
-                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="12" cy="12" r="10"></circle>
                                     <line x1="12" y1="8" x2="12" y2="16"></line>
                                     <line x1="8" y1="12" x2="16" y2="12"></line>
@@ -4840,14 +4850,30 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 className="input-icon-btn sticker-btn"
                                 title="Premium Stickers"
                                 disabled={uploading || hasPendingSentRequest}
-                                style={{ fontSize: '1.1rem', opacity: showStickerPanel ? 1 : 0.7 }}
+                                style={{ opacity: showStickerPanel ? 1 : 0.7 }}
                             >
-                                🎭
+                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                                </svg>
                             </button>
                             
                             {/* Existing Image Button */}
-                            <button onClick={() => fileInputRef.current.click()} disabled={uploading || hasPendingSentRequest} className="input-icon-btn">
-                                {uploading ? '⏳' : <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>}
+                            <button 
+                                onClick={() => fileInputRef.current.click()} 
+                                disabled={uploading || hasPendingSentRequest} 
+                                className="input-icon-btn image-btn"
+                                title="Send image"
+                            >
+                                {uploading ? '⏳' : (
+                                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                        <polyline points="21 15 16 10 5 21"></polyline>
+                                    </svg>
+                                )}
                             </button>
 
                             {/* Mic Recording Button */}
@@ -4856,9 +4882,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 disabled={uploading || hasPendingSentRequest} 
                                 className="input-icon-btn mic-btn"
                                 title="Record voice message"
-                                style={{ fontSize: '1.25rem' }}
                             >
-                                🎤
+                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
                             </button>
 
                             <input
@@ -4884,14 +4914,16 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             {/* Emoji Picker Popup using Library */}
             {showEmojiPicker && (
                 <div ref={emojiPickerRef} className="emoji-picker-popup" onClick={(e) => e.stopPropagation()}>
-                    <EmojiPicker 
-                        onEmojiClick={handleEmojiSelect}
-                        theme="dark"
-                        searchDisabled={false}
-                        width="100%"
-                        height={350}
-                        previewConfig={{ showPreview: false }}
-                    />
+                    <React.Suspense fallback={<div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>Loading Emoji Picker...</div>}>
+                        <EmojiPicker 
+                            onEmojiClick={handleEmojiSelect}
+                            theme="dark"
+                            searchDisabled={false}
+                            width="100%"
+                            height={350}
+                            previewConfig={{ showPreview: false }}
+                        />
+                    </React.Suspense>
                 </div>
             )}
 
@@ -4909,7 +4941,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         {isVideoUrl(viewingImage) ? (
                             <video src={viewingImage} controls autoPlay playsInline />
                         ) : (
-                            <img src={viewingImage} alt="Full size" />
+                            <img src={viewingImage} alt="Full size" decoding="async" loading="lazy" />
                         )}
                     </div>
                 </div>
@@ -4958,20 +4990,24 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             )}
 
             {showFullProfile && fullProfileUser && (
-                <FullProfileModal
-                    user={fullProfileUser}
-                    currentUser={currentUser}
-                    onClose={() => setShowFullProfile(false)}
-                    onAction={handleProfileModalAction}
-                />
+                <React.Suspense fallback={null}>
+                    <FullProfileModal
+                        user={fullProfileUser}
+                        currentUser={currentUser}
+                        onClose={() => setShowFullProfile(false)}
+                        onAction={handleProfileModalAction}
+                    />
+                </React.Suspense>
             )}
 
             {viewingStoryUser && (
-                <StoryViewer 
-                    userStories={viewingStoryUser} 
-                    currentUser={currentUser}
-                    onClose={() => setViewingStoryUser(null)}
-                />
+                <React.Suspense fallback={null}>
+                    <StoryViewer 
+                        userStories={viewingStoryUser} 
+                        currentUser={currentUser}
+                        onClose={() => setViewingStoryUser(null)}
+                    />
+                </React.Suspense>
             )}
 
             <style>{`
@@ -5346,10 +5382,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
                 
                 .glass-input-bar {
-                    display: flex; align-items: center; gap: 10px;
+                    display: flex; align-items: center; gap: 6px;
                     background: #f5f5f5; /* Light grey for input field itself */
                     border: 1px solid #e0e0e0;
-                    border-radius: 24px; padding: 6px 6px 6px 16px;
+                    border-radius: 24px; padding: 6px 6px 6px 12px;
                     transition: all 0.2s;
                 }
                 
@@ -5388,6 +5424,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     color: #555555; background: none; border: none;
                     cursor: pointer; padding: 4px; transition: color 0.2s;
                     width: 32px; height: 32px; flex-shrink: 0;
+                    display: inline-flex; align-items: center; justify-content: center;
                 }
                 .input-icon-btn:hover { color: var(--theme-accent, #000); }
                 
@@ -6488,48 +6525,58 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
 
             {/* Attachment System Components */}
-            <AttachmentPicker
-                isOpen={showAttachmentPicker}
-                onClose={() => setShowAttachmentPicker(false)}
-                onSelectCamera={handleSelectCamera}
-                onSelectGallery={handleSelectGallery}
-                onSelectDocument={handleSelectDocument}
-            />
+            {showAttachmentPicker && (
+                <React.Suspense fallback={null}>
+                    <AttachmentPicker
+                        isOpen={showAttachmentPicker}
+                        onClose={() => setShowAttachmentPicker(false)}
+                        onSelectCamera={handleSelectCamera}
+                        onSelectGallery={handleSelectGallery}
+                        onSelectDocument={handleSelectDocument}
+                    />
+                </React.Suspense>
+            )}
 
             {/* Premium Stickers Panel */}
             {showStickerPanel && (
-                <PremiumStickersPanel
-                    currentUser={currentUser}
-                    onClose={() => setShowStickerPanel(false)}
-                    onSend={async (content, type) => {
-                        setShowStickerPanel(false);
-                        if (!content || !currentUser?.id || !targetUser?.id) return;
-                        const newMsg = {
-                            sender_id: currentUser.id,
-                            receiver_id: targetUser.id,
-                            content,
-                            message_type: type === 'sticker' ? 'sticker' : 'text',
-                            created_at: new Date().toISOString(),
-                            is_read: false,
-                        };
-                        // Optimistic update
-                        const tempId = `temp_${Date.now()}`;
-                        setMessages(prev => [...prev, { ...newMsg, id: tempId }]);
-                        const { data } = await supabase.from('messages').insert([newMsg]).select().single();
-                        if (data) {
-                            setMessages(prev => prev.map(m => m.id === tempId ? data : m));
-                        }
-                    }}
-                />
+                <React.Suspense fallback={null}>
+                    <PremiumStickersPanel
+                        currentUser={currentUser}
+                        onClose={() => setShowStickerPanel(false)}
+                        onSend={async (content, type) => {
+                            setShowStickerPanel(false);
+                            if (!content || !currentUser?.id || !targetUser?.id) return;
+                            const newMsg = {
+                                sender_id: currentUser.id,
+                                receiver_id: targetUser.id,
+                                content,
+                                message_type: type === 'sticker' ? 'sticker' : 'text',
+                                created_at: new Date().toISOString(),
+                                is_read: false,
+                            };
+                            // Optimistic update
+                            const tempId = `temp_${Date.now()}`;
+                            setMessages(prev => [...prev, { ...newMsg, id: tempId }]);
+                            const { data } = await supabase.from('messages').insert([newMsg]).select().single();
+                            if (data) {
+                                setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+                            }
+                        }}
+                    />
+                </React.Suspense>
             )}
 
-             <AttachmentPreview
-                files={selectedFiles}
-                onRemove={handleRemoveFile}
-                onSend={handleSendAttachments}
-                onCancel={handleCancelAttachments}
-                uploadProgress={uploadProgress}
-            />
+            {showAttachmentPreview && (
+                <React.Suspense fallback={null}>
+                     <AttachmentPreview
+                        files={selectedFiles}
+                        onRemove={handleRemoveFile}
+                        onSend={handleSendAttachments}
+                        onCancel={handleCancelAttachments}
+                        uploadProgress={uploadProgress}
+                    />
+                </React.Suspense>
+            )}
 
             {/* Delete Message Modal */}
             {showDeleteMessageModal && (

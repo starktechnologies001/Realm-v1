@@ -558,7 +558,7 @@ export default function Profile() {
                                 if (gender === 'Male') return DEFAULT_MALE_AVATAR;
                                 if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
                                 return DEFAULT_GENERIC_AVATAR;
-                            })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} />
+                            })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} width="104" height="104" fetchpriority="high" decoding="sync" />
                             <AvatarAccessories accessory={customizations.avatarAccessory} />
                         </div>
                     )}
@@ -803,7 +803,7 @@ export default function Profile() {
                                                 tier === 'gold' ? 'avatar-ring-gold' :
                                                 tier === 'diamond' ? 'avatar-ring-diamond' : ''
                                             }`} style={{ width: '36px', height: '36px', padding: tier !== 'free' ? '1.5px' : '0px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                <img src={avatar} alt={name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                                                <img src={avatar} alt={name} width="36" height="36" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                 <span className="visitor-name">
@@ -922,6 +922,7 @@ export default function Profile() {
                                 type="checkbox" 
                                 checked={user.hide_status || false}
                                 onChange={async (e) => await updateProfile({ hide_status: e.target.checked })}
+                                aria-label="Hide Status"
                             />
                             <span className="toggle-slider"></span>
                         </label>
@@ -938,6 +939,7 @@ export default function Profile() {
                                 type="checkbox" 
                                 checked={user.show_last_seen !== false}
                                 onChange={async (e) => await updateProfile({ show_last_seen: e.target.checked })}
+                                aria-label="Show Last Seen"
                             />
                             <span className="toggle-slider"></span>
                         </label>
@@ -1175,8 +1177,9 @@ export default function Profile() {
                                     }
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>Username (without @)</label>
+                                        <label htmlFor="edit-username-input">Username (without @)</label>
                                         <input 
+                                            id="edit-username-input"
                                             type="text" 
                                             name="username"
                                             placeholder="username"
@@ -1204,8 +1207,9 @@ export default function Profile() {
                                 </div>
                                 <form onSubmit={handleChangePassword} className="modal-form">
                                     <div className="input-group" style={{ position: 'relative' }}>
-                                        <label>Current Password</label>
+                                        <label htmlFor="current-password-input">Current Password</label>
                                         <input 
+                                            id="current-password-input"
                                             type={showPasswords.current ? "text" : "password"} 
                                             placeholder="Enter current password"
                                             value={passForm.current} 
@@ -1221,8 +1225,9 @@ export default function Profile() {
                                         </button>
                                     </div>
                                     <div className="input-group" style={{ position: 'relative' }}>
-                                        <label>New Password</label>
+                                        <label htmlFor="new-password-input">New Password</label>
                                         <input 
+                                            id="new-password-input"
                                             type={showPasswords.new ? "text" : "password"} 
                                             placeholder="Enter new password"
                                             value={passForm.new} 
@@ -1238,8 +1243,9 @@ export default function Profile() {
                                         </button>
                                     </div>
                                     <div className="input-group" style={{ position: 'relative' }}>
-                                        <label>Confirm Password</label>
+                                        <label htmlFor="confirm-password-input">Confirm Password</label>
                                         <input 
+                                            id="confirm-password-input"
                                             type={showPasswords.confirm ? "text" : "password"} 
                                             placeholder="Confirm new password"
                                             value={passForm.confirm} 
@@ -1386,9 +1392,10 @@ export default function Profile() {
                                     setActiveModal(null);
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>About You</label>
+                                        <label htmlFor="edit-bio-input">About You</label>
                                         <div style={{ position: 'relative' }}>
                                             <textarea 
+                                                id="edit-bio-input"
                                                 name="bio" 
                                                 defaultValue={user.bio} 
                                                 placeholder="Tell us about yourself..." 
@@ -1411,6 +1418,7 @@ export default function Profile() {
                                                 type="button"
                                                 className="clear-bio-btn"
                                                 title="Clear Text"
+                                                aria-label="Clear text"
                                                 style={{
                                                     position: 'absolute',
                                                     top: '12px',
@@ -1469,6 +1477,7 @@ export default function Profile() {
                                                 <button
                                                     type="button"
                                                     title="Delete Bio"
+                                                    aria-label="Delete bio"
                                                     onClick={() => {
                                                         updateProfile({ bio: '' });
                                                         setActiveModal(null);
@@ -1509,8 +1518,8 @@ export default function Profile() {
                                     setActiveModal(null);
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>Institute / Workspace</label>
-                                        <input name="inst" defaultValue={user.institute} placeholder="e.g. MIT, Google" autoFocus />
+                                        <label htmlFor="edit-institute-input">Institute / Workspace</label>
+                                        <input id="edit-institute-input" name="inst" defaultValue={user.institute} placeholder="e.g. MIT, Google" autoFocus />
                                     </div>
                                     <div className="modal-footer">
                                         <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
@@ -1528,8 +1537,8 @@ export default function Profile() {
                                     setActiveModal(null);
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>Interests (comma separated)</label>
-                                        <input name="interests" defaultValue={user.interests?.join(', ')} placeholder="singing, coding, hiking" autoFocus />
+                                        <label htmlFor="edit-interests-input">Interests (comma separated)</label>
+                                        <input id="edit-interests-input" name="interests" defaultValue={user.interests?.join(', ')} placeholder="singing, coding, hiking" autoFocus />
                                     </div>
                                     <div className="modal-footer">
                                         <button type="button" onClick={() => setActiveModal(null)} className="btn-sec">Cancel</button>
@@ -1547,8 +1556,9 @@ export default function Profile() {
                                     setActiveModal(null);
                                 }} className="modal-form">
                                     <div className="input-group">
-                                        <label>Select Date</label>
+                                        <label htmlFor="edit-birthday-input">Select Date</label>
                                         <input 
+                                            id="edit-birthday-input"
                                             type="date" 
                                             name="bday" 
                                             defaultValue={user.birth_date} 
@@ -1576,6 +1586,7 @@ export default function Profile() {
                                         style={{ display: 'none' }}
                                         accept="image/*"
                                         onChange={handleWallpaperUpload}
+                                        aria-label="Upload chat wallpaper"
                                     />
                                     <div 
                                         className="wallpaper-option upload-btn"
@@ -1650,6 +1661,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.mute_settings?.mute_all || false}
+                                                aria-label="Mute all calls and messages"
                                                 onChange={(e) => {
                                                     // When toggling DND, we clear any timer
                                                     const newSettings = { 
@@ -1770,6 +1782,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_mood || false}
+                                                aria-label="Hide Mood Status"
                                                 onChange={async (e) => await updateProfile({ hide_mood: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1781,6 +1794,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_last_seen || false}
+                                                aria-label="Hide Last Seen"
                                                 onChange={async (e) => await updateProfile({ hide_last_seen: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1792,6 +1806,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_relationship_status || false}
+                                                aria-label="Hide Relationship Status"
                                                 onChange={async (e) => await updateProfile({ hide_relationship_status: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1803,6 +1818,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_online_status || false}
+                                                aria-label="Hide Online Status"
                                                 onChange={async (e) => await updateProfile({ hide_online_status: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1814,6 +1830,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_birthday || false}
+                                                aria-label="Hide Birthday"
                                                 onChange={async (e) => await updateProfile({ hide_birthday: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1825,6 +1842,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_institute || false}
+                                                aria-label="Hide Institute / Work"
                                                 onChange={async (e) => await updateProfile({ hide_institute: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1836,6 +1854,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_distance || false}
+                                                aria-label="Hide Distance"
                                                 onChange={async (e) => await updateProfile({ hide_distance: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1847,6 +1866,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.hide_active_status || false}
+                                                aria-label="Hide Active Status"
                                                 onChange={async (e) => await updateProfile({ hide_active_status: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1864,6 +1884,7 @@ export default function Profile() {
                                                 type="checkbox" 
                                                 disabled={!isDiamond}
                                                 checked={user.invisible_browsing || false}
+                                                aria-label="Invisible Browsing"
                                                 onChange={async (e) => await updateProfile({ invisible_browsing: e.target.checked })}
                                             />
                                             <span className="toggle-slider"></span>
@@ -1903,6 +1924,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={user.is_public !== false}
+                                                aria-label="Public Profile"
                                                 onChange={async (e) => {
                                                     const newValue = e.target.checked;
                                                     if (newValue) {
@@ -1926,6 +1948,7 @@ export default function Profile() {
                                             <input 
                                                 type="checkbox" 
                                                 checked={locationEnabled}
+                                                aria-label="Location Services"
                                                 onChange={async (e) => {
                                                     const checked = e.target.checked;
                                                     if (checked) {

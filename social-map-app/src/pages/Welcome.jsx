@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import nearoLogo from '../assets/logo.png';
+const nearoLogo = '/logo.webp';
 
 const PINS = [
   { x: 8,  y: 12, s: 28, d: 0,    c: '#8B5CF6' },
@@ -91,7 +91,7 @@ export default function Welcome() {
 
         {/* ── TOP: Logo & headline ── */}
         <div style={S.top}>
-          <img src={nearoLogo} alt="Nearo" style={S.logoImg} />
+          <img src={nearoLogo} alt="Nearo" width="52" height="52" fetchpriority="high" decoding="sync" style={S.logoImg} />
           <h1 style={S.appName}>Nearo</h1>
           <h2 style={S.headline}>
             Discover People<br />

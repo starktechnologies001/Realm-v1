@@ -1,7 +1,7 @@
 import React from 'react';
 import './LocationOnboarding.css';
-import locationIllustration from '../assets/location_onboarding.png';
-import nearoLogo from '../assets/logo.png';
+const locationIllustration = '/location_onboarding.webp';
+const nearoLogo = '/logo.webp';
 
 export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = false }) {
     const dark = isDarkMode;
@@ -48,6 +48,9 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                 <img
                     src={nearoLogo}
                     alt="Logo"
+                    width="128"
+                    height="46"
+                    decoding="async"
                     style={{
                         height: 46, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 12px',
                     }}
@@ -148,6 +151,10 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                 <img
                     src={locationIllustration}
                     alt="Map illustration"
+                    width="260"
+                    height="220"
+                    decoding="async"
+                    loading="lazy"
                     style={{
                         width: '75%', maxWidth: 260,
                         maxHeight: '100%',
