@@ -4312,9 +4312,6 @@ export default function MapHome() {
                         <img 
                             src={currentUser ? (getAvatar2D(currentUser.avatar_url) || (currentUser.gender === 'Male' ? DEFAULT_MALE_AVATAR : currentUser.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR)) : DEFAULT_GENERIC_AVATAR} 
                             alt="Profile" 
-                            width="38"
-                            height="38"
-                            decoding="async"
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
                     </button>
@@ -4356,9 +4353,6 @@ export default function MapHome() {
                                             <img 
                                                 src={getAvatar2D(user.avatar)} 
                                                 alt={user.name} 
-                                                width="28"
-                                                height="28"
-                                                decoding="async"
                                                 style={{ 
                                                     width: '100%', 
                                                     height: '100%', 

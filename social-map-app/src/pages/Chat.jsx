@@ -1231,13 +1231,13 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
 
                 .search-bar {
                     background: rgba(118, 118, 128, 0.10);
-                    border-radius: 12px;
-                    padding: 7px 12px;
+                    border-radius: 100px;
+                    padding: 9px 14px;
                     display: flex;
                     align-items: center;
                     gap: 7px;
                     margin-bottom: 2px;
-                    height: 36px;
+                    height: 40px;
                 }
 
                 .search-icon {
@@ -1308,9 +1308,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
                 
                 .tab-btn.active {
-                    background-color: #1a1a1a;
+                    background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
                     color: #fff;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    box-shadow: 0 2px 10px rgba(124,58,237,0.3);
                 }
                 
                 .tab-btn.active::after {
@@ -1334,9 +1334,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     color: rgba(255,255,255,0.6);
                 }
                 html[data-theme="dark"] .tab-btn.active {
-                    background-color: #ffffff;
-                    color: #000000;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+                    color: #fff;
+                    box-shadow: 0 2px 10px rgba(124,58,237,0.4);
                 }
 
                 .chat-list-scroll {
@@ -1516,9 +1516,9 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                 }
 
                 .unread-badge {
-                    background: linear-gradient(135deg, #ff453a 0%, #ff3b30 100%);
+                    background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
                     color: white;
-                    font-size: 0.75rem;
+                    font-size: 0.72rem;
                     font-weight: 700;
                     min-width: 22px;
                     height: 22px;
@@ -1527,8 +1527,8 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                     align-items: center;
                     justify-content: center;
                     padding: 0 6px;
-                    margin-left: 8px; /* Spacing from preview text */
-                    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+                    margin-left: 8px;
+                    box-shadow: 0 2px 8px rgba(124,58,237,0.35);
                     flex-shrink: 0;
                 }
 
@@ -4051,14 +4051,14 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         </div>
                     </div>
                     <div className="header-actions">
-                        <button title="Audio Call" className="icon-btn" onClick={startVoiceCall}>
+                        <button title="Audio Call" className="icon-btn call-action-btn" onClick={startVoiceCall}>
                             <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                         </button>
-                        <button title="Video Call" className="icon-btn" onClick={startVideoCall}>
+                        <button title="Video Call" className="icon-btn call-action-btn" onClick={startVideoCall}>
                             <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                         </button>
                         <div style={{ position: 'relative' }}>
-                            <button className="icon-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
+                            <button className="icon-btn menu-action-btn" onClick={() => setShowMenu(!showMenu)}>⋮</button>
                             {showMenu && (
                                 <>
                                     <div 
@@ -4837,10 +4837,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 title="Attach files"
                                 disabled={uploading || hasPendingSentRequest}
                             >
-                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="8" x2="12" y2="16"></line>
-                                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
                                 </svg>
                             </button>
 
@@ -6518,8 +6517,139 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     padding: 0 4px;
                     opacity: 0.75;
                 }
-                .voice-seek-btn:hover {
-                    opacity: 1;
+                 /* Custom message bubble colors & alignment/border-radius overrides for Light Mode */
+                .chat-room-container[data-theme-type="light"] .msg-bubble.them {
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+                    border-bottom-left-radius: 20px !important;
+                    border-radius: 20px !important;
+                }
+                .chat-room-container[data-theme-type="light"] .msg-bubble.them .msg-text {
+                    color: #000000 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .msg-bubble.me {
+                    background: #F3E8FF !important;
+                    color: #000000 !important;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+                    border-bottom-right-radius: 20px !important;
+                    border-radius: 20px !important;
+                }
+                .chat-room-container[data-theme-type="light"] .msg-bubble.me .msg-text {
+                    color: #000000 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .msg-bubble.me .msg-time-inline,
+                .chat-room-container[data-theme-type="light"] .msg-bubble.them .msg-time-inline {
+                    color: #888888 !important;
+                    opacity: 0.8;
+                }
+                
+                /* Date Header styles for light mode */
+                .chat-room-container[data-theme-type="light"] .chat-date-header span {
+                    background: #ECECF0 !important;
+                    color: #666666 !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    font-weight: 500 !important;
+                }
+
+                /* Call actions in Header */
+                .chat-room-container[data-theme-type="light"] .call-action-btn {
+                    color: #000000 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .icon-btn {
+                    color: #000000 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .chat-room-header .back-btn {
+                    color: #000000 !important;
+                    background: transparent !important;
+                }
+
+                /* Input bottom bar overrides */
+                .chat-room-container[data-theme-type="light"] .attachment-btn {
+                    background: #7C3AED !important;
+                    color: #ffffff !important;
+                    border-radius: 50% !important;
+                    width: 36px !important;
+                    height: 36px !important;
+                    min-width: 36px !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    padding: 0 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .attachment-btn svg {
+                    stroke: #ffffff !important;
+                }
+                .chat-room-container[data-theme-type="light"] .send-btn {
+                    background: #7C3AED !important;
+                    color: #ffffff !important;
+                    border-radius: 50% !important;
+                    width: 36px !important;
+                    height: 36px !important;
+                    min-width: 36px !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .send-btn svg {
+                    fill: #ffffff !important;
+                    color: #ffffff !important;
+                }
+                .chat-room-container[data-theme-type="light"] .glass-input-bar {
+                    background: #F4F4F5 !important;
+                    border: none !important;
+                    padding: 4px 6px 4px 6px !important;
+                    border-radius: 100px !important;
+                }
+
+                /* Message tick status ticks for read / seen */
+                .chat-room-container[data-theme-type="light"] .message-status-tick.double.seen {
+                    color: #7C3AED !important;
+                }
+
+                /* Call log rendering inside transparency wrappers */
+                .msg-bubble.call-log {
+                    background: transparent !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                }
+                .call-log-bubble {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 10px 16px;
+                    border-radius: 20px;
+                    font-size: 0.95rem;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                    max-width: 100%;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble.missed {
+                    background: #FFF0F2 !important;
+                    color: #FF3B30 !important;
+                    border: 1px solid rgba(255, 59, 48, 0.08);
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble.missed svg {
+                    color: #FF3B30 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble.active-call {
+                    background: #F5F3FF !important;
+                    color: #000000 !important;
+                    border: 1px solid rgba(124, 58, 237, 0.08);
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble.active-call.me {
+                    background: #ECE5F8 !important;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble.active-call svg {
+                    color: #7C3AED !important;
+                }
+                .chat-room-container[data-theme-type="light"] .call-log-bubble .duration-label {
+                    color: #7C3AED !important;
+                    font-weight: 600 !important;
                 }
             `}</style>
 

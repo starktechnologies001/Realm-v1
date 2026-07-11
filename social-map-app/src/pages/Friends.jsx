@@ -19,10 +19,10 @@ export default function Friends() {
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [activeTab, setActiveTab] = useState('friends');
     
-    // Unfriend Modal State
     const [showUnfriendModal, setShowUnfriendModal] = useState(false);
     const [friendToUnfriend, setFriendToUnfriend] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const navigate = useNavigate();
 
@@ -321,6 +321,11 @@ export default function Friends() {
         navigate('/chat', { state: { targetUser: friend } });
     };
 
+    const filteredFriends = friends.filter(friend => {
+        const term = searchTerm.toLowerCase();
+        return (friend.username || '').toLowerCase().includes(term) || (friend.full_name || '').toLowerCase().includes(term);
+    });
+
     if (loading) return <div style={{ padding: 20, color: 'white' }}>Loading friends...</div>;
 
     return (
@@ -329,9 +334,20 @@ export default function Friends() {
             
             <header className="glass-header" style={{ flexDirection: 'column', height: 'auto', padding: '10px 0', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0 16px' }}>
-                    <button className="back-btn" onClick={() => navigate(-1)} style={{ position: 'relative', left: 0 }}>←</button>
-                    <h2 style={{ flex: 1, textAlign: 'center', margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Friends</h2>
-                    <div style={{ width: 40 }}></div> {/* Spacer to balance back button */}
+                    <button className="back-btn" onClick={() => navigate(-1)} style={{ position: 'relative', left: 0 }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7"/>
+                        </svg>
+                    </button>
+                    <h2 style={{ flex: 1, textAlign: 'center', margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Friends</h2>
+                    <button className="back-btn" onClick={() => navigate('/map')} style={{ position: 'relative', right: 0 }} title="Find new friends">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <line x1="19" y1="8" x2="19" y2="14"/>
+                            <line x1="22" y1="11" x2="16" y2="11"/>
+                        </svg>
+                    </button>
                 </div>
                 
                 <div className="tab-container">
@@ -361,8 +377,10 @@ export default function Friends() {
                                 <p>No pending requests.</p>
                             </div>
                         ) : (
-                            <div className="list">
-                                {requests.map(req => (
+                            <>
+                                <div className="requests-subtitle">People who want to connect with you</div>
+                                <div className="list">
+                                    {requests.map(req => (
                                     <div key={req.id} className="friend-card request">
                                         <div 
                                             className={`avatar-container ${
@@ -409,7 +427,8 @@ export default function Friends() {
                                         </div>
                                     </div>
                                 ))}
-                            </div>
+                                </div>
+                            </>
                         )}
                     </div>
                 )}
@@ -424,8 +443,36 @@ export default function Friends() {
                                 <button className="btn-explore" onClick={() => navigate('/map')}>Find People on Map</button>
                             </div>
                         ) : (
-                            <div className="list">
-                                {friends.map(friend => (
+                            <>
+                                <div className="search-container">
+                                    <div className="search-bar">
+                                        <svg className="search-icon" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                            <circle cx="11" cy="11" r="8"></circle>
+                                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                        </svg>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search friends..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
+                                    <button className="filter-btn" title="Filter list">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="4" y1="21" x2="4" y2="14"></line>
+                                            <line x1="4" y1="10" x2="4" y2="3"></line>
+                                            <line x1="12" y1="21" x2="12" y2="12"></line>
+                                            <line x1="12" y1="8" x2="12" y2="3"></line>
+                                            <line x1="20" y1="21" x2="20" y2="16"></line>
+                                            <line x1="20" y1="12" x2="20" y2="3"></line>
+                                            <line x1="1" y1="14" x2="7" y2="14"></line>
+                                            <line x1="9" y1="8" x2="15" y2="8"></line>
+                                            <line x1="17" y1="16" x2="23" y2="16"></line>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="list">
+                                    {filteredFriends.map(friend => (
                                     <div 
                                         key={friend.id} 
                                         className="friend-card" 
@@ -461,11 +508,20 @@ export default function Friends() {
                                                 {friend.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
                                                 {friend.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
                                             </h3>
-                                            {!friend.hide_status && <span className="status-text">{friend.relationship_status || 'Single'}</span>}
+                                            {!friend.hide_status && (
+                                                <span className={`status-text ${friend.status === 'online' ? 'status-online' : 'status-offline'}`}>
+                                                    {friend.status === 'online' ? 'Online' : 'Offline'}
+                                                </span>
+                                            )}
                                         </div>
                                         
                                         <div className="menu-wrapper">
-                                            <span className="friend-badge">Friend</span>
+                                            <button
+                                                className="message-btn"
+                                                onClick={(e) => { e.stopPropagation(); startChat(friend); }}
+                                            >
+                                                Message
+                                            </button>
                                             <button className="btn-menu" onClick={(e) => toggleMenu(e, friend.id)}>
                                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                     <circle cx="12" cy="12" r="1"></circle>
@@ -493,7 +549,8 @@ export default function Friends() {
                                         </div>
                                     </div>
                                 ))}
-                            </div>
+                                </div>
+                            </>
                         )}
                     </div>
                 )}
@@ -603,8 +660,9 @@ export default function Friends() {
                     display: flex; align-items: center; gap: 6px;
                 }
                 .tab-btn.active {
-                    background: var(--text-primary); color: var(--bg-color);
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+                    color: #fff;
+                    box-shadow: 0 2px 10px rgba(124,58,237,0.3);
                 }
                 .tab-btn:hover:not(.active) { color: #0084ff; }
 
@@ -634,18 +692,29 @@ export default function Friends() {
                 .empty-icon { font-size: 3rem; opacity: 0.5; }
 
                 .menu-wrapper { position: relative; display: flex; align-items: center; gap: 10px; }
-                .friend-badge {
-                    font-size: 0.75rem; 
-                    background: linear-gradient(135deg, rgba(0, 132, 255, 0.08) 0%, rgba(0, 132, 255, 0.12) 100%);
-                    color: #0084ff;
-                    padding: 5px 12px;
-                    border-radius: 12px;
+                .message-btn {
+                    font-size: 0.8rem;
+                    background: rgba(124,58,237,0.09);
+                    color: #7C3AED;
+                    padding: 6px 14px;
+                    border-radius: 20px;
                     font-weight: 600;
-                    border: 1px solid rgba(0, 132, 255, 0.2);
-                    display: inline-flex; 
-                    align-items: center; 
+                    border: 1.5px solid rgba(124,58,237,0.18);
+                    display: inline-flex;
+                    align-items: center;
                     gap: 4px;
-                    letter-spacing: 0.3px;
+                    letter-spacing: 0.2px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    white-space: nowrap;
+                    background-clip: padding-box;
+                }
+                .message-btn:hover {
+                    background: rgba(124,58,237,0.15);
+                    border-color: rgba(124,58,237,0.3);
+                }
+                .message-btn:active {
+                    transform: scale(0.96);
                 }
                 .btn-menu {
                     width: 40px; height: 40px;
@@ -775,9 +844,9 @@ export default function Friends() {
                     position: relative;
                     overflow: visible;
                 }
-                .friend-card:hover { 
-                    background: rgba(0, 0, 0, 0.02);
-                    border-color: rgba(0, 0, 0, 0.06);
+                 .friend-card:hover { 
+                    background: rgba(124, 58, 237, 0.04);
+                    border-color: rgba(124, 58, 237, 0.08);
                     transform: translateX(2px);
                 }
                 .friend-card:active { 
@@ -785,34 +854,114 @@ export default function Friends() {
                     transform: translateX(0);
                 }
 
-                .avatar-container { position: relative; width: 40px; height: 40px; }
+                .avatar-container { position: relative; width: 46px; height: 46px; }
                 .avatar { 
-                    width: 100%; height: 100%; border-radius: 12px; object-fit: cover; 
+                    width: 100%; height: 100%; border-radius: 50%; object-fit: cover; 
                     background: rgba(0,0,0,0.08);
+                    border: 2px solid rgba(0,0,0,0.06);
                 }
                 .status-indicator {
-                    position: absolute; bottom: -2px; right: -2px;
-                    width: 14px; height: 14px;
-                    background: #666; border: 2px solid #ffffff;
+                    position: absolute; bottom: 1px; right: 1px;
+                    width: 12px; height: 12px;
+                    background: #aaa; border: 2px solid #ffffff;
                     border-radius: 50%;
                 }
-                .status-indicator.online { background: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.5); }
+                .status-indicator.online { background: #30d158; box-shadow: 0 0 6px rgba(48,209,88,0.5); }
+                .status-online { color: #30d158 !important; font-weight: 600 !important; }
+                .status-offline { color: #aaa !important; }
 
                 .info { flex: 1; min-width: 0; }
                 .info h3 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0; }
                 .status-text { font-size: 0.75rem; color: var(--text-secondary); opacity: 0.75; display: block; }
                 .subtitle { font-size: 0.75rem; color: var(--accent-cyan); }
 
-                .actions { display: flex; gap: 8px; }
+                .actions { display: flex; gap: 8px; align-items: center; }
                 .btn-icon {
-                    width: 36px; height: 36px; border-radius: 12px; border: none;
+                    width: 36px; height: 36px; border-radius: 50%; border: none;
                     display: flex; align-items: center; justify-content: center;
-                    cursor: pointer; font-weight: bold; transition: all 0.2s;
+                    cursor: pointer; font-size: 1.1rem; font-weight: bold; transition: all 0.2s;
                 }
-                .btn-icon.accept { background: #00ff88; color: #000; }
-                .btn-icon.accept:hover { box-shadow: 0 0 12px rgba(0,255,136,0.4); }
-                .btn-icon.decline { background: rgba(255,69,58,0.2); color: #ff453a; }
-                .btn-icon.decline:hover { background: #ff453a; color: white; }
+                .btn-icon.accept { 
+                    background: #E8F9EE; 
+                    color: #24B05B;
+                    border: 1px solid rgba(36, 176, 91, 0.12);
+                }
+                .btn-icon.accept:hover { 
+                    background: #d4f5df;
+                    transform: scale(1.05);
+                }
+                .btn-icon.decline { 
+                    background: #FEECEC; 
+                    color: #FF453A;
+                    border: 1px solid rgba(255, 69, 58, 0.12);
+                }
+                .btn-icon.decline:hover { 
+                    background: #fcd7d7;
+                    transform: scale(1.05);
+                }
+
+                /* Search and Pill inputs */
+                .search-container {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 10px 16px;
+                }
+                .search-bar {
+                    background: rgba(118, 118, 128, 0.08);
+                    border-radius: 100px;
+                    padding: 0 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    height: 40px;
+                    flex: 1;
+                }
+                .search-bar input {
+                    background: transparent;
+                    border: none;
+                    outline: none;
+                    color: var(--text-primary);
+                    font-size: 14px;
+                    width: 100%;
+                }
+                .search-icon {
+                    color: var(--text-secondary);
+                    opacity: 0.7;
+                    display: flex;
+                    align-items: center;
+                }
+                .filter-btn {
+                    width: 40px;
+                    height: 40px;
+                    background: rgba(0, 0, 0, 0.05);
+                    border: none;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                .filter-btn:hover {
+                    background: rgba(0, 0, 0, 0.1);
+                }
+                html[data-theme="dark"] .filter-btn {
+                    background: rgba(255, 255, 255, 0.1);
+                }
+                html[data-theme="dark"] .search-bar {
+                    background: rgba(255, 255, 255, 0.08);
+                }
+
+                .requests-subtitle {
+                    font-size: 0.85rem;
+                    color: var(--text-secondary);
+                    opacity: 0.75;
+                    padding: 14px 20px 6px;
+                    font-weight: 500;
+                    letter-spacing: -0.1px;
+                }
 
                 .empty-state {
                     text-align: center; padding: 40px 20px;

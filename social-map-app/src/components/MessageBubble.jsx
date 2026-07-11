@@ -269,7 +269,7 @@ const MessageBubble = ({
         <React.Fragment>
             {dateHeader}
             <motion.div 
-                className={`msg-bubble ${isMe ? 'me' : 'them'} ${isSelected ? 'selected' : ''} ${isHighlighted ? 'message-highlight' : ''}`}
+                className={`msg-bubble ${isMe ? 'me' : 'them'} ${msg.message_type === 'call_log' ? 'call-log' : ''} ${isSelected ? 'selected' : ''} ${isHighlighted ? 'message-highlight' : ''}`}
                 
                 // Drag Props
                 drag={isSelectionMode ? false : "x"}
@@ -450,93 +450,76 @@ const MessageBubble = ({
                         </div>
                     </div>
                 ) : msg.message_type === 'call_log' ? (
-                    <div className="call-log-bubble">
-                        {(() => {
-                            let log = {};
-                            try { log = JSON.parse(msg.content); } catch (e) { log = { status: 'unknown' }; }
+                    (() => {
+                        let log = {};
+                        try { log = JSON.parse(msg.content); } catch (e) { log = { status: 'unknown' }; }
+                        
+                        const isVideo = log.call_type === 'video' || log.call_type === 'video_call';
+                        const isAudio = log.call_type === 'audio';
+                        const isMissed = ['missed', 'declined', 'rejected', 'busy'].includes(log.status);
+                        
+                        // Determine Text
+                        const isMyCall = log.caller_id ? log.caller_id === userId : isMe;
+                        const typeLabel = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
+                        
+                        let mainText = typeLabel;
+                        let durationText = '';
+
+                        const status = log.status; // ended, declined, missed, busy, rejected
+                        const typeStr = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
+
+                        if (status === 'ended' && log.duration > 0) {
+                            const direction = isMyCall ? 'Outgoing' : 'Incoming';
+                            mainText = `${direction} ${typeStr}`;
                             
-                            const isVideo = log.call_type === 'video' || log.call_type === 'video_call';
-                            const isAudio = log.call_type === 'audio';
-                            const isMissed = ['missed', 'declined', 'rejected', 'busy'].includes(log.status);
+                            const mins = Math.floor(log.duration / 60);
+                            const secs = log.duration % 60;
+                            durationText = ` • ${mins}:${secs.toString().padStart(2, '0')}`;
                             
-                            // Determine Text
-                            const isMyCall = log.caller_id ? log.caller_id === userId : isMe;
-                            const typeLabel = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
-                            const icon = isVideo ? '🎥' : '📞'; // Use emoji as requested or keep SVG? User used emoji in spec. 
-                            // Actually user used emoji in text description, but the SVG in code is nice.
-                            // I will keep specific specific logical string "Video call"
+                        } else if (status === 'declined' || status === 'rejected') {
+                            mainText = `${typeStr} declined`;
 
-                            // ---------------------------------------------------------
-                            // FINAL SPEC TEXT LOGIC
-                            // ---------------------------------------------------------
-                            let mainText = typeLabel;
-                            let durationText = '';
+                        } else if (status === 'missed' || status === 'busy') {
+                            mainText = `Missed ${typeStr.toLowerCase()}`;
+                            
+                        } else if (status === 'ended' && log.duration === 0) {
+                            const direction = isMyCall ? 'Outgoing' : 'Incoming';
+                            mainText = `${direction} ${typeStr} ended`;
+                        } else {
+                            mainText = typeStr;
+                        }
 
-                            const status = log.status; // ended, declined, missed, busy, rejected
-                            const type = isVideo ? 'Video' : (isAudio ? 'Audio' : 'Call');
-                            const typeStr = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
-
-                            if (status === 'ended' && log.duration > 0) {
-                                // 3. Accepted & Ended
-                                const direction = isMyCall ? 'Outgoing' : 'Incoming';
-                                mainText = `${direction} ${typeStr}`;
-                                
-                                // Format Duration
-                                const mins = Math.floor(log.duration / 60);
-                                const secs = log.duration % 60;
-                                durationText = ` • ${mins}:${secs.toString().padStart(2, '0')}`;
-                                
-                            } else if (status === 'declined' || status === 'rejected') {
-                                // 2. Declined (Normal or with Message)
-                                // "Audio call • Declined"
-                                mainText = `${typeStr} • Declined`;
-
-                            } else if (status === 'missed' || status === 'busy') {
-                                // 5. Timeout / Missed
-                                // "Missed audio call"
-                                mainText = `Missed ${typeStr.toLowerCase()}`;
-                                
-                            } else if (status === 'ended' && log.duration === 0) {
-                                // Edge case: Ended immediately (cancelled)
-                                const direction = isMyCall ? 'Outgoing' : 'Incoming';
-                                mainText = `${direction} ${typeStr} ended`;
-                            } else {
-                                // Fallback
-                                mainText = typeStr;
-                            }
-
-                            return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <div style={{ 
-                                        width: '36px', height: '36px', borderRadius: '50%', 
-                                        background: isMissed ? 'rgba(255, 59, 48, 0.15)' : 'rgba(128, 128, 128, 0.15)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        color: isMissed ? '#ff3b30' : '#000000',
-                                        flexShrink: 0
-                                    }}>
-                                        {isVideo ? (
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                                        ) : (
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path></svg>
-                                        )}
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '120px' }}>
-                                        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: isMissed ? '#ff3b30' : 'inherit', wordBreak: 'break-word' }}>
-                                            {mainText}
-                                            {durationText && <span style={{ fontWeight: 400, marginLeft: '6px', opacity: 0.85 }}>{durationText}</span>}
-                                        </span>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', opacity: 0.7, fontSize: '0.7rem', justifyContent: 'flex-end' }}>
-                                            <span style={{ fontSize: '0.95em' }}>{formatTime(msg.created_at)}</span>
-                                            <MessageStatusTick 
-                                                status={deliveryStatus} 
-                                                isSender={isMe} 
-                                            />
-                                        </div>
+                        return (
+                            <div className={`call-log-bubble ${isMissed ? 'missed' : 'active-call'} ${isMe ? 'me' : 'them'}`}>
+                                <div style={{ 
+                                    width: '36px', height: '36px', borderRadius: '50%', 
+                                    background: isMissed ? 'rgba(255, 59, 48, 0.12)' : 'rgba(124, 58, 237, 0.12)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: isMissed ? '#ff3b30' : '#7c3aed',
+                                    flexShrink: 0
+                                }}>
+                                    {isVideo ? (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                                    ) : (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path></svg>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: '120px' }}>
+                                    <span className="call-log-title" style={{ fontWeight: 600, fontSize: '0.9rem', color: isMissed ? '#ff3b30' : 'inherit', wordBreak: 'break-word' }}>
+                                        {mainText}
+                                        {durationText && <span className="duration-label" style={{ fontWeight: 600, marginLeft: '6px' }}>{durationText}</span>}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', opacity: 0.7, fontSize: '0.7rem', justifyContent: 'flex-end' }}>
+                                        <span style={{ fontSize: '0.95em' }}>{formatTime(msg.created_at)}</span>
+                                        <MessageStatusTick 
+                                            status={deliveryStatus} 
+                                            isSender={isMe} 
+                                        />
                                     </div>
                                 </div>
-                            );
-                        })()}
-                    </div>
+                            </div>
+                        );
+                    })()
                 ) : msg.message_type === 'sticker' ? (
                     /* ── Premium Sticker ── */
                     <div className="msg-sticker-container" style={{ textAlign: isMe ? 'right' : 'left' }}>
