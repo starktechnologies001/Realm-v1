@@ -501,7 +501,7 @@ export default function MapHome() {
         if (!userLocation?.lat || !userLocation?.lng) return;
         const lat = userLocation.lat;
         const lng = userLocation.lng;
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`)
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=en`)
             .then(r => r.json())
             .then(data => {
                 const a = data?.address || {};
@@ -1221,7 +1221,7 @@ export default function MapHome() {
                     avatar_url: null,
                     onboarding_completed: false,
                     is_location_on: false,
-                    is_ghost_mode: true
+                    is_ghost_mode: false
                 });
 
                 setShowProfileSetup(true);
@@ -1908,7 +1908,7 @@ export default function MapHome() {
                 if (updatedUser.id === currentUser.id) {
                     setCurrentUser(prev => {
                         if (!prev) return prev;
-                        // Only update profile display fields — NOT lat/lng (handled by watchPosition natively)
+                        // Synchronize latitude and longitude as well so that laptop fallback properties sync cleanly
                         return {
                             ...prev,
                             mood: updatedUser.mood,
@@ -1923,6 +1923,8 @@ export default function MapHome() {
                             // 🔥 Sync visibility changes triggered from other tabs/devices
                             visibility_mode: updatedUser.visibility_mode ?? prev.visibility_mode,
                             is_ghost_mode: updatedUser.visibility_mode === 'ghost' || updatedUser.is_ghost_mode,
+                            latitude: updatedUser.latitude ?? prev.latitude,
+                            longitude: updatedUser.longitude ?? prev.longitude,
                         };
                     });
                     return; // Skip nearbyUsers update for self
@@ -2072,11 +2074,17 @@ export default function MapHome() {
                             
                             if (realCoordMoved) {
                                 animateNativeMarker(updatedUser.id, renderLat, renderLng);
-                                existingUser.lat = renderLat;
-                                existingUser.lng = renderLng;
+                                return prev.map(u => u.id === updatedUser.id ? {
+                                    ...u,
+                                    lat: renderLat,
+                                    lng: renderLng,
+                                    lastActive: newUserObj.lastActive
+                                } : u);
                             }
-                            existingUser.lastActive = newUserObj.lastActive;
-                            return prev;
+                            return prev.map(u => u.id === updatedUser.id ? {
+                                ...u,
+                                lastActive: newUserObj.lastActive
+                            } : u);
                         }
 
                     } else {
@@ -2358,7 +2366,7 @@ export default function MapHome() {
 
     const handlePermissionSelect = (choice) => {
         if (choice === 'while-using' || choice === 'once') {
-            startLocation(); 
+            startLocation(true); 
         }
     };
 
@@ -2366,7 +2374,7 @@ export default function MapHome() {
     const handleEnableLocation = async () => {
         setCurrentUser(prev => ({ ...prev, is_location_on: true }));
         
-        startLocation();
+        startLocation(true);
 
     };
 
@@ -3443,7 +3451,7 @@ export default function MapHome() {
             return visibleUsers;
         }
 
-    }, [nearbyUsers, activeFilter, currentUser, diamondFilters]);
+    }, [nearbyUsers, activeFilter, currentUser, diamondFilters, userLocation?.lat, userLocation?.lng]);
     // 🔥 Removed `userLocation` from deps — accessed via userLocationRef so GPS updates
     // don't rebuild filteredUsers and restart NativeMarkerSync on every tick.
 
@@ -4330,7 +4338,7 @@ export default function MapHome() {
                     {/* Left: Map View Picker */}
                     <div style={{ position: 'relative' }}>
                         <button className="map-action-btn" onClick={() => setShowMapViewMenu(prev => !prev)} title="Change Map View">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#06B6D4" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                 <polygon points="12 2 2 7 12 12 22 7 12 2"/>
                                 <polyline points="2 17 12 22 22 17"/>
                                 <polyline points="2 12 12 17 22 12"/>
@@ -4348,8 +4356,8 @@ export default function MapHome() {
                                 {[{key:'street',label:'Street',icon:'🗺️'},{key:'satellite',label:'Satellite',icon:'🛰️'},{key:'hybrid',label:'Hybrid',icon:'🌍'}].map(({key,label,icon}) => (
                                     <button key={key} onClick={() => { setMapMode(key); setShowMapViewMenu(false); }}
                                         style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', borderRadius:8, border:'none',
-                                            background: mapMode===key ? 'rgba(124,58,237,0.1)' : 'transparent',
-                                            color: mapMode===key ? '#7C3AED' : '#444', cursor:'pointer', fontSize:12, fontWeight: mapMode===key?700:500, fontFamily:'inherit', width:'100%' }}>
+                                            background: mapMode===key ? (isDarkMode ? 'rgba(10,132,255,0.15)' : 'rgba(0,132,255,0.1)') : 'transparent',
+                                            color: mapMode===key ? 'var(--brand-primary)' : (isDarkMode ? '#aaa' : '#444'), cursor:'pointer', fontSize:12, fontWeight: mapMode===key?700:500, fontFamily:'inherit', width:'100%' }}>
                                         <span style={{fontSize:14}}>{icon}</span>{label}
                                     </button>
                                 ))}
@@ -4376,7 +4384,7 @@ export default function MapHome() {
 
                     {/* Right: Floating Thought Button */}
                     <button className="map-action-btn" onClick={() => handleOpenThoughtInput()} title="Set Floating Thought">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2D55" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                             <path d="M8 10h.01M12 10h.01M16 10h.01"/>
                         </svg>
@@ -4385,7 +4393,7 @@ export default function MapHome() {
 
                 <div className="search-bar-wrapper">
                     <div className="search-bar-container">
-                        <svg className="search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="search-icon" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
@@ -4395,19 +4403,6 @@ export default function MapHome() {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
-                        <button className="search-filter-btn" title="Filter map" onClick={() => handleOpenThoughtInput()}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="4" y1="21" x2="4" y2="14"></line>
-                                <line x1="4" y1="10" x2="4" y2="3"></line>
-                                <line x1="12" y1="21" x2="12" y2="12"></line>
-                                <line x1="12" y1="8" x2="12" y2="3"></line>
-                                <line x1="20" y1="21" x2="20" y2="16"></line>
-                                <line x1="20" y1="12" x2="20" y2="3"></line>
-                                <line x1="1" y1="14" x2="7" y2="14"></line>
-                                <line x1="9" y1="8" x2="15" y2="8"></line>
-                                <line x1="17" y1="16" x2="23" y2="16"></line>
-                            </svg>
-                        </button>
 
                         {/* Search Dropdown */}
                         {searchQuery && searchResults.length > 0 && (
@@ -4463,16 +4458,16 @@ export default function MapHome() {
                 .map-header-controls {
                     position: fixed;
                     top: 0;
-                    padding-top: max(10px, env(safe-area-inset-top));
+                    padding-top: max(6px, env(safe-area-inset-top));
                     left: 0; right: 0;
                     z-index: 9000;
                     padding-left: 12px; 
                     padding-right: 12px;
                     display: flex;
                     flex-direction: column;
-                    gap: 6px;
+                    gap: 4px;
                     pointer-events: none;
-                    padding-bottom: 8px;
+                    padding-bottom: 6px;
                     background: rgba(248, 247, 255, 0.94);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
@@ -4485,14 +4480,14 @@ export default function MapHome() {
                     justify-content: space-between;
                     width: 100%;
                     pointer-events: auto;
-                    margin-bottom: 2px;
+                    margin-bottom: 1px;
                 }
                 .map-action-btn {
-                    width: 38px;
-                    height: 38px;
+                    width: 34px;
+                    height: 34px;
                     background: #ffffff;
                     border: none;
-                    border-radius: 12px;
+                    border-radius: 10px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -4511,16 +4506,16 @@ export default function MapHome() {
                     text-align: center;
                 }
                 .location-subtitle {
-                    font-size: 0.65rem;
+                    font-size: 0.6rem;
                     color: #888888;
                     font-weight: 500;
                     letter-spacing: -0.1px;
                 }
                 .location-title {
-                    font-size: 0.95rem;
+                    font-size: 0.88rem;
                     font-weight: 700;
                     color: #000000;
-                    margin: 1px 0 2px 0;
+                    margin: 0px 0 1px 0;
                     display: flex;
                     align-items: center;
                     cursor: default;
@@ -4528,8 +4523,8 @@ export default function MapHome() {
                 .secure-badge {
                     display: flex;
                     align-items: center;
-                    gap: 3px;
-                    font-size: 0.62rem;
+                    gap: 2px;
+                    font-size: 0.58rem;
                     color: #888888;
                     font-weight: 500;
                 }
@@ -4566,9 +4561,9 @@ export default function MapHome() {
                 .search-bar-wrapper .search-bar-container {
                     display: flex;
                     align-items: center;
-                    padding: 0 14px;
+                    padding: 0 10px;
                     border-radius: 100px;
-                    height: 40px;
+                    height: 34px;
                     background: #ffffff;
                     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
                     border: 1px solid rgba(0, 0, 0, 0.04);
@@ -4581,7 +4576,7 @@ export default function MapHome() {
                     border: none;
                     background: transparent;
                     outline: none;
-                    font-size: 0.88rem;
+                    font-size: 0.82rem;
                     color: #000000;
                     font-weight: 500;
                 }
@@ -4597,7 +4592,7 @@ export default function MapHome() {
                 .search-filter-btn {
                     background: none;
                     border: none;
-                    color: #7C3AED;
+                    color: var(--brand-primary);
                     cursor: pointer;
                     display: flex;
                     align-items: center;

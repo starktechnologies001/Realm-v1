@@ -39,12 +39,12 @@ export default function Friends() {
         const [pendingResult, myFriendsResult] = await Promise.all([
             supabase
                 .from('friendships')
-                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at)')
+                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status)')
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending'),
             supabase
                 .from('friendships')
-                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at)')
+                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status)')
                 .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
                 .eq('status', 'accepted')
         ]);
@@ -102,7 +102,7 @@ export default function Friends() {
 
                         const { data: profile } = await supabase
                             .from('profiles')
-                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect')
+                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status')
                             .eq('id', newRow.requester_id)
                             .maybeSingle();
 
@@ -321,6 +321,11 @@ export default function Friends() {
         navigate('/chat', { state: { targetUser: friend } });
     };
 
+    const checkIsOnline = (friend) => {
+        if (friend.hide_online_status) return false;
+        return !!friend.is_online;
+    };
+
     const filteredFriends = friends.filter(friend => {
         const term = searchTerm.toLowerCase();
         return (friend.username || '').toLowerCase().includes(term) || (friend.full_name || '').toLowerCase().includes(term);
@@ -412,12 +417,14 @@ export default function Friends() {
                                             style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'pointer' }}
                                             onClick={(e) => { e.stopPropagation(); setSelectedUser(req); }}
                                         >
-                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                                                {req.username}
+                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, minWidth: 0, width: '100%' }}>
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+                                                    {req.username}
+                                                </span>
                                                 <VerifiedBadgeInline user={req} size={14} />
-                                                {req.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
-                                                {req.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
-                                                {req.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                                                {req.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Silver Member">🥈</span>}
+                                                {req.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Gold Elite">🥇</span>}
+                                                {req.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Diamond Elite">💎</span>}
                                             </h3>
                                             <span className="subtitle">wants to connect</span>
                                         </div>
@@ -501,16 +508,18 @@ export default function Friends() {
                                             />
                                         </div>
                                         <div className="info">
-                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                                                {friend.username}
+                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, minWidth: 0, width: '100%' }}>
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+                                                    {friend.username}
+                                                </span>
                                                 <VerifiedBadgeInline user={friend} size={14} />
-                                                {friend.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem' }} title="Silver Member">🥈</span>}
-                                                {friend.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
-                                                {friend.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
+                                                {friend.subscription_tier === 'silver' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Silver Member">🥈</span>}
+                                                {friend.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Gold Elite">🥇</span>}
+                                                {friend.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem', flexShrink: 0 }} title="Diamond Elite">💎</span>}
                                             </h3>
                                             {!friend.hide_status && (
-                                                <span className={`status-text ${friend.status === 'online' ? 'status-online' : 'status-offline'}`}>
-                                                    {friend.status === 'online' ? 'Online' : 'Offline'}
+                                                <span className={`status-text ${checkIsOnline(friend) ? 'status-online' : 'status-offline'}`}>
+                                                    {checkIsOnline(friend) ? 'Online' : 'Offline'}
                                                 </span>
                                             )}
                                         </div>

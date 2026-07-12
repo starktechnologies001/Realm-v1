@@ -236,7 +236,10 @@ export function LocationProvider({ children }) {
                     supabase.auth.getSession().then(({ data: { session } }) => {
                       if (session?.user?.id) {
                         supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
-                          const currentMode = data?.visibility_mode || 'public';
+                          let currentMode = data?.visibility_mode || 'public';
+                          if (forcePublic && currentMode === 'ghost') {
+                              currentMode = 'public';
+                          }
                           const isGhost = currentMode === 'ghost';
                           supabase.from("profiles").update({
                             latitude: fLoc.latitude,

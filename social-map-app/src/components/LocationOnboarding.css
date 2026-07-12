@@ -568,3 +568,33 @@
         font-size: 12.5px;
     }
 }
+
+/* Custom properties for LocationOnboarding viewport scaling */
+.location-onboarding-container {
+    --logo-height: 52px;
+    --logo-margin: 0 auto 14px;
+    --title-font-size: 32px;
+    --badge-font-size: 10.5px;
+    --capsule-font-size: 12px;
+    --capsule-padding: 8px 14px;
+    --button-font-size: 17px;
+    --button-padding: 16px 24px;
+    --trust-font-size: 12px;
+    --illustration-margin: 10px;
+}
+
+@media (max-width: 480px) {
+    .location-onboarding-container {
+        --logo-height: 40px;
+        --logo-margin: 0 auto 8px;
+        --title-font-size: 25px;
+        --badge-font-size: 9px;
+        --capsule-font-size: 11px;
+        --capsule-padding: 6px 12px;
+        --button-font-size: 15px;
+        --button-padding: 13px 20px;
+        --trust-font-size: 10.5px;
+        --illustration-margin: 4px;
+    }
+}
+

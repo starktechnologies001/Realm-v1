@@ -7,7 +7,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
     const dark = isDarkMode;
 
     return (
-        <div style={{
+        <div className="location-onboarding-container" style={{
             height: fullHeight ? '100dvh' : 'calc(100dvh - 60px - env(safe-area-inset-bottom))',
             width: '100vw',
             display: 'flex',
@@ -50,13 +50,13 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                     width="128"
                     height="52"
                     decoding="async"
-                    style={{ height: 52, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 14px' }}
+                    style={{ height: 'var(--logo-height)', width: 'auto', objectFit: 'contain', display: 'block', margin: 'var(--logo-margin)' }}
                 />
 
                 {/* Headline — two separate lines matching the reference */}
                 <div style={{ padding: '0 20px', lineHeight: 1.15 }}>
                     <div style={{
-                        fontSize: 32, fontWeight: 800,
+                        fontSize: 'var(--title-font-size)', fontWeight: 800,
                         color: dark ? '#f0eeff' : '#1a1040',
                         letterSpacing: '-0.8px',
                     }}>
@@ -65,7 +65,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                     {/* "around you" in purple gradient with underline */}
                     <div style={{ position: 'relative', display: 'inline-block', marginTop: 2 }}>
                         <div style={{
-                            fontSize: 32, fontWeight: 800,
+                            fontSize: 'var(--title-font-size)', fontWeight: 800,
                             letterSpacing: '-0.8px',
                             background: 'linear-gradient(90deg, #7B2FF7 0%, #9B59F5 50%, #B06EFF 100%)',
                             WebkitBackgroundClip: 'text',
@@ -96,7 +96,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                     <span style={{
-                        fontSize: 10.5, fontWeight: 600,
+                        fontSize: 'var(--badge-font-size)', fontWeight: 600,
                         color: dark ? '#FF9500' : '#C05000',
                         letterSpacing: '0.1px',
                     }}>Your location is never shared exactly</span>
@@ -109,7 +109,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '100%', position: 'relative',
                 maxHeight: '34vh', minHeight: '180px',
-                zIndex: 2, marginTop: 10,
+                zIndex: 2, marginTop: 'var(--illustration-margin)',
             }}>
                 {/* Floating chat badge — left */}
                 <div style={{
@@ -237,7 +237,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                 ].map((item, i) => (
                     <div key={i} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '8px 14px', borderRadius: 100,
+                        padding: 'var(--capsule-padding)', borderRadius: 100,
                         background: item.bg,
                         border: item.border,
                         backdropFilter: 'blur(8px)',
@@ -245,7 +245,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                     }}>
                         {item.icon}
                         <span style={{
-                            fontSize: 12, fontWeight: 600,
+                            fontSize: 'var(--capsule-font-size)', fontWeight: 600,
                             color: item.color,
                             letterSpacing: '0.1px',
                             whiteSpace: 'nowrap',
@@ -265,12 +265,12 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                     onClick={onEnable}
                     style={{
                         width: '100%',
-                        padding: '16px 24px',
+                        padding: 'var(--button-padding)',
                         borderRadius: 100,
                         border: 'none',
                         background: 'linear-gradient(90deg, #FF6A00 0%, #FF8C00 50%, #FFA500 100%)',
                         color: '#fff',
-                        fontSize: 17,
+                        fontSize: 'var(--button-font-size)',
                         fontWeight: 700,
                         letterSpacing: '0.2px',
                         cursor: 'pointer',
@@ -317,7 +317,7 @@ export default function LocationOnboarding({ onEnable, isDarkMode, fullHeight = 
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     </svg>
                     <span style={{
-                        fontSize: 12, fontWeight: 500,
+                        fontSize: 'var(--trust-font-size)', fontWeight: 500,
                         color: dark ? 'rgba(200,190,240,0.5)' : '#9070D0',
                         letterSpacing: '0.2px',
                     }}>100% Secure • You're in Control</span>

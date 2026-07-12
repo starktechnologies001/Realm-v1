@@ -22,7 +22,7 @@ export default function EnableLocation() {
     }, [devicePermissionGranted, locationEnabled, loadingLocation, location.state, navigate]);
 
     const handleEnableLocation = () => {
-        startLocation();
+        startLocation(true);
     };
 
     return (

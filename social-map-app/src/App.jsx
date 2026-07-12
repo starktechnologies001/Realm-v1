@@ -22,6 +22,9 @@ const lazyWithRetry = (componentImport) =>
 
     try {
       const component = await componentImport();
+      if (!component || !component.default) {
+        throw new TypeError("Failed to resolve module default export");
+      }
       window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
       return component;
     } catch (error) {
