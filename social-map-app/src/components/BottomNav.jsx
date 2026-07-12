@@ -148,9 +148,9 @@ const BottomNav = React.memo(function BottomNav({ friendRequestCount = 0, unread
             position: absolute;
             bottom: 4px;
             width: 4px; height: 4px;
-            background: #4285F4;
+            background: #7C3AED;
             border-radius: 50%;
-            box-shadow: 0 0 8px #4285F4;
+            box-shadow: 0 0 8px #7C3AED;
             animation: fadeIn 0.3s ease;
         }
 

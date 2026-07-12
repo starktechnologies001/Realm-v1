@@ -104,9 +104,11 @@ export default function Chat() {
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
     const { isLocationEnabled } = useLocationContext();
     const [messageRequestsCount, setMessageRequestsCount] = useState(0);
+    const [globalTypingUsers, setGlobalTypingUsers] = useState({});
 
     // Fetch and subscribe to message requests
     useEffect(() => {
+
         if (!currentUser?.id) return;
 
         const fetchRequestsCount = async () => {
@@ -142,6 +144,28 @@ export default function Chat() {
             supabase.removeChannel(channel);
         };
     }, [currentUser]);
+
+    // Global Typing indicator subscription for conversations list
+    useEffect(() => {
+        if (!currentUser?.id) return;
+
+        const globalChannelName = `typing-global-${currentUser.id}`;
+        const globalChannel = supabase.channel(globalChannelName);
+
+        globalChannel
+            .on('broadcast', { event: 'global-typing' }, (payload) => {
+                const { senderId, isTyping } = payload.payload;
+                setGlobalTypingUsers(prev => ({
+                    ...prev,
+                    [senderId]: isTyping
+                }));
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(globalChannel);
+        };
+    }, [currentUser?.id]);
 
     // ------------------------------------------------------------------
     // 🔗 URL PERSISTENCE LOGIC (Re-open chat on refresh)
@@ -779,6 +803,7 @@ export default function Chat() {
                 allChats={chats} // Pass chats for forwarding
                 replyToMessage={location.state?.replyToMessage} // Pass reply context from navigation
                 quickReplyText={location.state?.quickReplyText} // Pass quick reply text from navigation
+                globalTypingUsers={globalTypingUsers}
                 onBack={() => {
                     setActiveChatUser(null);
                     // Go back in history to keep browser history in sync
@@ -843,6 +868,7 @@ export default function Chat() {
                 connectionStatus={connectionStatus} 
                 refreshTrigger={refreshTrigger}
                 messageRequestsCount={messageRequestsCount}
+                globalTypingUsers={globalTypingUsers}
             />
             
             {/* Story Viewer Overlay */}
@@ -869,7 +895,8 @@ const ChatItemRow = React.memo(({
     onClick, 
     onTouchStart, 
     onTouchEnd, 
-    idx 
+    idx,
+    isTyping
 }) => {
     return (
         <div 
@@ -924,10 +951,10 @@ const ChatItemRow = React.memo(({
                     </div>
                 </div>
                 <div className="chat-msg-row">
-                    <p className="chat-preview">
-                        {chat.lastMsg}
+                    <p className="chat-preview" style={isTyping ? { color: '#7C3AED', fontWeight: 'bold' } : {}}>
+                        {isTyping ? 'typing...' : chat.lastMsg}
                     </p>
-                    {chat.unread > 0 && (
+                    {chat.unread > 0 && !isTyping && (
                         <span className="unread-badge">
                             {chat.unread > 99 ? '99+' : chat.unread}
                         </span>
@@ -938,6 +965,7 @@ const ChatItemRow = React.memo(({
     );
 }, (prevProps, nextProps) => {
     return (
+        prevProps.isTyping === nextProps.isTyping &&
         prevProps.selectionMode === nextProps.selectionMode &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.idx === nextProps.idx &&
@@ -949,11 +977,12 @@ const ChatItemRow = React.memo(({
         prevProps.chat.time === nextProps.chat.time &&
         prevProps.chat.isOnline === nextProps.chat.isOnline &&
         prevProps.chat.isMuted === nextProps.chat.isMuted &&
-        (prevProps.chat.fullProfile?.subscription_tier || prevProps.chat.subscription_tier) === (nextProps.chat.fullProfile?.subscription_tier || nextProps.chat.subscription_tier)
+        prevProps.chat.subscription_tier === nextProps.chat.subscription_tier
     );
 });
 
-function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger, messageRequestsCount }) {
+
+function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, currentUser, connectionStatus, refreshTrigger, messageRequestsCount, globalTypingUsers }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('messages');
     const navigate = useNavigate();
@@ -1149,6 +1178,7 @@ function ChatList({ chats, setChats, onSelectChat, onSelectStory, loading, curre
                             onTouchStart={handleTouchStart}
                             onTouchEnd={handleTouchEnd}
                             idx={idx}
+                            isTyping={!!globalTypingUsers?.[chat.id]}
                         />
                     ))
                 )}
@@ -1600,7 +1630,7 @@ const isVideoUrl = (url) => {
     return videoExtensions.includes(ext);
 };
 
-function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: initialReplyToMessage, quickReplyText: initialQuickReplyText }) {
+function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: initialReplyToMessage, quickReplyText: initialQuickReplyText, globalTypingUsers = {} }) {
     // Local state for partner to handle real-time updates (e.g. online status)
     const [partner, setPartner] = useState(targetUser);
     const [showFullProfile, setShowFullProfile] = useState(false);
@@ -1797,7 +1827,26 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 username: currentUser.username || currentUser.full_name || 'Someone'
             }
         });
+
+        // Send typing status globally to partner so it updates in their chat list in real-time
+        const partnerGlobalChannel = supabase.channel(`typing-global-${partner.id}`);
+        partnerGlobalChannel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                partnerGlobalChannel.send({
+                    type: 'broadcast',
+                    event: 'global-typing',
+                    payload: {
+                        senderId: currentUser.id,
+                        isTyping,
+                        username: currentUser.username || currentUser.full_name || 'Someone'
+                    }
+                }).then(() => {
+                    supabase.removeChannel(partnerGlobalChannel);
+                });
+            }
+        });
     };
+
 
     const stopTyping = () => {
         if (isTypingRef.current) {
@@ -4042,7 +4091,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 {partner.subscription_tier === 'gold' && <span style={{ fontSize: '0.95rem' }} title="Gold Elite">🥇</span>}
                                 {partner.subscription_tier === 'diamond' && <span style={{ fontSize: '0.95rem' }} title="Diamond Elite">💎</span>}
                             </h3>
-                            {presence.displayStatus && (
+                            {globalTypingUsers[partner.id] ? (
+                                <span className="user-status online" style={{ color: '#7C3AED', fontWeight: 'bold' }}>
+                                    typing...
+                                </span>
+                            ) : presence.displayStatus && (
                                 <span className={`user-status ${presence.isOnline ? 'online' : 'offline'}`}>
                                     {presence.isOnline && <span className="online-dot">●</span>}
                                     {presence.displayStatus}

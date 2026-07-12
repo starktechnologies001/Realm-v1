@@ -146,10 +146,10 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, 
                     style={{
                         width: '44px',
                         height: '44px',
-                        backgroundColor: '#4285F4',
+                        backgroundColor: '#7C3AED',
                         border: 'none',
                         borderRadius: '50%',
-                        boxShadow: '0 4px 12px rgba(66, 133, 244, 0.4)',
+                        boxShadow: '0 4px 12px rgba(124, 58, 237, 0.4)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -165,11 +165,11 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, 
                         e.currentTarget.style.transform = 'scale(1)';
                     }}
                     onMouseEnter={(e) => { 
-                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(66, 133, 244, 0.5)';
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(124, 58, 237, 0.5)';
                         e.currentTarget.style.transform = 'scale(1.05)';
                     }}
                     onMouseLeave={(e) => { 
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(66, 133, 244, 0.4)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
                         e.currentTarget.style.transform = 'scale(1)';
                     }}
                 >
@@ -468,7 +468,7 @@ let globalNearbyUsersCache = [];
 export default function MapHome() {
     // Map UI State
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('All');
+    const [activeFilter, setActiveFilter] = useState('Nearby');
     const [showFilters, setShowFilters] = useState(false);
     const [mapMode, setMapMode] = useState('street'); // 'street', 'hybrid', 'satellite'
     const [showMapViewMenu, setShowMapViewMenu] = useState(false);
@@ -493,6 +493,27 @@ export default function MapHome() {
         startLocation,
         stopLocation,
     } = useLocationContext();
+
+    const [locationName, setLocationName] = useState('Your Location');
+
+    // Reverse geocode user's real lat/lng to get location name
+    useEffect(() => {
+        if (!userLocation?.lat || !userLocation?.lng) return;
+        const lat = userLocation.lat;
+        const lng = userLocation.lng;
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`)
+            .then(r => r.json())
+            .then(data => {
+                const a = data?.address || {};
+                const name =
+                    (a.neighbourhood || a.suburb || a.village || a.town || a.city_district) &&
+                    (a.city || a.town || a.county || a.state)
+                        ? `${a.neighbourhood || a.suburb || a.village || a.town || a.city_district}, ${a.city || a.town || a.county}`
+                        : a.city || a.town || a.county || a.state || 'Your Location';
+                setLocationName(name);
+            })
+            .catch(() => setLocationName('Your Location'));
+    }, [userLocation?.lat, userLocation?.lng]);
 
     // Notification State
     const [friendRequests, setFriendRequests] = useState([]);
@@ -533,7 +554,12 @@ export default function MapHome() {
     }, []);
 
     // Filter Options
-    const FILTERS = ['All', 'Online', 'Nearby', 'Friends'];
+    const FILTERS = [
+        { key: 'Nearby',  label: 'Nearby',  icon: '👥' },
+        { key: 'Friends', label: 'Friends', icon: '🤝' },
+        { key: 'Events',  label: 'Events',  icon: '📅' },
+        { key: 'Places',  label: 'Places',  icon: '📍' },
+    ];
 
     // Call Context
     const { startCall } = useCall();
@@ -792,7 +818,7 @@ export default function MapHome() {
                     if (!reactorUser) {
                         const { data } = await supabase
                             .from('profiles')
-                            .select('id, username, full_name, avatar_url, gender')
+                            .select('id, username, full_name, avatar_url, gender, is_verified, verified_at')
                             .eq('id', reactorId)
                             .maybeSingle();
                         if (data) reactorUser = data;
@@ -999,7 +1025,7 @@ export default function MapHome() {
         if (currentUser) {
             const raw = currentUser.thought || currentUser.status_message;
             const parsed = parseThought(raw);
-            setMyThought(parsed.text || '');
+            setMyThought(''); // Always open with blank text
             setSelectedColor(parsed.color || '#f3d9fa');
             setSelectedPrivacy(parsed.privacy || 'everyone');
         } else {
@@ -1821,6 +1847,8 @@ export default function MapHome() {
                             thought_bubble_color: u.thought_bubble_color || null,
                             interests: u.interests || [],
                             birth_date: u.birth_date || null,
+                            is_verified: u.is_verified,
+                            verified_at: u.verified_at,
                             // PRIVACY CHECK: Only show story if public OR friends
                             hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
                             hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
@@ -1890,6 +1918,8 @@ export default function MapHome() {
                             status_updated_at: updatedUser.status_updated_at,
                             avatar_url: updatedUser.avatar_url || prev.avatar_url,
                             username: updatedUser.username || prev.username,
+                            is_verified: updatedUser.is_verified ?? prev.is_verified,
+                            verified_at: updatedUser.verified_at ?? prev.verified_at,
                             // 🔥 Sync visibility changes triggered from other tabs/devices
                             visibility_mode: updatedUser.visibility_mode ?? prev.visibility_mode,
                             is_ghost_mode: updatedUser.visibility_mode === 'ghost' || updatedUser.is_ghost_mode,
@@ -2001,6 +2031,8 @@ export default function MapHome() {
                         show_last_seen: updatedUser.show_last_seen,
                         activity_status: updatedUser.activity_status,
                         visibility_mode: updatedUser.visibility_mode,
+                        is_verified: updatedUser.is_verified,
+                        verified_at: updatedUser.verified_at,
                         friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null,
                         hasStory: exists ? prev[existingIndex].hasStory : false,
                         hasUnseenStory: exists ? prev[existingIndex].hasUnseenStory : false
@@ -3462,12 +3494,29 @@ export default function MapHome() {
             if (viewCountsRef.current[u.id] === 5 || viewCountsRef.current[u.id] === 11) {
                 setNearbyUsers(prev => [...prev]);
             }
+            
+            // Record real-time metrics safely
+            if (currentUser && u.id !== currentUser.id) {
+                import('../utils/premiumUtils').then(({ recordProfileView, recordThoughtView }) => {
+                    recordProfileView(u.id, currentUser.id);
+                    
+                    let displayThought = u.thought || u.status_message;
+                    const thoughtUpdatedAt = u.status_updated_at || u.statusUpdatedAt;
+                    if (thoughtUpdatedAt) {
+                        const diffHours = (new Date() - new Date(thoughtUpdatedAt)) / (1000 * 60 * 60);
+                        if (diffHours <= 3 && displayThought) {
+                            recordThoughtView(u.id, currentUser.id);
+                        }
+                    }
+                }).catch(err => console.warn("Metrics logging warning:", err));
+            }
         }
 
         if (!currentUser) {
             setSelectedUser(u);
             return;
         }
+
 
         const { data, error } = await supabase
             .from('friendships')
@@ -4112,11 +4161,11 @@ export default function MapHome() {
                         center={circleCenter || [userLocation.lat, userLocation.lng]}
                         radius={300}
                         pathOptions={{
-                            color: '#3b82f6',
-                            fillColor: '#3b82f6',
-                            fillOpacity: 0.08,
+                            color: '#7C3AED',
+                            fillColor: '#7C3AED',
+                            fillOpacity: 0.05,
                             weight: 1.5,
-                            dashArray: '6, 6'
+                            dashArray: '5, 5'
                         }}
                     />
                 )}
@@ -4137,14 +4186,14 @@ export default function MapHome() {
             </MapContainer>
             ) : null}
 
-            {/* ── Floating Top-Right Quick Actions (horizontal pill row) ── */}
+            {/* ── Floating Top-Right Quick Actions - HIDDEN (moved to map-header-controls) ── */}
             {userLocation?.lat && (
                 <div style={{
                     position: 'fixed',
                     top: 'max(14px, calc(env(safe-area-inset-top) + 10px))',
                     right: 14,
                     zIndex: 1200,
-                    display: 'flex',
+                    display: 'none',
                     flexDirection: 'row',
                     gap: 6,
                     pointerEvents: 'auto',
@@ -4276,56 +4325,90 @@ export default function MapHome() {
             )}
 
             {/* Top Search Bar & Action Buttons */}
-            <div className="map-header-controls" style={{ position: 'relative' }}>
-                <div className="privacy-trust-badge" style={{
-                    position: 'absolute',
-                    top: '-18px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(28, 28, 30, 0.85)',
-                    backdropFilter: 'blur(10px)',
-                    color: '#00d4ff',
-                    fontSize: '0.7rem',
-                    fontWeight: 600,
-                    padding: '3px 10px',
-                    borderRadius: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    border: '1px solid rgba(0, 212, 255, 0.2)',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    pointerEvents: 'none',
-                    animation: 'fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
-                    whiteSpace: 'nowrap',
-                    zIndex: 100
-                }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    Your exact location is never shared
-                </div>
-                <div className="header-top-row">
-                    {/* Profile Button - Left Side */}
-                    <button 
-                        className="top-profile-btn glass-panel"
-                        onClick={() => navigate('/profile')}
-                        title="View Profile"
-                    >
-                        <img 
-                            src={currentUser ? (getAvatar2D(currentUser.avatar_url) || (currentUser.gender === 'Male' ? DEFAULT_MALE_AVATAR : currentUser.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR)) : DEFAULT_GENERIC_AVATAR} 
-                            alt="Profile" 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                    </button>
+            <div className="map-header-controls">
+                <div className="map-header-top-nav">
+                    {/* Left: Map View Picker */}
+                    <div style={{ position: 'relative' }}>
+                        <button className="map-action-btn" onClick={() => setShowMapViewMenu(prev => !prev)} title="Change Map View">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                                <polyline points="2 17 12 22 22 17"/>
+                                <polyline points="2 12 12 17 22 12"/>
+                            </svg>
+                        </button>
+                        {showMapViewMenu && (
+                            <div style={{
+                                position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(20px)',
+                                WebkitBackdropFilter: 'blur(20px)', borderRadius: 12,
+                                border: '1px solid rgba(0,0,0,0.06)',
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                padding: '4px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 130, zIndex: 100
+                            }}>
+                                {[{key:'street',label:'Street',icon:'🗺️'},{key:'satellite',label:'Satellite',icon:'🛰️'},{key:'hybrid',label:'Hybrid',icon:'🌍'}].map(({key,label,icon}) => (
+                                    <button key={key} onClick={() => { setMapMode(key); setShowMapViewMenu(false); }}
+                                        style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', borderRadius:8, border:'none',
+                                            background: mapMode===key ? 'rgba(124,58,237,0.1)' : 'transparent',
+                                            color: mapMode===key ? '#7C3AED' : '#444', cursor:'pointer', fontSize:12, fontWeight: mapMode===key?700:500, fontFamily:'inherit', width:'100%' }}>
+                                        <span style={{fontSize:14}}>{icon}</span>{label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="location-info-wrapper">
+                        <span className="location-subtitle">You're in</span>
+                        <h2 className="location-title">
+                            {locationName}
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 3 }}>
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </h2>
+                        <div className="secure-badge">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                <polyline points="9 11 11 13 15 9"></polyline>
+                            </svg>
+                            <span>Your location is private &amp; secure</span>
+                        </div>
+                    </div>
 
-                    <div className="search-bar-container glass-panel">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.4, flexShrink:0 }}>
-                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    {/* Right: Floating Thought Button */}
+                    <button className="map-action-btn" onClick={() => handleOpenThoughtInput()} title="Set Floating Thought">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            <path d="M8 10h.01M12 10h.01M16 10h.01"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div className="search-bar-wrapper">
+                    <div className="search-bar-container">
+                        <svg className="search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
                         <input 
                             type="text" 
-                            placeholder="Find people..." 
+                            placeholder="Search people or places..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        <button className="search-filter-btn" title="Filter map" onClick={() => handleOpenThoughtInput()}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="4" y1="21" x2="4" y2="14"></line>
+                                <line x1="4" y1="10" x2="4" y2="3"></line>
+                                <line x1="12" y1="21" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12" y2="3"></line>
+                                <line x1="20" y1="21" x2="20" y2="16"></line>
+                                <line x1="20" y1="12" x2="20" y2="3"></line>
+                                <line x1="1" y1="14" x2="7" y2="14"></line>
+                                <line x1="9" y1="8" x2="15" y2="8"></line>
+                                <line x1="17" y1="16" x2="23" y2="16"></line>
+                            </svg>
+                        </button>
+
                         {/* Search Dropdown */}
                         {searchQuery && searchResults.length > 0 && (
                             <div className="search-results-dropdown">
@@ -4361,227 +4444,184 @@ export default function MapHome() {
                                                 }} 
                                             />
                                         </div>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', fontWeight: 600, color: '#f4f4f5' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                                             {user.name}
                                             {user.subscription_tier === 'silver' && <span style={{ fontSize: '0.8rem' }} title="Silver Member">🥈</span>}
                                             {user.subscription_tier === 'gold' && <span style={{ fontSize: '0.8rem' }} title="Gold Member">🥇</span>}
                                             {user.subscription_tier === 'diamond' && <span style={{ fontSize: '0.8rem' }} title="Diamond Member">💎</span>}
                                         </span>
                                     </div>
-                                ))}
+                                )) }
                             </div>
                         )}
                     </div>
-                    
-                    {/* Action Buttons - Right Side */}
-                    <div className="header-action-buttons">
-                        {/* Message Requests Lock */}
-                        <button 
-                            className="control-btn" 
-                            onClick={() => setIsMessageRequestsPageOpen(true)} 
-                            title="Message Requests"
-                            style={{ position: 'relative' }}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                            </svg>
-                            {messageRequestsCount > 0 && (
-                                <span className="notification-badge" style={{ 
-                                    position: 'absolute', top: -5, right: -5, 
-                                    background: '#ff3b30', color: 'white', 
-                                    fontSize: '10px', fontWeight: 'bold', 
-                                    padding: '2px 6px', borderRadius: '10px', border: '2px solid var(--bg-color)' 
-                                }}>
-                                    {messageRequestsCount > 99 ? '99+' : messageRequestsCount}
-                                </span>
-                            )}
-                        </button>
-
-                        {/* Status / Thoughts */}
-                        <button 
-                            className="control-btn status-trigger-btn" 
-                            onClick={() => handleOpenThoughtInput()} 
-                            title="Set Status"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                                <path d="M8 10h.01M12 10h.01M16 10h.01"/>
-                            </svg>
-                        </button>
-                        
-                        {/* Visibility Mode Toggle */}
-                        <div style={{ position: 'relative' }}>
-                            <button
-                                className={`control-btn visibility-toggle-btn ${currentUser?.visibility_mode === 'ghost' ? 'ghost-active' : ''}`}
-                                onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
-                                title="Visibility Settings"
-                            >
-                                {currentUser?.visibility_mode === 'ghost' ? (
-                                    /* Ghost Mode */
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                                        <line x1="1" y1="1" x2="23" y2="23"/>
-                                    </svg>
-                                ) : currentUser?.visibility_mode === 'friends' ? (
-                                    /* Friends Mode */
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                                    </svg>
-                                ) : (
-                                    /* Public Mode */
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                                    </svg>
-                                )}
-                            </button>
-
-                            {/* Visibility Dropdown Menu */}
-                            {showVisibilityMenu && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '46px',
-                                    right: 0,
-                                    background: 'rgba(28, 28, 30, 0.95)',
-                                    backdropFilter: 'blur(16px)',
-                                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                                    borderRadius: '16px',
-                                    padding: '8px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4px',
-                                    minWidth: '140px',
-                                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                                    zIndex: 1000
-                                }}>
-                                    <button 
-                                        onClick={async () => {
-                                            setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'public', is_ghost_mode: false }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'public', is_ghost_mode: false }).eq('id', currentUser.id);
-                                            showToast("🌍 Public Mode On");
-                                            startLocation();
-                                        }}
-                                        style={{
-                                            background: currentUser?.visibility_mode === 'public' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
-                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <span style={{ fontSize: '1rem' }}>🌍</span> Public
-                                    </button>
-                                    <button 
-                                        onClick={async () => {
-                                            setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'friends', is_ghost_mode: false }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'friends', is_ghost_mode: false }).eq('id', currentUser.id);
-                                            showToast("👥 Friends Only");
-                                            startLocation();
-                                        }}
-                                        style={{
-                                            background: currentUser?.visibility_mode === 'friends' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
-                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <span style={{ fontSize: '1rem' }}>👥</span> Friends
-                                    </button>
-                                    <button 
-                                        onClick={async () => {
-                                            setShowVisibilityMenu(false);
-                                            setCurrentUser(prev => ({ ...prev, visibility_mode: 'ghost', is_ghost_mode: true }));
-                                            await supabase.from('profiles').update({ visibility_mode: 'ghost', is_ghost_mode: true }).eq('id', currentUser.id);
-                                            showToast("👻 Ghost Mode On");
-                                            startLocation();
-                                        }}
-                                        style={{
-                                            background: currentUser?.visibility_mode === 'ghost' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                            border: 'none', color: 'white', padding: '8px 12px', borderRadius: '8px',
-                                            textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <span style={{ fontSize: '1rem' }}>👻</span> Ghost
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Map View Toggle */}
-                        <button 
-                            className="control-btn map-mode-btn"
-                            onClick={() => {
-                                const modes = ['street', 'satellite', 'hybrid'];
-                                const nextIndex = (modes.indexOf(mapMode) + 1) % modes.length;
-                                setMapMode(modes[nextIndex]);
-                            }}
-                            title="Toggle Map View"
-                        >
-                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-                             </svg>
-                        </button>
-                    </div>
-                </div>
-                
-                <div className="filter-scroll">
-                    {FILTERS.map(f => (
-                        <button 
-                            key={f}
-                            className={`filter-chip glass-pill ${activeFilter === f ? 'active' : ''}`}
-                            onClick={() => {
-                                // Disable advanced filters if switching to standard tabs
-                                setDiamondFilters(prev => ({ ...prev, enabled: false }));
-                                setActiveFilter(f);
-                            }}
-                        >
-                            {f}
-                        </button>
-                    ))}
-                    
-                    <button 
-                        className={`filter-chip glass-pill discovery-filter-btn ${diamondFilters.enabled ? 'active-diamond' : ''}`}
-                        onClick={() => {
-                            if (currentUser?.subscription_tier !== 'diamond') {
-                                showToast("Upgrade to Diamond Elite to filter nearby people by gender, age, interests, and more! 💎");
-                                navigate('/subscription');
-                                return;
-                            }
-                            setShowDiamondFilterPanel(true);
-                        }}
-                        style={{
-                            background: diamondFilters.enabled 
-                                ? 'linear-gradient(135deg, #00d4ff, #a855f7)' 
-                                : 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(168, 85, 247, 0.4)',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}
-                    >
-                        <span>💎 Discovery</span>
-                        {diamondFilters.enabled && (
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', display: 'inline-block' }} />
-                        )}
-                    </button>
                 </div>
             </div>
 
 
             <style>{`
                 .map-header-controls {
-                    position: absolute;
+                    position: fixed;
                     top: 0;
-                    padding-top: max(16px, env(safe-area-inset-top));
+                    padding-top: max(10px, env(safe-area-inset-top));
                     left: 0; right: 0;
-                    z-index: 1000;
-                    padding-left: 16px; 
-                    padding-right: 16px;
+                    z-index: 9000;
+                    padding-left: 12px; 
+                    padding-right: 12px;
                     display: flex;
                     flex-direction: column;
-                    gap: 8px;
+                    gap: 6px;
                     pointer-events: none;
+                    padding-bottom: 8px;
+                    background: rgba(248, 247, 255, 0.94);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-bottom: 1px solid rgba(124, 58, 237, 0.08);
+                }
+
+                .map-header-top-nav {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    width: 100%;
+                    pointer-events: auto;
+                    margin-bottom: 2px;
+                }
+                .map-action-btn {
+                    width: 38px;
+                    height: 38px;
+                    background: #ffffff;
+                    border: none;
+                    border-radius: 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+                    transition: transform 0.18s;
+                    flex-shrink: 0;
+                }
+                .map-action-btn:active {
+                    transform: scale(0.93);
+                }
+                .location-info-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    text-align: center;
+                }
+                .location-subtitle {
+                    font-size: 0.65rem;
+                    color: #888888;
+                    font-weight: 500;
+                    letter-spacing: -0.1px;
+                }
+                .location-title {
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    color: #000000;
+                    margin: 1px 0 2px 0;
+                    display: flex;
+                    align-items: center;
+                    cursor: default;
+                }
+                .secure-badge {
+                    display: flex;
+                    align-items: center;
+                    gap: 3px;
+                    font-size: 0.62rem;
+                    color: #888888;
+                    font-weight: 500;
+                }
+                .high-five-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: #ffffff;
+                    border: none;
+                    border-radius: 14px;
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+                    transition: transform 0.2s;
+                }
+                .high-five-btn:active {
+                    transform: scale(0.95);
+                }
+                .high-five-btn .emoji {
+                    font-size: 1rem;
+                }
+                .high-five-btn .count {
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    color: #7C3AED;
+                }
+
+                /* Search Bar Wrapper & Overrides */
+                .search-bar-wrapper {
+                    width: 100%;
+                    pointer-events: auto;
+                    margin-top: 0px;
+                }
+                .search-bar-wrapper .search-bar-container {
+                    display: flex;
+                    align-items: center;
+                    padding: 0 14px;
+                    border-radius: 100px;
+                    height: 40px;
+                    background: #ffffff;
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                    border: 1px solid rgba(0, 0, 0, 0.04);
+                    gap: 8px;
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                .search-bar-wrapper .search-bar-container input {
+                    flex: 1;
+                    border: none;
+                    background: transparent;
+                    outline: none;
+                    font-size: 0.88rem;
+                    color: #000000;
+                    font-weight: 500;
+                }
+                .search-bar-wrapper .search-bar-container input::placeholder {
+                    color: #999999;
+                }
+                .search-bar-wrapper .search-icon {
+                    color: #777777;
+                    display: flex;
+                    align-items: center;
+                    flex-shrink: 0;
+                }
+                .search-filter-btn {
+                    background: none;
+                    border: none;
+                    color: #7C3AED;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    padding: 6px;
+                    flex-shrink: 0;
+                }
+                
+                /* Dark Mode Adaptations for Header */
+                html[data-theme="dark"] .menu-burger-btn,
+                html[data-theme="dark"] .high-five-btn,
+                html[data-theme="dark"] .search-bar-wrapper .search-bar-container {
+                    background: rgba(28, 28, 30, 0.9) !important;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+                    border-color: rgba(255, 255, 255, 0.08) !important;
+                }
+                html[data-theme="dark"] .location-title {
+                    color: #ffffff !important;
+                }
+                html[data-theme="dark"] .location-subtitle,
+                html[data-theme="dark"] .secure-badge {
+                    color: #a0a0a5 !important;
+                }
+                html[data-theme="dark"] .search-bar-wrapper .search-bar-container input {
+                    color: #ffffff !important;
                 }
 
                 .header-top-row {
@@ -4732,10 +4772,59 @@ export default function MapHome() {
                 }
 
                 .filter-chip.active {
-                    background: #0084ff;
+                    background: #7C3AED;
                     color: white;
-                    border-color: #0084ff;
-                    box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+                    border-color: #7C3AED;
+                    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+                }
+
+                /* New premium capsule filter chips matching mockup */
+                .filter-chip-new {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 8px 16px;
+                    white-space: nowrap;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #333333;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    border: 1.5px solid rgba(0, 0, 0, 0.07);
+                    background: #ffffff;
+                    border-radius: 100px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+                    flex-shrink: 0;
+                }
+                .filter-chip-new:active {
+                    transform: scale(0.96);
+                }
+                .filter-chip-icon {
+                    font-size: 15px;
+                    line-height: 1;
+                }
+                .filter-chip-label {
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+                .filter-chip-active {
+                    background: #7C3AED !important;
+                    color: #ffffff !important;
+                    border-color: #7C3AED !important;
+                    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4) !important;
+                }
+
+                /* Dark mode filter chips */
+                html[data-theme="dark"] .filter-chip-new {
+                    background: rgba(28, 28, 30, 0.9) !important;
+                    color: #e0e0e0 !important;
+                    border-color: rgba(255, 255, 255, 0.1) !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+                }
+                html[data-theme="dark"] .filter-chip-active {
+                    background: #7C3AED !important;
+                    color: #ffffff !important;
+                    border-color: #7C3AED !important;
                 }
 
                 .search-results-dropdown {

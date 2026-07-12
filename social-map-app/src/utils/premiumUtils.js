@@ -39,6 +39,39 @@ export const recordProfileView = async (profileOwnerId, viewerId) => {
     }
 };
 
+// Record thought view safely, respecting Diamond's invisible browsing
+export const recordThoughtView = async (thoughtOwnerId, viewerId) => {
+    if (!thoughtOwnerId || !viewerId || thoughtOwnerId === viewerId) return;
+    try {
+        // Fetch viewer's privacy settings
+        const { data: viewerProfile } = await supabase
+            .from('profiles')
+            .select('subscription_tier, invisible_browsing')
+            .eq('id', viewerId)
+            .maybeSingle();
+
+        // Diamond members can browse invisibly
+        if (viewerProfile?.subscription_tier === 'diamond' && viewerProfile?.invisible_browsing) {
+            console.log("🕶️ Invisible browsing active, not logging thought view.");
+            return;
+        }
+
+        // Log the view in database
+        const { error } = await supabase
+            .from('thought_views')
+            .insert({
+                thought_owner_id: thoughtOwnerId,
+                viewer_id: viewerId
+            });
+
+        if (error) throw error;
+        console.log("💭 Recorded thought view successfully!");
+    } catch (err) {
+        console.warn("Failed to record thought view:", err);
+    }
+};
+
+
 // Achievement rarity tiers: common, rare, epic, legendary
 // Achievement categories: social, explorer, activity, special
 export const ACHIEVEMENTS = [

@@ -829,26 +829,26 @@ export default function Profile() {
             ) : (
                 <div className="profile-visitors-card" style={{
                     margin: '0 16px 16px 16px',
-                    background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+                    background: 'var(--bg-secondary, rgba(0,0,0,0.03))',
                     borderRadius: '24px',
-                    border: '1px solid rgba(255,255,255,0.05)',
+                    border: '1.5px dashed var(--input-border, rgba(0,0,0,0.08))',
                     padding: '20px',
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.03)',
                     cursor: 'pointer'
                 }} onClick={() => navigate('/subscription')}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#a1a1aa' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #6e6e73)' }}>
                             👀 Profile Visitors
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 700 }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 700 }}>
                             🔒 Locked
                         </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
-                        <span style={{ fontSize: '1.2rem', color: '#f4f4f5', fontWeight: 700 }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-primary, #1d1d1f)', fontWeight: 700 }}>
                             {visitors.length} {visitors.length === 1 ? 'person' : 'people'} viewed your profile this week
                         </span>
-                        <span style={{ fontSize: '0.8rem', color: '#a1a1aa', fontWeight: 500 }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 500 }}>
                             Upgrade to Silver to see who viewed you.
                         </span>
                     </div>

@@ -79,6 +79,16 @@ html[data-theme="dark"] {
     margin-top: -54px;
 }
 
+/* Remove horizontal borders and shadows on the header section for premium accounts */
+.profile-header-card.profile-card-silver,
+.profile-header-card.profile-card-gold,
+.profile-header-card.profile-card-diamond {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+
 .avatar-wrapper { 
     position: relative; padding: 0; background: transparent; 
     border-radius: 50%;
@@ -471,13 +481,13 @@ html[data-theme="dark"] .icon-delete {
 
 .logout-btn {
     width: 100%; padding: 16px; border-radius: 16px;
-    background: transparent;
-    border: 1px solid rgba(255, 69, 58, 0.3);
-    color: #ff453a; font-weight: 600; font-size: 1rem;
+    background: rgba(155, 111, 227, 0.08);
+    border: 1px solid rgba(155, 111, 227, 0.35);
+    color: #9B6FE3; font-weight: 600; font-size: 1rem;
     cursor: pointer; margin-top: 20px;
     transition: all 0.2s;
 }
-.logout-btn:hover { background: rgba(255, 69, 58, 0.1); }
+.logout-btn:hover { background: rgba(155, 111, 227, 0.15); border-color: rgba(155, 111, 227, 0.55); }
 
 .version-info { text-align: center; color: #333; font-size: 0.75rem; padding: 20px 0; }
 
@@ -951,10 +961,10 @@ html[data-theme="dark"] .icon-delete {
 /* New Real Faces UI Styles */
 .avatar-overlay-btn {
     position: absolute; 
-    bottom: 2px; 
-    right: 2px;
-    width: 28px; 
-    height: 28px; 
+    top: 4px; 
+    right: 4px;
+    width: 22px; 
+    height: 22px; 
     background: var(--accent-cyan); 
     color: white; 
     border-radius: 50%;
@@ -962,7 +972,7 @@ html[data-theme="dark"] .icon-delete {
     align-items: center; 
     justify-content: center;
     font-weight: bold; 
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     border: 2px solid var(--card-bg);
     cursor: pointer;

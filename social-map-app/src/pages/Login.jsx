@@ -11,6 +11,51 @@ import {
 const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
 const nearoLogo = '/logo.webp';
 
+const PINS = [
+  { x: 8,  y: 12, s: 28, d: 0,    c: '#8B5CF6' },
+  { x: 82, y: 9,  s: 22, d: 0.7,  c: '#F97316' },
+  { x: 91, y: 40, s: 17, d: 1.2,  c: '#6366F1' },
+  { x: 4,  y: 52, s: 20, d: 0.4,  c: '#EC4899' },
+  { x: 87, y: 65, s: 16, d: 1.0,  c: '#8B5CF6' },
+  { x: 11, y: 76, s: 13, d: 1.5,  c: '#F97316' },
+  { x: 46, y: 6,  s: 12, d: 0.8,  c: '#6366F1' },
+];
+
+function LoginPin({ x, y, s, d, c }) {
+  return (
+    <div style={{
+      position: 'fixed', left: `${x}%`, top: `${y}%`,
+      animation: `wlFloat ${3.5 + d * 0.4}s ease-in-out ${d}s infinite`,
+      pointerEvents: 'none', zIndex: 0,
+    }}>
+      <svg width={s} height={s * 1.35} viewBox="0 0 24 32">
+        <ellipse cx="12" cy="30.5" rx="3.5" ry="1.1" fill="rgba(0,0,0,0.07)" />
+        <path d="M12 0C6.48 0 2 4.48 2 10c0 7.5 10 21 10 21S22 17.5 22 10C22 4.48 17.52 0 12 0z"
+          fill={c} style={{ filter: `drop-shadow(0 2px 8px ${c}55)` }} />
+        <circle cx="12" cy="10" r="4.2" fill="white" fillOpacity="0.95" />
+        <circle cx="12" cy="10" r="1.8" fill={c} fillOpacity="0.65" />
+      </svg>
+    </div>
+  );
+}
+
+function LoginLines() {
+  return (
+    <svg style={{ position:'fixed', inset:0, width:'100%', height:'100%', zIndex:0, pointerEvents:'none' }} preserveAspectRatio="none">
+      {[
+        { x1:'11%', y1:'15%', x2:'84%', y2:'12%', c:'rgba(139,92,246,0.12)', dur:'5s'  },
+        { x1:'84%', y1:'12%', x2:'93%', y2:'43%', c:'rgba(249,115,22,0.1)',  dur:'6s'  },
+        { x1:'6%',  y1:'55%', x2:'89%', y2:'68%', c:'rgba(99,102,241,0.1)', dur:'7s'  },
+      ].map((l, i) => (
+        <line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+          stroke={l.c} strokeWidth="1" strokeDasharray="4 10">
+          <animate attributeName="strokeDashoffset" from="0" to="-100" dur={l.dur} repeatCount="indefinite" />
+        </line>
+      ))}
+    </svg>
+  );
+}
+
 const INTERESTS_OPTIONS = ['Singing', 'Dating', 'Travelling', 'Gaming', 'Cooking', 'Hiking', 'Reading', 'Music'];
 const STATUS_OPTIONS = ['Single', 'Married', 'Committed', 'Open to Date'];
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Other'];
@@ -479,6 +524,14 @@ export default function Login() {
 
   return (
     <div className="login-container">
+      {/* Ambient background orbs */}
+      <div className="login-orb-tl" />
+      <div className="login-orb-br" />
+
+      {/* Floating pin decorations and network connection lines */}
+      {PINS.map((p, i) => <LoginPin key={i} {...p} />)}
+      <LoginLines />
+
       <div className="login-card">
         <img src={nearoLogo} className="app-title-logo" alt="Nearo Logo" fetchpriority="high" decoding="sync" width="128" height="46" />
         <p className="app-subtitle">
@@ -970,7 +1023,7 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--bg-color);
+          background: linear-gradient(155deg, #EDE9FE 0%, #F5F3FF 20%, #FAFAFA 45%, #FFF7ED 72%, #FFEDD5 100%);
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
           padding: 16px;
           padding-bottom: env(safe-area-inset-bottom);
@@ -978,6 +1031,44 @@ export default function Login() {
           box-sizing: border-box;
           --brand-primary: #A855F7;
           --brand-gradient: linear-gradient(135deg, #A855F7 0%, #8B5CF6 100%);
+          position: relative;
+          transition: background 0.3s ease;
+          overflow: hidden;
+
+          /* Force Light Theme variables locally */
+          --bg-color: #faf8f5;
+          --bg-secondary: #f5f3f0;
+          --text-primary: #1d1d1f;
+          --text-secondary: #6e6e73;
+          --text-placeholder: #a1a1aa;
+          --glass-border: rgba(0, 0, 0, 0.08);
+          --input-bg: #ffffff;
+          --input-border: rgba(0, 0, 0, 0.12);
+          --card-bg: #ffffff;
+          --btn-secondary-bg: #e5e7eb;
+          --btn-secondary-text: #1f2937;
+          --modal-bg: #ffffff;
+          --modal-border: rgba(0, 0, 0, 0.08);
+        }
+
+        .login-orb-tl {
+          position: fixed; top: -15%; left: -12%;
+          width: 60vw; height: 60vw; max-width: 480px; max-height: 480px;
+          background: radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 65%);
+          border-radius: 50%; pointer-events: none; z-index: 0;
+          transition: background 0.3s ease;
+        }
+        .login-orb-br {
+          position: fixed; bottom: -15%; right: -12%;
+          width: 65vw; height: 65vw; max-width: 500px; max-height: 500px;
+          background: radial-gradient(circle, rgba(249,115,22,0.14) 0%, transparent 65%);
+          border-radius: 50%; pointer-events: none; z-index: 0;
+          transition: background 0.3s ease;
+        }
+
+        @keyframes wlFloat {
+          0%, 100% { transform: translateY(0px); }
+          50%       { transform: translateY(-11px); }
         }
 
         .login-card {
@@ -994,6 +1085,7 @@ export default function Login() {
           position: relative;
           overflow: hidden;
           animation: cardIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+          z-index: 1;
         }
 
         @keyframes cardIn {

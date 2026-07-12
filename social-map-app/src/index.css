@@ -1643,3 +1643,77 @@ html[data-theme-premium="aurora_motion"] body {
   text-shadow: 0 0 5px #facc15, 0 0 15px #f59e0b !important;
   font-weight: 700 !important;
 }
+
+/* ============================================================
+   Global Verified Badge Styles (used in all components)
+   ============================================================ */
+
+.verified-badge-wrapper {
+    cursor: pointer;
+    user-select: none;
+}
+
+.verified-badge-icon {
+    display: block;
+    transition: transform 0.15s ease;
+}
+.verified-badge-wrapper:hover .verified-badge-icon {
+    transform: scale(1.12);
+}
+
+/* Tooltip popup */
+.verified-badge-tooltip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 16px;
+    padding: 12px 14px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+    z-index: 9999;
+    min-width: 220px;
+    max-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    animation: tooltipFadeIn 0.15s ease-out;
+}
+@keyframes tooltipFadeIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.vbt-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1d1d1f;
+}
+.vbt-body {
+    font-size: 0.78rem;
+    color: #6e6e73;
+    line-height: 1.4;
+}
+.vbt-date {
+    font-size: 0.72rem;
+    color: #1D9BF0;
+    font-weight: 600;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    padding-top: 6px;
+    margin-top: 2px;
+}
+
+/* Dark mode */
+html[data-theme="dark"] .verified-badge-tooltip {
+    background: #1c1c1e;
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+html[data-theme="dark"] .vbt-header { color: #f5f5f7; }
+html[data-theme="dark"] .vbt-body { color: #aeaeb2; }
+html[data-theme="dark"] .vbt-date { border-color: rgba(255,255,255,0.08); }
