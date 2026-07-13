@@ -323,7 +323,10 @@ export default function Friends() {
 
     const checkIsOnline = (friend) => {
         if (friend.hide_online_status) return false;
-        return !!friend.is_online;
+        if (!friend.is_online) return false;
+        if (!friend.last_active) return false;
+        const diffMs = Date.now() - new Date(friend.last_active).getTime();
+        return diffMs < 5 * 60 * 1000;
     };
 
     const filteredFriends = friends.filter(friend => {

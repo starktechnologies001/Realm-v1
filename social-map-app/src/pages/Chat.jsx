@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,6 +75,37 @@ const CHAT_THEMES = {
     celebration_mode: { name: 'Celebration', emoji: '🎊', fontColor: '#6200ea', backgroundColor: '#f3e5f5', backgroundPattern: 'confetti', bubbleSent: '#d1c4e9', bubbleReceived: '#b39ddb', accentColor: '#651fff', iconColor: '#651fff', textColor: '#311b92', type: 'light' }
 };
 
+// ================= PERF INSTRUMENTATION START =================
+window.__perfLogs = window.__perfLogs || {};
+window.__dbToTemp = window.__dbToTemp || {};
+
+window.__getId = (msg) => {
+    if (!msg) return null;
+    if (msg.tempId) return msg.tempId;
+    if (msg.id && window.__dbToTemp[msg.id]) return window.__dbToTemp[msg.id];
+    if (msg.id) return msg.id;
+    return null;
+}
+
+window.__logStep = (step, id) => {
+    if (!id || id === 'unknown') return;
+    if (!window.__perfLogs[id]) window.__perfLogs[id] = [];
+    if (window.__perfLogs[id].some(e => e.step === step)) return;
+    window.__perfLogs[id].push({ step, time: performance.now() });
+    
+    if (step === 'Visible') {
+        const events = window.__perfLogs[id];
+        const t0 = events[0].time;
+        let out = '';
+        events.forEach(e => {
+            out += `${e.step}:\n${Math.round(e.time - t0)} ms\n\n`;
+        });
+        out += `Total:\n${Math.round(events[events.length-1].time - t0)} ms\n`;
+        console.log(out);
+    }
+}
+// ================= PERF INSTRUMENTATION END =================
+
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
     const [selectedStoryUser, setSelectedStoryUser] = useState(null);
@@ -105,6 +136,7 @@ export default function Chat() {
     const { isLocationEnabled } = useLocationContext();
     const [messageRequestsCount, setMessageRequestsCount] = useState(0);
     const [globalTypingUsers, setGlobalTypingUsers] = useState({});
+    const processedListMessageIdsRef = useRef(new Set());
 
     // Fetch and subscribe to message requests
     useEffect(() => {
@@ -518,6 +550,20 @@ export default function Chat() {
         const handleNewMessageListUpdate = async (newMessage) => {
             // Client-side filter: Only care about messages sent TO me
             if (String(newMessage.receiver_id) !== String(currentUser.id)) return;
+
+            // Deduplicate processing for the same message ID
+            if (newMessage.id) {
+                if (processedListMessageIdsRef.current.has(newMessage.id)) {
+                    console.log('🔔 [ChatList] Ignored duplicate message update:', newMessage.id);
+                    return;
+                }
+                processedListMessageIdsRef.current.add(newMessage.id);
+                // Keep the set size bounded (e.g. max 100 entries) to prevent memory leak
+                if (processedListMessageIdsRef.current.size > 100) {
+                    const firstVal = processedListMessageIdsRef.current.values().next().value;
+                    processedListMessageIdsRef.current.delete(firstVal);
+                }
+            }
 
             console.log('🔔 [ChatList] NEW MESSAGE (Realtime):', newMessage);
 
@@ -1799,6 +1845,24 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     // I will use 'messagesStateRef' to be safe.
     const messagesStateRef = useRef(messages);
     useEffect(() => { messagesStateRef.current = messages; }, [messages]);
+
+    // PERF TRACKER
+    useEffect(() => {
+        if (messages?.length > 0) {
+            const lastMsg = messages[messages.length - 1];
+            const pid = window.__getId(lastMsg);
+            if (pid) {
+                window.__logStep('React Commit', pid);
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        window.__logStep('Visible', pid);
+                    }, 0);
+                });
+            }
+        }
+    }, [messages]);
+
+    const processedMessageIdsRef = useRef(new Set());
     const activeChatChannelRef = useRef(null);
 
     const [input, setInput] = useState('');
@@ -3068,6 +3132,20 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         const roomId = [currentUser.id, targetUser.id].sort().join('_');
         
         const handleNewMessage = async (msgObj) => {
+            const pid = window.__getId(msgObj) || msgObj.id;
+            window.__logStep('handleNewMessage', pid);
+
+            // Deduplicate processing for the same message ID
+            if (msgObj.id) {
+                if (processedMessageIdsRef.current.has(msgObj.id)) return;
+                processedMessageIdsRef.current.add(msgObj.id);
+                // Keep the set size bounded (e.g. max 100 entries) to prevent memory leak
+                if (processedMessageIdsRef.current.size > 100) {
+                    const firstVal = processedMessageIdsRef.current.values().next().value;
+                    processedMessageIdsRef.current.delete(firstVal);
+                }
+            }
+
             // Client-side Filter:
             // 1. Check if blocked
             if (blockStatus.blockedByMe && String(msgObj.sender_id) === String(targetUser.id)) {
@@ -3115,6 +3193,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
                 const newMessage = { ...msgObj, reply_to: replyToData };
+                
+                const pid = window.__getId(newMessage);
+                window.__logStep('setMessages', pid);
 
                 setMessages(prev => {
                     // Check if already applied (duplicate event protection)
@@ -3152,6 +3233,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     }
                 }
             }
+            window.__logStep('handleNewMessage Exit', window.__getId(msgObj) || msgObj.id);
         };
 
         const channel = supabase
@@ -3161,11 +3243,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 schema: 'public',
                 table: 'messages'
             }, async (payload) => {
+                const pid = window.__getId(payload.new) || payload.new.id;
+                window.__logStep('Postgres Received', pid);
                 await handleNewMessage(payload.new);
             })
             .on('broadcast', { event: 'new_message' }, async ({ payload }) => {
                 console.log('⚡ [Chat] Broadcast message received in active chat room:', payload);
                 if (payload && payload.message) {
+                    const pid = window.__getId(payload.message) || payload.message.id;
+                    window.__logStep('Broadcast Received', pid);
                     await handleNewMessage(payload.message);
                 }
             })
@@ -3378,13 +3464,19 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         });
     }, []);
 
-    useEffect(() => {
+    const prevMessagesLength = useRef(0);
+
+    useLayoutEffect(() => {
         if (messages.length > 0) {
             if (isInitialLoad.current) {
                 scrollToBottom('auto');
                 isInitialLoad.current = false;
-            } else {
+                prevMessagesLength.current = messages.length;
+            } else if (messages.length > prevMessagesLength.current) {
                 scrollToBottom('smooth');
+                prevMessagesLength.current = messages.length;
+            } else {
+                prevMessagesLength.current = messages.length;
             }
         }
     }, [messages, scrollToBottom]);
@@ -3408,6 +3500,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         if (!textToSend.trim() && type === 'text' && !imageUrl) return;
 
         const tempId = `temp_${Date.now()}_${Math.random()}`;
+        window.__logStep('Send Click', tempId);
         
         // Check if receiver is online (last_active within 1 minute)
         const { data: receiverProfile } = await supabase
@@ -3451,6 +3544,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         const replyId = replyToMessage?.id || null;
         setReplyToMessage(null);
 
+        window.__logStep('Database INSERT Started', tempId);
         // DB Insert
         const { data, error } = await supabase.from('messages').insert({
             sender_id: currentUser.id,
@@ -3463,6 +3557,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             delivered_at: isReceiverOnline ? new Date().toISOString() : null,
             reply_to_message_id: replyId
         }).select();
+        window.__logStep('Database INSERT Completed', tempId);
 
         if (error) {
             console.error("Send error:", error);
@@ -3471,6 +3566,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             setMessages(prev => prev.filter(m => m.tempId !== tempId));
         } else if (data && data[0]) {
             const realMessage = { ...data[0], reply_to: optimisticMessage.reply_to };
+            window.__dbToTemp[realMessage.id] = tempId;
             // Replace optimistic with real message
             setMessages(prev => prev.map(m => 
                 m.tempId === tempId ? realMessage : m
@@ -3478,6 +3574,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             // ⚡ Instant Broadcast Delivery to Active Room
             if (activeChatChannelRef.current) {
+                window.__logStep('Broadcast Sent', tempId);
                 activeChatChannelRef.current.send({
                     type: 'broadcast',
                     event: 'new_message',

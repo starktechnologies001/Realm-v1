@@ -1717,3 +1717,25 @@ html[data-theme="dark"] .verified-badge-tooltip {
 html[data-theme="dark"] .vbt-header { color: #f5f5f7; }
 html[data-theme="dark"] .vbt-body { color: #aeaeb2; }
 html[data-theme="dark"] .vbt-date { border-color: rgba(255,255,255,0.08); }
+
+/* Remove spacing gaps from subscription avatar rings */
+.avatar-ring-silver,
+.avatar-ring-gold,
+.avatar-ring-diamond,
+.avatar-ring-legend,
+.avatar-ring-container,
+.profile-avatar-container,
+.search-result-avatar-container {
+    padding: 0 !important;
+}
+
+.avatar-ring-silver img,
+.avatar-ring-gold img,
+.avatar-ring-diamond img,
+.avatar-ring-legend img,
+.avatar-ring-container img,
+.profile-avatar-container img,
+.search-result-avatar-container img {
+    border: none !important;
+    box-shadow: none !important;
+}
