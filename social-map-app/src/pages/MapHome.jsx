@@ -5868,6 +5868,55 @@ export default function MapHome() {
                     display: flex; flex-direction: column; gap: 10px;
                     box-shadow: 0 15px 45px rgba(0,0,0,0.25);
                     border: 1px solid rgba(0,0,0,0.08);
+                    max-height: 92vh;
+                    overflow-y: auto;
+                    box-sizing: border-box;
+                }
+
+                @media (max-width: 480px), (max-height: 720px) {
+                    .new-thought-card {
+                        padding: 16px;
+                        gap: 8px;
+                    }
+                    .thought-emoji-header {
+                        display: none;
+                    }
+                    .thought-card-title {
+                        margin-bottom: 8px;
+                        font-size: 1.1rem;
+                    }
+                    .textarea-container {
+                        margin-bottom: 4px;
+                    }
+                    .thought-textarea {
+                        padding: 8px 8px 24px 8px;
+                        font-size: 0.9rem;
+                    }
+                    .setting-section {
+                        margin-bottom: 8px;
+                        gap: 4px;
+                    }
+                    .color-circles-row {
+                        gap: 6px;
+                    }
+                    .color-circle-btn {
+                        width: 28px;
+                        height: 28px;
+                    }
+                    .privacy-select {
+                        padding: 8px 8px 8px 32px;
+                        font-size: 0.9rem;
+                    }
+                    .privacy-select-icon {
+                        left: 10px;
+                    }
+                    .thought-actions.new-actions {
+                        margin-top: 12px;
+                    }
+                    .new-actions button {
+                        padding: 10px 16px;
+                        font-size: 0.9rem;
+                    }
                 }
                 .thought-close-btn {
                     position: absolute; top: 16px; right: 16px; background: none; border: none;
