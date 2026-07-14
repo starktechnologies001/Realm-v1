@@ -1685,13 +1685,65 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const { startCall } = useCall();
 
     // Fix for mobile browser address bar layout shifts and page viewport shifts
-    // Lock scroll to prevent background document shifts
+    // Lock scroll and fix document body/html to prevent browser scroll shifts on focus
     useEffect(() => {
         const originalOverflow = document.body.style.overflow;
+        const originalPosition = document.body.style.position;
+        const originalHeight = document.body.style.height;
+        const originalWidth = document.body.style.width;
+
         document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.height = '100%';
+        document.body.style.width = '100%';
+
+        const originalHtmlOverflow = document.documentElement.style.overflow;
+        const originalHtmlHeight = document.documentElement.style.height;
+        const originalHtmlPosition = document.documentElement.style.position;
+
+        document.documentElement.style.overflow = 'hidden';
+        document.documentElement.style.height = '100%';
+        document.documentElement.style.position = 'fixed';
+
+        // Use Visual Viewport API if available to resize container when keyboard is shown
+        const handleViewportChange = () => {
+            if (!window.visualViewport) return;
+            const height = window.visualViewport.height;
+            const top = window.visualViewport.offsetTop;
+            
+            document.documentElement.style.setProperty('--visual-viewport-height', `${height}px`);
+            document.documentElement.style.setProperty('--visual-viewport-top', `${top}px`);
+            
+            // Counteract any browser auto-scroll by resetting window scroll
+            if (window.scrollY !== 0 || window.scrollX !== 0) {
+                window.scrollTo(0, 0);
+            }
+        };
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', handleViewportChange);
+            window.visualViewport.addEventListener('scroll', handleViewportChange);
+            handleViewportChange();
+        }
 
         return () => {
             document.body.style.overflow = originalOverflow;
+            document.body.style.position = originalPosition;
+            document.body.style.height = originalHeight;
+            document.body.style.width = originalWidth;
+
+            document.documentElement.style.overflow = originalHtmlOverflow;
+            document.documentElement.style.height = originalHtmlHeight;
+            document.documentElement.style.position = originalHtmlPosition;
+
+            if (window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', handleViewportChange);
+                window.visualViewport.removeEventListener('scroll', handleViewportChange);
+            }
+            
+            // Clean up custom properties
+            document.documentElement.style.removeProperty('--visual-viewport-height');
+            document.documentElement.style.removeProperty('--visual-viewport-top');
         };
     }, []);
 
@@ -4906,9 +4958,9 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     </div>
                 )}
                 
-                <div className={`glass-input-bar ${isRecording ? 'recording-active' : ''}`}>
+                <div className={`whatsapp-input-row ${isRecording ? 'recording-active' : ''}`}>
                     {isRecording ? (
-                        <>
+                        <div className="glass-input-bar recording-active" style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                             {/* Waveform Animation */}
                             <div className="recording-wave-container">
                                 <div className={`recording-wave-bar ${isRecordPaused ? 'paused' : ''}`} />
@@ -4943,7 +4995,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             <button className="recording-btn send" onClick={sendAudioRecording} title="Send voice message">
                                 🚀
                             </button>
-                        </>
+                        </div>
                     ) : (
                         <>
                             <input
@@ -4980,79 +5032,97 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 onChange={handleFileSelect}
                             />
                             
-                            {/* Attachment "+" Button */}
-                            <button 
-                                onClick={() => setShowAttachmentPicker(true)} 
-                                className="input-icon-btn attachment-btn"
-                                title="Attach files"
-                                disabled={uploading || hasPendingSentRequest}
-                            >
-                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                            </button>
-
-                            {/* Premium Sticker Button */}
-                            <button
-                                onClick={() => { setShowStickerPanel(s => !s); }}
-                                className="input-icon-btn sticker-btn"
-                                title="Premium Stickers"
-                                disabled={uploading || hasPendingSentRequest}
-                                style={{ opacity: showStickerPanel ? 1 : 0.7 }}
-                            >
-                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                                </svg>
-                            </button>
-                            
-                            {/* Existing Image Button */}
-                            <button 
-                                onClick={() => fileInputRef.current.click()} 
-                                disabled={uploading || hasPendingSentRequest} 
-                                className="input-icon-btn image-btn"
-                                title="Send image"
-                            >
-                                {uploading ? '⏳' : (
+                            <div className="whatsapp-input-left-card">
+                                {/* Emoji Button */}
+                                <button 
+                                    ref={emojiBtnRef}
+                                    onClick={() => setShowEmojiPicker(s => !s)} 
+                                    className="input-icon-btn emoji-btn"
+                                    title="Emojis"
+                                    disabled={uploading || hasPendingSentRequest}
+                                >
                                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                                        <polyline points="21 15 16 10 5 21"></polyline>
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                                        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                                        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                                    </svg>
+                                </button>
+
+                                {/* Premium Sticker Button */}
+                                <button
+                                    onClick={() => { setShowStickerPanel(s => !s); }}
+                                    className="input-icon-btn sticker-btn"
+                                    title="Premium Stickers"
+                                    disabled={uploading || hasPendingSentRequest}
+                                    style={{ opacity: showStickerPanel ? 1 : 0.7 }}
+                                >
+                                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                    </svg>
+                                </button>
+
+                                <input
+                                    ref={messageInputRef}
+                                    className="msg-input"
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                                    onFocus={() => scrollToBottom('smooth')}
+                                    placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
+                                    disabled={uploading || hasPendingSentRequest}
+                                />
+
+                                {/* Attachment "+" Button */}
+                                <button 
+                                    onClick={() => setShowAttachmentPicker(true)} 
+                                    className="input-icon-btn attachment-btn"
+                                    title="Attach files"
+                                    disabled={uploading || hasPendingSentRequest}
+                                >
+                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                </button>
+                                
+                                {/* Existing Image Button */}
+                                <button 
+                                    onClick={() => fileInputRef.current.click()} 
+                                    disabled={uploading || hasPendingSentRequest} 
+                                    className="input-icon-btn image-btn"
+                                    title="Send image"
+                                >
+                                    {uploading ? '⏳' : (
+                                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                            <polyline points="21 15 16 10 5 21"></polyline>
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* WhatsApp style Right floating Action Button */}
+                            <button 
+                                onClick={input.trim() ? () => sendMessage() : startAudioRecording} 
+                                className={`whatsapp-right-btn ${input.trim() ? 'send-mode' : 'mic-mode'}`}
+                                disabled={uploading || hasPendingSentRequest}
+                                title={input.trim() ? "Send message" : "Record voice message"}
+                            >
+                                {input.trim() ? (
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                                    </svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                                        <line x1="8" y1="23" x2="16" y2="23"></line>
                                     </svg>
                                 )}
-                            </button>
-
-                            {/* Mic Recording Button */}
-                            <button 
-                                onClick={startAudioRecording} 
-                                disabled={uploading || hasPendingSentRequest} 
-                                className="input-icon-btn mic-btn"
-                                title="Record voice message"
-                            >
-                                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                                </svg>
-                            </button>
-
-                            <input
-                                ref={messageInputRef}
-                                className="msg-input"
-                                value={input}
-                                onChange={handleInputChange}
-                                onKeyPress={e => e.key === 'Enter' && sendMessage()}
-                                onFocus={() => scrollToBottom('smooth')}
-                                placeholder={hasPendingSentRequest ? "Waiting for request to be accepted..." : "Type a message..."}
-                                disabled={uploading || hasPendingSentRequest}
-                            />
-                            
-                            <button onClick={() => sendMessage()} className="send-btn" disabled={uploading || (!input.trim() && !uploading) || hasPendingSentRequest}>
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
                             </button>
                         </>
                     )}
@@ -5168,9 +5238,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
                 .chat-room-container {
-                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    position: fixed; 
+                    top: var(--visual-viewport-top, 0px); 
+                    left: 0; 
+                    right: 0; 
+                    bottom: 0;
                     width: 100%;
-                    height: 100%; /* Allow resize with keyboard */
+                    height: var(--visual-viewport-height, 100%);
                     z-index: 10000;
                     display: flex; flex-direction: column;
                     font-family: 'Inter', sans-serif;
@@ -5498,10 +5572,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 
                 /* Input Area */
                 .chat-input-container {
-                    padding: 16px 20px;
-                    padding-bottom: calc(16px + env(safe-area-inset-bottom)); /* Safe area for mobile */
-                    background: #ffffff; /* Force white background */
-                    border-top: 1px solid rgba(0,0,0,0.1); /* Subtle divider */
+                    padding: 6px 6px;
+                    padding-bottom: calc(6px + env(safe-area-inset-bottom)); /* Safe area for mobile */
+                    background: transparent;
+                    border-top: none;
                     transition: background 0.3s ease;
                     position: relative;
                     z-index: 10;
@@ -5509,25 +5583,139 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 
                 @media (max-width: 768px) {
                     .chat-input-container {
-                        padding: 10px 12px; /* Tighter padding on mobile */
-                        padding-bottom: calc(10px + env(safe-area-inset-bottom));
-                    }
-                    .glass-input-bar {
-                        padding: 4px 4px 4px 12px !important; /* Less internal padding */
-                        gap: 4px !important; /* Smaller gap */
-                    }
-                    .input-icon-btn, .attachment-btn {
-                        width: 32px; height: 32px; padding: 2px;
-                    }
-                    .emoji-btn {
-                        margin-right: 2px !important;
+                        padding: 6px 8px; /* Tighter padding on mobile */
+                        padding-bottom: calc(6px + env(safe-area-inset-bottom));
                     }
                 }
                 
                 /* Light theme override for input area (Redundant but safe) */
                 .chat-room-container[data-theme-type="light"] .chat-input-container {
-                     background: #ffffff;
-                     border-top: 1px solid rgba(0,0,0,0.05);
+                     background: transparent;
+                     border-top: none;
+                }
+
+                .whatsapp-input-row {
+                    display: flex;
+                    align-items: flex-end;
+                    gap: 8px;
+                    width: 100%;
+                    padding: 4px 6px;
+                    background: transparent;
+                }
+                
+                .whatsapp-input-left-card {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    background: #ffffff;
+                    border-radius: 24px;
+                    padding: 2px 8px;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+                    min-width: 0;
+                    border: 1px solid rgba(0, 0, 0, 0.08);
+                }
+                
+                html[data-theme="dark"] .whatsapp-input-left-card {
+                    background: #1c1c1e;
+                    border-color: rgba(255, 255, 255, 0.08);
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+                }
+                
+                html[data-theme="system"] .whatsapp-input-left-card {
+                    background: #ffffff;
+                    border-color: rgba(0, 0, 0, 0.08);
+                }
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .whatsapp-input-left-card {
+                        background: #1c1c1e;
+                        border-color: rgba(255, 255, 255, 0.08);
+                    }
+                }
+                
+                .whatsapp-input-left-card .msg-input {
+                    flex: 1;
+                    border: none !important;
+                    background: transparent !important;
+                    padding: 8px 6px;
+                    font-size: 1rem;
+                    outline: none !important;
+                    color: #000000 !important;
+                    min-width: 0;
+                    margin: 0;
+                }
+                
+                html[data-theme="dark"] .whatsapp-input-left-card .msg-input {
+                    color: #ffffff !important;
+                }
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .whatsapp-input-left-card .msg-input {
+                        color: #ffffff !important;
+                    }
+                }
+                
+                .whatsapp-input-left-card .input-icon-btn {
+                    background: none;
+                    border: none;
+                    color: #858b90;
+                    padding: 4px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                    border-radius: 50%;
+                    width: 34px;
+                    height: 34px;
+                    transition: background-color 0.2s, color 0.2s;
+                }
+                
+                .whatsapp-input-left-card .input-icon-btn:hover {
+                    background-color: rgba(0, 0, 0, 0.05);
+                    color: var(--theme-accent, #0084ff);
+                }
+                
+                html[data-theme="dark"] .whatsapp-input-left-card .input-icon-btn {
+                    color: #a0a0a5;
+                }
+                html[data-theme="dark"] .whatsapp-input-left-card .input-icon-btn:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+                @media (prefers-color-scheme: dark) {
+                    html[data-theme="system"] .whatsapp-input-left-card .input-icon-btn {
+                        color: #a0a0a5;
+                    }
+                    html[data-theme="system"] .whatsapp-input-left-card .input-icon-btn:hover {
+                        background-color: rgba(255, 255, 255, 0.05);
+                    }
+                }
+                
+                .whatsapp-right-btn {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    background-color: var(--theme-accent, var(--brand-primary, #0084ff));
+                    color: #ffffff;
+                    border: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    flex-shrink: 0;
+                    transition: transform 0.1s ease, background-color 0.2s;
+                }
+                
+                .whatsapp-right-btn:active {
+                    transform: scale(0.95);
+                }
+                
+                .whatsapp-right-btn svg {
+                    color: #ffffff;
+                    stroke: #ffffff;
+                }
+                
+                .whatsapp-right-btn.send-mode svg {
+                    fill: currentColor;
                 }
                 
                 .glass-input-bar {
@@ -5713,7 +5901,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .light-theme .back-btn, .light-theme .icon-btn { color: #333; }
                 .light-theme .back-btn:hover, .light-theme .icon-btn:hover { background: rgba(0,0,0,0.05); }
                 .light-theme .msg-bubble.them { background: #ffffff; color: #111; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: transparent; }
-                .light-theme .chat-input-container { background: rgba(255,255,255,0.8); }
+                .light-theme .chat-input-container { background: transparent; }
                 .light-theme .glass-input-bar { background: #fff; border-color: #ddd; }
                 .light-theme .msg-input { color: #000; }
                 .light-theme .input-icon-btn { color: #555; }
