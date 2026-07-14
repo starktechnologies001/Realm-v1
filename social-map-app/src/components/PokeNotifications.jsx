@@ -47,30 +47,24 @@ export default function PokeNotifications({ currentUser }) {
             if (!error && data) {
                 setPendingPokes(data);
                 
-                // Get list of seen/dismissed poke IDs from localStorage
+                // Mark all existing pending pokes as seen automatically so they do not show in the badge on login/load, per user request.
+                const existingIds = data.map(p => p.id);
                 let storedSeen = [];
                 try {
                     storedSeen = JSON.parse(localStorage.getItem('seen_poke_ids') || '[]');
                 } catch (e) {
                     storedSeen = [];
                 }
-                setSeenIds(storedSeen);
 
-                // Check if there is any poke that hasn't been seen/dismissed yet
-                const hasUnseen = data.some(poke => !storedSeen.includes(poke.id));
-
-                // Do not auto-show remaining poke requests popup on initial load / login
-                setShowNotifications(false);
-
-                // Self-clean localStorage seen_poke_ids to keep only active pending IDs
+                // Merge existing pending IDs into seenIds to hide them
+                const mergedSeen = Array.from(new Set([...storedSeen, ...existingIds]));
                 try {
-                    const activeIds = data.map(p => p.id);
-                    const updatedSeen = storedSeen.filter(id => activeIds.includes(id));
-                    localStorage.setItem('seen_poke_ids', JSON.stringify(updatedSeen));
-                    setSeenIds(updatedSeen);
+                    localStorage.setItem('seen_poke_ids', JSON.stringify(mergedSeen));
                 } catch (e) {
-                    console.error('Error cleaning up seen pokes', e);
+                    console.error('Error saving initial seen pokes', e);
                 }
+                setSeenIds(mergedSeen);
+                setShowNotifications(false);
             }
         };
 
@@ -353,15 +347,15 @@ export default function PokeNotifications({ currentUser }) {
 
                 .poke-badge {
                     position: fixed;
-                    top: 20px;
-                    right: 20px;
+                    top: 102px;
+                    right: 12px;
                     background: linear-gradient(135deg, #FF69B4, #FF1493);
                     color: white;
-                    padding: 10px 16px;
-                    border-radius: 25px;
+                    padding: 8px 12px;
+                    border-radius: 20px;
                     font-weight: bold;
-                    font-size: 0.9rem;
-                    box-shadow: 0 4px 15px rgba(255, 20, 147, 0.5);
+                    font-size: 0.82rem;
+                    box-shadow: 0 4px 12px rgba(255, 20, 147, 0.4);
                     cursor: pointer;
                     z-index: 9999;
                     animation: bounce 2s infinite;
@@ -374,8 +368,8 @@ export default function PokeNotifications({ currentUser }) {
 
                 .poke-notifications-panel {
                     position: fixed;
-                    top: 75px;
-                    right: 20px;
+                    top: 142px;
+                    right: 12px;
                     width: 295px;
                     max-width: 90vw;
                     background: rgba(22, 22, 26, 0.96);

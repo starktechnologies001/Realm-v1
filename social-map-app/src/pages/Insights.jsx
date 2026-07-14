@@ -65,11 +65,12 @@ export default function Insights() {
 
         const fetchInsightsData = async () => {
             try {
-                // 1. Fetch visitors profile views
+                // 1. Fetch visitors profile views (last 30 days / 1 month)
                 const { data: vData } = await supabase
                     .from('profile_views')
                     .select('created_at, viewer_id, viewer:profiles!viewer_id(id, username, full_name, avatar_url, gender, subscription_tier)')
                     .eq('profile_owner_id', user.id)
+                    .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
                     .order('created_at', { ascending: false });
 
                 // De-duplicate visitors for list but keep all records for growth/views calculations

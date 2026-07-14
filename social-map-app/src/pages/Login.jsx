@@ -563,7 +563,7 @@ export default function Login() {
             </div>
         )}
 
-        <form onSubmit={handleAuth} className="login-form" style={!isSignUp ? { gap: '22px' } : {}}>
+        <form onSubmit={handleAuth} className="login-form" style={!isSignUp ? { gap: '10px' } : {}}>
           {/* Login Form */}
           {!isSignUp && (
             <>
@@ -574,7 +574,7 @@ export default function Login() {
                   placeholder="Username"
                   value={username}
                   onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
-                  style={{ padding: '16px 40px 16px 16px', fontSize: '0.95rem', ...(fieldErrors.username ? { borderColor: '#ff453a' } : {})}}
+                  style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.username ? { borderColor: '#ff453a' } : {})}}
                   required
                 />
                 {fieldErrors.username && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.username}</span>}
@@ -586,7 +586,7 @@ export default function Login() {
                   placeholder="Password"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
-                  style={{ padding: '16px 40px 16px 16px', fontSize: '0.95rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
+                  style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                   required
                 />
                 <button
@@ -609,7 +609,7 @@ export default function Login() {
                 </button>
                 {fieldErrors.password && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.password}</span>}
               </div>
-              <div style={{ textAlign: 'right', marginTop: '6px' }}>
+              <div style={{ textAlign: 'right', marginTop: '4px' }}>
                 <span
                   onClick={() => setShowForgotPassword(true)}
                   className="forgot-link"
@@ -617,7 +617,7 @@ export default function Login() {
                   Forgot Password?
                 </span>
               </div>
-              <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '16px', fontSize: '0.95rem' }}>
+              <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '10px', fontSize: '0.92rem' }}>
                 {loading ? 'Logging In...' : 'Log In'}
               </button>
             </>
@@ -638,59 +638,61 @@ export default function Login() {
                 <div className="signup-step">
                   <h3 className="step-title">Create your account</h3>
                   
-                  <div className="input-group" style={{ marginBottom: '16px' }}>
+                  <div className="input-group" style={{ marginBottom: '10px' }}>
                     <input
                       type="email"
                       className="input-field"
                       placeholder="Email Address"
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
-                      style={fieldErrors.email ? { borderColor: '#ff453a' } : {}}
+                      style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.email ? { borderColor: '#ff453a' } : {}) }}
                       autoFocus
                     />
-                    {fieldErrors.email && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '6px', display: 'block', marginLeft: '4px' }}>{fieldErrors.email}</span>}
+                    {fieldErrors.email && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.email}</span>}
                   </div>
 
-                  <div className="input-group" style={{ marginBottom: '16px' }}>
+                  <div className="input-group" style={{ marginBottom: '10px' }}>
                     <input
                       type="text"
                       className="input-field"
                       placeholder="Username"
                       value={username}
                       onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
-                      style={(usernameError || fieldErrors.username) ? { borderColor: '#ff453a' } : {}}
+                      style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...((usernameError || fieldErrors.username) ? { borderColor: '#ff453a' } : {}) }}
                     />
-                    {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '16px', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
-                    {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '6px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
+                    {checkingUsername && <span style={{position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#888'}}>Checking...</span>}
+                    {(usernameError || fieldErrors.username) && <span style={{fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px'}}>{fieldErrors.username || usernameError}</span>}
                   </div>
 
-                  <div className="input-group" style={{ position: 'relative' }}>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      className="input-field"
-                      placeholder="Password"
-                      value={password}
-                      onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
-                      style={{ paddingRight: '40px', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '14px', top: '24px', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                          <circle cx="12" cy="12" r="3"/>
-                        </svg>
-                      ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                          <line x1="1" y1="1" x2="23" y2="23"/>
-                        </svg>
-                      )}
-                    </button>
+                  <div className="input-group">
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        className="input-field"
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
+                        style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: showPassword ? '#0caeff' : '#666', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', lineHeight: 0, transition: 'color 0.2s' }}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        ) : (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                     {fieldErrors.password
                       ? <p style={{ fontSize: '0.75rem', color: '#ff453a', marginTop: '8px', marginLeft: '4px' }}>{fieldErrors.password}</p>
                       : <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', marginLeft: '4px' }}>8+ chars with Upper, Lower, Number & Symbol</p>
@@ -1039,14 +1041,14 @@ export default function Login() {
           --bg-color: #faf8f5;
           --bg-secondary: #f5f3f0;
           --text-primary: #1d1d1f;
-          --text-secondary: #6e6e73;
-          --text-placeholder: #a1a1aa;
-          --glass-border: rgba(0, 0, 0, 0.08);
+          --text-secondary: #8e8e93;
+          --text-placeholder: #b0b0b5;
+          --glass-border: rgba(0, 0, 0, 0.06);
           --input-bg: #ffffff;
-          --input-border: rgba(0, 0, 0, 0.12);
-          --card-bg: #ffffff;
-          --btn-secondary-bg: #e5e7eb;
-          --btn-secondary-text: #1f2937;
+          --input-border: rgba(0, 0, 0, 0.08);
+          --card-bg: rgba(255, 255, 255, 0.85);
+          --btn-secondary-bg: #f5f5f7;
+          --btn-secondary-text: #1d1d1f;
           --modal-bg: #ffffff;
           --modal-border: rgba(0, 0, 0, 0.08);
         }
@@ -1073,12 +1075,14 @@ export default function Login() {
 
         .login-card {
           width: 100%;
-          max-width: 420px;
-          background: var(--card-bg, var(--bg-secondary));
+          max-width: 400px;
+          background: var(--card-bg, rgba(255, 255, 255, 0.85));
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border: 1px solid var(--glass-border);
           border-radius: 32px;
           padding: 24px 24px 28px;
-          box-shadow: 0 24px 48px rgba(0, 0, 0, 0.04), 0 8px 16px rgba(0, 0, 0, 0.02);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -1098,17 +1102,17 @@ export default function Login() {
         }
 
         .app-title-logo {
-          height: 46px;
+          height: 40px;
           width: auto;
-          margin: 0 auto 8px auto;
+          margin: 0 auto 6px auto;
           display: block;
           object-fit: contain;
         }
 
         .app-subtitle {
           color: var(--text-primary);
-          font-size: 0.88rem;
-          margin: 0 0 12px 0;
+          font-size: 0.85rem;
+          margin: 0 0 10px 0;
           font-weight: 500;
           letter-spacing: -0.2px;
         }
@@ -1120,17 +1124,17 @@ export default function Login() {
           padding: 4px;
           border-radius: 100px;
           width: 100%;
-          margin-bottom: 28px;
+          margin-bottom: 18px;
         }
 
         .toggle-btn {
           flex: 1;
-          padding: 12px 0;
+          padding: 10px 0;
           background: transparent;
           border: none;
           color: var(--text-secondary);
           font-weight: 600;
-          font-size: 0.95rem;
+          font-size: 0.92rem;
           letter-spacing: 0.1px;
           border-radius: 100px;
           cursor: pointer;
@@ -1138,16 +1142,16 @@ export default function Login() {
         }
 
         .toggle-btn.active {
-          background: var(--bg-color);
+          background: #ffffff;
           color: var(--text-primary);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 
         .login-form {
           width: 100%;
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 10px;
         }
 
         .input-group {
@@ -1159,10 +1163,10 @@ export default function Login() {
           width: 100%;
           background: var(--input-bg);
           border: 1.5px solid var(--input-border);
-          padding: 16px 40px 16px 16px;
-          border-radius: 16px;
+          padding: 10px 36px 10px 12px;
+          border-radius: 12px;
           color: var(--text-primary);
-          font-size: 0.95rem;
+          font-size: 0.92rem;
           font-family: inherit;
           font-weight: 500;
           outline: none;
@@ -1192,18 +1196,18 @@ export default function Login() {
 
         .btn-primary {
           width: 100%;
-          padding: 16px;
+          padding: 10px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 16px;
+          border-radius: 12px;
           color: white;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 600;
           font-family: inherit;
           letter-spacing: 0.2px;
           cursor: pointer;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 8px 24px rgba(168, 85, 247, 0.25);
+          box-shadow: 0 6px 20px rgba(168, 85, 247, 0.2);
           margin-top: 8px;
         }
 
@@ -1216,22 +1220,22 @@ export default function Login() {
 
         /* Forgot password */
         .forgot-link {
-          color: #60A5FA;
-          font-size: 0.85rem;
+          color: #8b5cf6;
+          font-size: 0.82rem;
           cursor: pointer;
           text-align: right;
-          font-weight: 500;
+          font-weight: 600;
           transition: color 0.2s;
           margin-top: -6px;
         }
-        .forgot-link:hover { color: #3B82F6; }
+        .forgot-link:hover { color: var(--brand-primary); }
 
         .auth-separator {
           width: 100%;
           display: flex;
           align-items: center;
-          margin: 20px 0;
-          color: var(--text-secondary);
+          margin: 14px 0;
+          color: var(--text-placeholder);
         }
 
         .auth-separator::before,
@@ -1243,34 +1247,34 @@ export default function Login() {
         }
 
         .auth-separator span {
-          padding: 0 16px;
+          padding: 0 12px;
           text-transform: uppercase;
-          font-size: 0.75rem;
-          letter-spacing: 1px;
+          font-size: 0.72rem;
+          letter-spacing: 0.8px;
           font-weight: 600;
         }
 
         .btn-google {
           width: 100%;
-          background: var(--btn-secondary-bg);
-          color: var(--btn-secondary-text);
+          background: #ffffff;
+          color: var(--text-primary);
           font-weight: 600;
           font-family: inherit;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          padding: 16px;
-          border-radius: 16px;
-          border: 1.5px solid var(--glass-border);
+          gap: 10px;
+          padding: 10px;
+          border-radius: 12px;
+          border: 1px solid rgba(0, 0, 0, 0.08);
           cursor: pointer;
-          font-size: 0.95rem;
+          font-size: 0.92rem;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.02);
         }
         .btn-google:hover { 
-          background: var(--bg-secondary); 
-          border-color: var(--glass-border);
+          background: #fafafa; 
+          border-color: rgba(0, 0, 0, 0.12);
           transform: translateY(-1px);
         }
         .btn-google:active { transform: scale(0.98); }
@@ -1303,13 +1307,13 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 24px;
+          margin-bottom: 14px;
           width: 100%;
           gap: 0;
         }
 
         .step {
-          width: 32px; height: 32px;
+          width: 30px; height: 30px;
           border-radius: 50%;
           background: var(--bg-secondary);
           color: var(--text-secondary);
@@ -1317,7 +1321,7 @@ export default function Login() {
           align-items: center;
           justify-content: center;
           font-weight: 600;
-          font-size: 0.9rem;
+          font-size: 0.88rem;
           transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
           border: 1.5px solid var(--glass-border);
           flex-shrink: 0;
@@ -1333,7 +1337,7 @@ export default function Login() {
           max-width: 48px;
           height: 1.5px;
           background: var(--glass-border);
-          margin: 0 12px;
+          margin: 0 10px;
         }
 
         /* Signup Step */
@@ -1347,10 +1351,10 @@ export default function Login() {
         }
 
         .step-title {
-          font-size: 1.15rem;
+          font-size: 1.1rem;
           font-weight: 700;
           color: var(--text-primary);
-          margin: 0 0 16px 0;
+          margin: 0 0 12px 0;
           text-align: center;
           letter-spacing: -0.2px;
         }
@@ -1359,17 +1363,17 @@ export default function Login() {
           display: flex;
           gap: 12px;
           width: 100%;
-          margin-top: 12px;
+          margin-top: 10px;
         }
         .btn-back {
           flex: 1;
-          padding: 16px;
+          padding: 10px;
           background: var(--btn-secondary-bg);
           color: var(--btn-secondary-text);
           border: 1.5px solid var(--glass-border);
-          border-radius: 16px;
+          border-radius: 12px;
           cursor: pointer;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 600;
           font-family: inherit;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1378,33 +1382,33 @@ export default function Login() {
 
         .btn-next, .btn-submit {
           flex: 1;
-          padding: 16px;
+          padding: 10px;
           background: var(--brand-gradient);
           border: none;
-          border-radius: 16px;
+          border-radius: 12px;
           color: white;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 600;
           font-family: inherit;
           cursor: pointer;
           transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 8px 24px rgba(168, 85, 247, 0.25);
+          box-shadow: 0 6px 20px rgba(168, 85, 247, 0.25);
         }
-        .btn-next:hover, .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(168, 85, 247, 0.35); }
+        .btn-next:hover, .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(168, 85, 247, 0.3); }
         .btn-next:active, .btn-submit:active { transform: scale(0.98); }
         .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
 
         /* Field Sections */
-        .field-section { margin-bottom: 24px; text-align: left; }
+        .field-section { margin-bottom: 14px; text-align: left; }
         .field-section label {
           display: block;
           color: var(--text-secondary);
-          font-size: 0.85rem;
-          margin-bottom: 8px;
+          font-size: 0.82rem;
+          margin-bottom: 6px;
           margin-left: 4px;
           font-weight: 600;
         }
-        .sub-label { font-size: 0.75rem; color: var(--text-placeholder); font-weight: 400; }
+        .sub-label { font-size: 0.72rem; color: var(--text-placeholder); font-weight: 400; }
 
         .custom-select-wrapper { position: relative; }
         .glass-select {
@@ -1412,9 +1416,9 @@ export default function Login() {
           background: var(--input-bg);
           color: var(--text-primary);
           border: 1.5px solid var(--input-border);
-          padding: 16px 40px 16px 16px;
-          border-radius: 16px;
-          font-size: 0.95rem;
+          padding: 10px 36px 10px 12px;
+          border-radius: 12px;
+          font-size: 0.92rem;
           font-family: inherit;
           font-weight: 500;
           appearance: none;

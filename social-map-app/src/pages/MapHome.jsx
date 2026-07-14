@@ -4366,7 +4366,7 @@ export default function MapHome() {
                     </div>
                     
                     <div className="location-info-wrapper">
-                        <span className="location-subtitle">You're in</span>
+
                         <h2 className="location-title">
                             {locationName}
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 3 }}>
@@ -4458,16 +4458,16 @@ export default function MapHome() {
                 .map-header-controls {
                     position: fixed;
                     top: 0;
-                    padding-top: max(6px, env(safe-area-inset-top));
+                    padding-top: max(4px, env(safe-area-inset-top));
                     left: 0; right: 0;
                     z-index: 9000;
                     padding-left: 12px; 
                     padding-right: 12px;
                     display: flex;
                     flex-direction: column;
-                    gap: 4px;
+                    gap: 2px;
                     pointer-events: none;
-                    padding-bottom: 6px;
+                    padding-bottom: 4px;
                     background: rgba(248, 247, 255, 0.94);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
@@ -4512,13 +4512,14 @@ export default function MapHome() {
                     letter-spacing: -0.1px;
                 }
                 .location-title {
-                    font-size: 0.88rem;
+                    font-size: 0.84rem;
                     font-weight: 700;
                     color: #000000;
-                    margin: 0px 0 1px 0;
+                    margin: 0px;
                     display: flex;
                     align-items: center;
                     cursor: default;
+                    line-height: 1.2;
                 }
                 .secure-badge {
                     display: flex;

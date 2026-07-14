@@ -5829,17 +5829,16 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     position: absolute; 
                     top: calc(100% + 8px); 
                     right: 0;
-                    background: rgba(28, 28, 30, 0.98);
-                    backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    background: #ffffff;
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(0, 0, 0, 0.08);
                     border-radius: 16px;
                     padding: 6px;
                     min-width: 220px;
                     box-shadow: 
-                        0 8px 32px rgba(0, 0, 0, 0.4),
-                        0 2px 8px rgba(0, 0, 0, 0.2),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                        0 8px 30px rgba(0, 0, 0, 0.08),
+                        0 2px 8px rgba(0, 0, 0, 0.04);
                     z-index: 10001; 
                     animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
                     transform-origin: top right;
@@ -5851,7 +5850,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     text-align: left;
                     background: none; 
                     border: none; 
-                    color: rgba(255, 255, 255, 0.9);
+                    color: #1d1d1f;
                     border-radius: 10px; 
                     cursor: pointer;
                     display: flex; 
@@ -5866,25 +5865,20 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     transform: scale(0.98);
                 }
                 .dropdown-menu button:hover { 
-                    background: rgba(255,255,255,0.1); 
-                    color: white; 
+                    background: rgba(0, 0, 0, 0.05); 
+                    color: #1d1d1f; 
                 }
                 .dropdown-menu .divider { 
                     height: 1px; 
-                    background: linear-gradient(
-                        90deg, 
-                        transparent, 
-                        rgba(255, 255, 255, 0.12) 50%, 
-                        transparent
-                    );
+                    background: rgba(0, 0, 0, 0.06);
                     margin: 6px 8px; 
                 }
                 .dropdown-menu button.danger { 
-                    color: #ff5757; 
+                    color: #ff3b30; 
                 }
                 .dropdown-menu button.danger:hover { 
-                    background: rgba(255, 69, 58, 0.15); 
-                    color: #ff6b6b;
+                    background: rgba(255, 59, 48, 0.08); 
+                    color: #ff3b30;
                 }
                 
                 .glass-panel {
@@ -5935,10 +5929,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     position: absolute; 
                     top: calc(100% + 8px); 
                     right: 0;
-                    background: rgba(28, 28, 30, 0.98);
-                    backdrop-filter: blur(20px) saturate(180%);
-                    -webkit-backdrop-filter: blur(20px) saturate(180%);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    background: #ffffff;
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(0, 0, 0, 0.08);
                     border-radius: 16px;
                     padding: 6px;
                     display: flex; 
@@ -5946,9 +5940,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     gap: 2px;
                     min-width: 220px;
                     box-shadow: 
-                        0 8px 32px rgba(0, 0, 0, 0.4),
-                        0 2px 8px rgba(0, 0, 0, 0.2),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                        0 8px 30px rgba(0, 0, 0, 0.08),
+                        0 2px 8px rgba(0, 0, 0, 0.04);
                     z-index: 10001; 
                     animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
                     transform-origin: top right;
@@ -5966,7 +5959,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
                 .dropdown-menu button { 
                     font-size: 0.95rem; 
-                    color: rgba(255, 255, 255, 0.9); 
+                    color: #1d1d1f; 
                     padding: 12px 14px; 
                     text-align: left; 
                     width: 100%; 
@@ -5986,15 +5979,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     transform: scale(0.98);
                 }
                 .dropdown-menu button:hover { 
-                    background: rgba(255, 255, 255, 0.1); 
-                    color: white; 
+                    background: rgba(0, 0, 0, 0.05); 
+                    color: #1d1d1f; 
                 }
                 .dropdown-menu button.danger { 
-                    color: #ff5757; 
+                    color: #ff3b30; 
                 }
                 .dropdown-menu button.danger:hover { 
-                    background: rgba(255, 69, 58, 0.15); 
-                    color: #ff6b6b;
+                    background: rgba(255, 59, 48, 0.08); 
+                    color: #ff3b30;
                 }
                 .dropdown-menu .icon { 
                     display: flex; 
@@ -6010,12 +6003,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
                 .dropdown-menu .divider { 
                     height: 1px; 
-                    background: linear-gradient(
-                        90deg, 
-                        transparent, 
-                        rgba(255, 255, 255, 0.12) 50%, 
-                        transparent
-                    );
+                    background: rgba(0, 0, 0, 0.06);
                     margin: 6px 8px; 
                 }
 
@@ -6634,14 +6622,14 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 .dropdown-menu {
                     position: absolute;
                     top: 100%; right: 0;
-                    background: rgba(30, 30, 30, 0.95);
+                    background: #ffffff;
                     backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    border: 1px solid rgba(0, 0, 0, 0.08);
                     border-radius: 16px;
                     padding: 8px;
                     min-width: 220px;
                     display: flex; flex-direction: column; gap: 4px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
                     animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
                     z-index: 1010; /* Above overlay */
                 }
