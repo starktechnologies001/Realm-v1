@@ -88,6 +88,32 @@ html[data-theme="dark"] {
     background: transparent !important;
 }
 
+/* Adapt premium text colors on default light theme background for readability */
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-silver .profile-username {
+    color: #4b5563 !important;
+    text-shadow: none !important;
+}
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-silver .profile-bio {
+    color: #4b5563 !important;
+}
+
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-gold .profile-username {
+    color: #b45309 !important;
+    text-shadow: none !important;
+}
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-gold .profile-bio {
+    color: #78350f !important;
+}
+
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-diamond .profile-username {
+    color: #0891b2 !important;
+    text-shadow: none !important;
+}
+html:not([data-theme="dark"]) .profile-page:not(.has-custom-bg) .profile-card-diamond .profile-bio {
+    color: #0f766e !important;
+}
+
+
 
 .avatar-wrapper { 
     position: relative; padding: 0; background: transparent; 
@@ -157,9 +183,9 @@ html[data-theme="dark"] {
 }
 
 .profile-bio {
-    font-size: 0.9rem;
-    color: var(--text-secondary, #6e6e73);
-    font-weight: 400;
+    font-size: 0.95rem;
+    color: #1e3a8a !important; /* Dark blue */
+    font-weight: 500;
     max-width: 280px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     cursor: pointer; 
@@ -773,16 +799,21 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
         padding: 11px 14px;
     }
     .menu-label {
-        font-size: 0.85rem;
+        font-size: 0.9rem;
     }
     .menu-value {
-        font-size: 0.75rem;
+        font-size: 0.8rem;
     }
     .menu-icon-wrapper {
         width: 30px;
         height: 30px;
         font-size: 0.85rem;
         border-radius: 9px;
+    }
+    .section-label {
+        font-size: 0.76rem !important;
+        margin-top: 8px !important;
+        margin-bottom: 10px !important;
     }
 
     /* ── Modal mobile sizing ── */
@@ -830,88 +861,93 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
 
     /* ── Stats Card (Friends / Thoughts / Streak / Badges) ── */
     .profile-stats-card {
-        margin: 0 10px 10px 10px !important;
-        padding: 8px 2px !important;
-        border-radius: 16px !important;
+        margin: 0 12px 12px 12px !important;
+        padding: 11px 4px !important;
+        border-radius: 18px !important;
     }
     .stats-item {
-        gap: 4px !important;
-        padding: 2px !important;
+        gap: 5px !important;
+        padding: 3px !important;
     }
     .stats-icon {
-        width: 32px !important;
-        height: 32px !important;
-        border-radius: 9px !important;
-        font-size: 0.9rem !important;
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 10px !important;
+        font-size: 1rem !important;
     }
     .stats-value {
-        font-size: 0.6rem !important;
+        font-size: 0.65rem !important;
         white-space: nowrap !important;
     }
 
     /* ── Premium Card ── */
     .premium-preview-card,
     .premium-preview-card.minimal {
-        margin: 0 10px 10px 10px !important;
-        padding: 10px 14px !important;
-        border-radius: 16px !important;
-        gap: 6px !important;
+        margin: 0 12px 12px 12px !important;
+        padding: 12px 16px !important;
+        border-radius: 18px !important;
+        gap: 8px !important;
     }
     .premium-icon-box {
-        width: 34px !important;
-        height: 34px !important;
-        font-size: 1rem !important;
-        border-radius: 9px !important;
+        width: 38px !important;
+        height: 38px !important;
+        font-size: 1.1rem !important;
+        border-radius: 10px !important;
         flex-shrink: 0 !important;
     }
     .premium-preview-content {
-        gap: 8px !important;
+        gap: 10px !important;
     }
     .premium-title {
-        font-size: 0.82rem !important;
+        font-size: 0.88rem !important;
     }
     .premium-subtitle {
-        font-size: 0.66rem !important;
+        font-size: 0.72rem !important;
     }
     .premium-upgrade-btn {
-        padding: 5px 11px !important;
-        font-size: 0.68rem !important;
-        border-radius: 16px !important;
+        padding: 6px 13px !important;
+        font-size: 0.72rem !important;
+        border-radius: 18px !important;
     }
 
     /* ── Achievements Card ── */
     .achievements-preview-card {
-        margin: 0 10px 10px 10px !important;
-        padding: 10px 14px !important;
-        border-radius: 16px !important;
-        gap: 8px !important;
+        margin: 0 12px 12px 12px !important;
+        padding: 12px 16px !important;
+        border-radius: 18px !important;
+        gap: 10px !important;
     }
     .achievements-title {
-        font-size: 0.82rem !important;
+        font-size: 0.88rem !important;
     }
     .view-all-link {
-        font-size: 0.7rem !important;
+        font-size: 0.74rem !important;
     }
     .achievements-preview-row {
-        gap: 6px !important;
+        gap: 8px !important;
     }
     .achievement-icon-bubble {
-        width: 32px !important;
-        height: 32px !important;
-        font-size: 1rem !important;
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 1.1rem !important;
     }
 
     /* ── Visitors Preview Card ── */
     .visitors-preview-card {
-        margin: 0 10px 10px 10px !important;
-        padding: 10px 14px !important;
-        border-radius: 16px !important;
+        margin: 0 12px 12px 12px !important;
+        padding: 12px 16px !important;
+        border-radius: 18px !important;
     }
 
     /* ── Settings / Menu sections ── */
     .settings-section {
-        margin: 0 10px 10px 10px !important;
-        border-radius: 16px !important;
+        margin: 0 12px 12px 12px !important;
+        border-radius: 18px !important;
+    }
+    .section-label {
+        font-size: 0.76rem !important;
+        margin-top: 8px !important;
+        margin-bottom: 10px !important;
     }
 }
 
