@@ -54,9 +54,21 @@ const VisibilitySettings = () => {
             </div>
 
             <div className="settings-content" style={{ marginTop: '24px' }}>
-                <p style={{ color: '#666', marginBottom: '24px', lineHeight: 1.5 }}>
-                    Control who can see your location on the map. Your exact location is never shared, and your privacy is protected.
-                </p>
+                <div style={{
+                    background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '12px', padding: '16px', marginBottom: '24px', display: 'flex', gap: '12px',
+                    alignItems: 'flex-start'
+                }}>
+                    <span style={{ fontSize: '20px' }}>🛡️</span>
+                    <div>
+                        <h4 style={{ margin: '0 0 4px', color: '#60a5fa', fontSize: '0.95rem' }}>How we protect your location</h4>
+                        <p style={{ margin: 0, color: 'var(--text-secondary, #9ca3af)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            Your exact GPS coordinates are <strong>never</strong> shared or stored on our servers. 
+                            We apply a protective 50–100m randomized blur directly on your device. 
+                            If you enable Ghost Mode, your location is cryptographically erased from our systems entirely.
+                        </p>
+                    </div>
+                </div>
 
                 <div className="visibility-options">
                     {/* PUBLIC */}
@@ -141,9 +153,9 @@ const VisibilitySettings = () => {
                     >
                         <div style={{ fontSize: '24px' }}>👻</div>
                         <div>
-                            <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', color: visibilityMode === 'ghost' ? '#805AD5' : '#111' }}>Ghost Mode</h3>
+                            <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', color: visibilityMode === 'ghost' ? '#A8A8B3' : '#111' }}>Ghost Mode</h3>
                             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary, #666)', lineHeight: 1.4 }}>
-                                You are completely invisible on the map. You can still browse and see your friends.
+                                You are completely hidden from the map. Your location data is strictly wiped from the database. You can still see others.
                             </p>
                         </div>
                         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>

@@ -67,8 +67,13 @@ const StreakDetails = lazyWithRetry(() => import('./pages/StreakDetails'));
 const PremiumSettings = lazyWithRetry(() => import('./pages/PremiumSettings'));
 const Verification = lazyWithRetry(() => import('./pages/Verification'));
 const HelpSupport = lazyWithRetry(() => import('./pages/HelpSupport'));
+const AdminLayout = lazyWithRetry(() => import('./pages/admin/AdminLayout'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/admin/AdminDashboard'));
+const AdminReports = lazyWithRetry(() => import('./pages/admin/AdminReports'));
+const AdminUsers = lazyWithRetry(() => import('./pages/admin/AdminUsers'));
 
 import LocationGuard from './components/LocationGuard';
+import AdminGuard from './components/AdminGuard';
 import confetti from 'canvas-confetti';
 
 const MilestoneCelebration = () => {
@@ -268,6 +273,16 @@ function App() {
                 <Route path="/blocked-users" element={<BlockedUsers />} />
                 <Route path="/visibility-settings" element={<VisibilitySettings />} />
                 <Route path="/legal/:section" element={<LegalPage />} />
+
+                {/* Admin Routes — protected by AdminGuard */}
+                <Route element={<AdminGuard />}>
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/admin/reports" element={<AdminReports />} />
+                    <Route path="/admin/users" element={<AdminUsers />} />
+                  </Route>
+                </Route>
+
                 <Route path="/" element={<Welcome />} />
               </Routes>
             </Suspense>

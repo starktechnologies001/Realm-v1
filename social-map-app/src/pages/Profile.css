@@ -522,6 +522,27 @@ html[data-theme="dark"] .icon-delete {
     gap: 24px;
 }
 
+/* Legal & Policies modal — list layout, no inner padding */
+.modal-content.legal-modal {
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+}
+
+.modal-content.legal-modal .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    margin-bottom: 0;
+}
+
+html[data-theme="dark"] .modal-content.legal-modal {
+    background: #1c1c1e;
+}
+
+html[data-theme="dark"] .modal-content.legal-modal .modal-header {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
 /* confirmation alerts text aligned center layout */
 .modal-confirm-layout {
     align-items: center;
@@ -740,19 +761,160 @@ html[data-theme="dark"] .icon-delete {
         height: 96px !important;
     }
     .profile-cover-banner {
-        height: 120px;
+        height: 110px;
     }
-    .profile-stats-card {
-        margin: 0 12px 12px 12px;
-        padding: 12px 4px;
+
+    /* ── Section Cards (Settings, Menu items) ── */
+    .settings-section {
+        margin: 0 10px 10px 10px;
+        border-radius: 18px;
     }
-    .stats-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
+    .menu-item {
+        padding: 11px 14px;
+    }
+    .menu-label {
+        font-size: 0.85rem;
+    }
+    .menu-value {
+        font-size: 0.75rem;
+    }
+    .menu-icon-wrapper {
+        width: 30px;
+        height: 30px;
+        font-size: 0.85rem;
+        border-radius: 9px;
+    }
+
+    /* ── Modal mobile sizing ── */
+    .modal-backdrop {
+        padding: 12px;
+        align-items: flex-end;
+    }
+    .modal-content {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 24px 24px 16px 16px;
+        padding: 22px 18px;
+        gap: 14px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-content.legal-modal {
+        border-radius: 24px 24px 16px 16px;
+        max-height: 82vh;
+        overflow-y: auto;
+    }
+    .modal-content.legal-modal .modal-header {
+        padding: 14px 16px 10px;
+    }
+    .modal-content h3 {
         font-size: 1.1rem;
     }
+    .modal-header h3 {
+        font-size: 0.95rem;
+    }
+    .modal-footer {
+        flex-direction: column;
+    }
+    .modal-footer .btn-sec,
+    .modal-footer .btn-prim {
+        width: 100%;
+        text-align: center;
+    }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE PROFILE CARDS — covers all phone sizes up to 768px
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+    /* ── Stats Card (Friends / Thoughts / Streak / Badges) ── */
+    .profile-stats-card {
+        margin: 0 10px 10px 10px !important;
+        padding: 8px 2px !important;
+        border-radius: 16px !important;
+    }
+    .stats-item {
+        gap: 4px !important;
+        padding: 2px !important;
+    }
+    .stats-icon {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 9px !important;
+        font-size: 0.9rem !important;
+    }
+    .stats-value {
+        font-size: 0.6rem !important;
+        white-space: nowrap !important;
+    }
+
+    /* ── Premium Card ── */
+    .premium-preview-card,
+    .premium-preview-card.minimal {
+        margin: 0 10px 10px 10px !important;
+        padding: 10px 14px !important;
+        border-radius: 16px !important;
+        gap: 6px !important;
+    }
+    .premium-icon-box {
+        width: 34px !important;
+        height: 34px !important;
+        font-size: 1rem !important;
+        border-radius: 9px !important;
+        flex-shrink: 0 !important;
+    }
+    .premium-preview-content {
+        gap: 8px !important;
+    }
+    .premium-title {
+        font-size: 0.82rem !important;
+    }
+    .premium-subtitle {
+        font-size: 0.66rem !important;
+    }
+    .premium-upgrade-btn {
+        padding: 5px 11px !important;
+        font-size: 0.68rem !important;
+        border-radius: 16px !important;
+    }
+
+    /* ── Achievements Card ── */
+    .achievements-preview-card {
+        margin: 0 10px 10px 10px !important;
+        padding: 10px 14px !important;
+        border-radius: 16px !important;
+        gap: 8px !important;
+    }
+    .achievements-title {
+        font-size: 0.82rem !important;
+    }
+    .view-all-link {
+        font-size: 0.7rem !important;
+    }
+    .achievements-preview-row {
+        gap: 6px !important;
+    }
+    .achievement-icon-bubble {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 1rem !important;
+    }
+
+    /* ── Visitors Preview Card ── */
+    .visitors-preview-card {
+        margin: 0 10px 10px 10px !important;
+        padding: 10px 14px !important;
+        border-radius: 16px !important;
+    }
+
+    /* ── Settings / Menu sections ── */
+    .settings-section {
+        margin: 0 10px 10px 10px !important;
+        border-radius: 16px !important;
+    }
+}
+
 
 /* Bio Textarea Styling */
 .bio-textarea {

@@ -145,6 +145,8 @@ export default function Login() {
   const [signupStep, setSignupStep] = useState(1); // 1: Email, 2: Username, 3: Password, 4: Profile
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({}); // per-field inline errors
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   const clearFieldError = (field) => setFieldErrors(prev => ({ ...prev, [field]: '' }));
 
@@ -172,11 +174,11 @@ export default function Login() {
       }
       
       if (!username.trim() || username.length < 3) {
-        errs.username = 'Username must be at least 3 characters';
-      }
-      
-      if (!password.trim()) {
-        errs.password = 'Password is required';
+        errs.username = "Username must be at least 3 characters.";
+      } else if (username.length > 50) {
+        errs.username = "Username is too long (max 50 chars).";
+      } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        errs.username = "Only letters, numbers, and underscores allowed.";
       } else if (!validatePassword(password)) {
         errs.password = 'Password must be 8+ chars with Upper, Lower, Number & Symbol';
       }
@@ -425,7 +427,9 @@ export default function Login() {
               avatar_url: finalAvatarUrl, 
               relationship_status: status,
               gender: gender,
-              interests: selectedInterests
+              interests: selectedInterests,
+              age_confirmed_at: new Date().toISOString(),
+              legal_accepted_at: new Date().toISOString()
             }
           }
         });
@@ -483,6 +487,26 @@ export default function Login() {
             localStorage.removeItem('manualLocationDisable');
             navigate('/enable-location');
           } else {
+            // --- Account Status Enforcement ---
+            const accountStatus = profile.account_status;
+            if (accountStatus === 'banned') {
+              await supabase.auth.signOut();
+              localStorage.removeItem('currentUser');
+              throw new Error('Your account has been permanently banned. Please contact support if you believe this is a mistake.');
+            }
+            if (accountStatus === 'suspended') {
+              const banExpiresAt = profile.ban_expires_at ? new Date(profile.ban_expires_at) : null;
+              if (!banExpiresAt || banExpiresAt > new Date()) {
+                await supabase.auth.signOut();
+                localStorage.removeItem('currentUser');
+                const expiry = banExpiresAt ? ` until ${banExpiresAt.toLocaleDateString()}` : '';
+                throw new Error(`Your account is suspended${expiry}. Please contact support for assistance.`);
+              }
+              // Suspension expired — auto-lift it
+              await supabase.from('profiles').update({ account_status: 'active', ban_expires_at: null }).eq('id', profile.id);
+            }
+            // --- End Status Enforcement ---
+
             localStorage.setItem('currentUser', JSON.stringify({
               id: profile.id,
               name: profile.username || profile.full_name,
@@ -492,7 +516,10 @@ export default function Login() {
               avatar_url: profile.avatar_url, 
               status: profile.status || 'Online',
               relationship_status: profile.relationship_status,
-              interests: profile.interests
+              interests: profile.interests,
+              is_admin: profile.is_admin || false,
+              is_premium: profile.is_premium || false,
+              subscription_tier: profile.subscription_tier || null,
             }));
 
             localStorage.removeItem('manualLocationDisable');
@@ -865,9 +892,38 @@ export default function Login() {
                     Next →
                   </button>
                 ) : (
-                  <button type="submit" disabled={loading} className="btn-submit">
-                    {loading ? 'Creating Account...' : 'Sign Up'}
-                  </button>
+                  <>
+                    <div style={{ marginTop: '16px', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={ageConfirmed}
+                          onChange={(e) => setAgeConfirmed(e.target.checked)}
+                          style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                          I confirm that I am at least 18 years of age.
+                        </span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={legalAccepted}
+                          onChange={(e) => setLegalAccepted(e.target.checked)}
+                          style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                          I agree to the <a href="/legal/terms" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Terms of Service</a>,{' '}
+                          <a href="/legal/privacy" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Privacy Policy</a>, and{' '}
+                          <a href="/legal/guidelines" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Community Guidelines</a>.
+                        </span>
+                      </label>
+                    </div>
+
+                    <button type="submit" disabled={loading || !ageConfirmed || !legalAccepted} className="btn-submit" style={{ opacity: (!ageConfirmed || !legalAccepted) ? 0.5 : 1 }}>
+                      {loading ? 'Creating Account...' : 'Sign Up'}
+                    </button>
+                  </>
                 )}
               </div>
             </>

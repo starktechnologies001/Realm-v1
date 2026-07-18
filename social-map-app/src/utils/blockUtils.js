@@ -8,6 +8,18 @@ import { supabase } from '../supabaseClient';
  */
 export const blockUser = async (blockerId, blockedId) => {
     try {
+        // 1. Prevent duplicate blocks programmatically
+        const { data: existing, error: checkError } = await supabase
+            .from('blocked_users')
+            .select('id')
+            .eq('blocker_id', blockerId)
+            .eq('blocked_id', blockedId)
+            .maybeSingle();
+            
+        if (checkError) throw checkError;
+        if (existing) return { success: true }; // Already blocked
+
+        // 2. Perform the block
         const { error } = await supabase
             .from('blocked_users')
             .insert({

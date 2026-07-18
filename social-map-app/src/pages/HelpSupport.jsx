@@ -5,7 +5,7 @@ import './HelpSupport.css';
 
 const APP_VERSION = '1.0.0';
 const BUILD_VERSION = '2026.07';
-const SUPPORT_EMAIL = 'support@nearo.app';
+const SUPPORT_EMAIL = 'nearoprivacy@gmail.com';
 const RESPONSE_TIME = '24–48 hours';
 
 /* ── Icons ── */
@@ -77,23 +77,75 @@ const TILES = [
 ];
 
 function HomeGrid({ onNav }) {
+    const [query, setQuery] = React.useState('');
+    const filtered = query.trim()
+        ? TILES.filter(t => t.label.toLowerCase().includes(query.toLowerCase()))
+        : TILES;
+
     return (
         <>
             <div className="hs-home-hero">
-                <div className="hs-home-hero-icon">❓</div>
+                <div className="hs-home-hero-icon">🛟</div>
                 <h2>Help & Support</h2>
                 <p>Find answers, report issues, and get in touch with the Nearo team.</p>
             </div>
 
+            {/* Quick search */}
+            <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: '1rem', opacity: 0.4, pointerEvents: 'none' }}>🔍</span>
+                <input
+                    type="text"
+                    className="hs-form-input"
+                    placeholder="Search help topics…"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    style={{ paddingLeft: 42, borderRadius: 16 }}
+                />
+            </div>
+
             <div>
-                <div className="hs-section-label" style={{ marginBottom: 10 }}>Browse Topics</div>
-                <div className="hs-grid">
-                    {TILES.map(t => (
-                        <div key={t.id} className="hs-tile" onClick={() => onNav(t.id)}>
-                            <div className={`hs-tile-icon ${t.color}`}>{t.icon}</div>
-                            <div className="hs-tile-label">{t.label}</div>
-                        </div>
-                    ))}
+                <div className="hs-section-label" style={{ marginBottom: 12 }}>Browse Topics</div>
+                {filtered.length > 0 ? (
+                    <div className="hs-grid">
+                        {filtered.map(t => (
+                            <div key={t.id} className="hs-tile" onClick={() => onNav(t.id)}>
+                                <div className={`hs-tile-icon ${t.color}`}>{t.icon}</div>
+                                <div className="hs-tile-label">{t.label}</div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary, #8a8a9e)', fontSize: '0.9rem' }}>
+                        No topics found for <strong style={{ color: 'var(--text-primary)' }}>"{query}"</strong>
+                    </div>
+                )}
+            </div>
+
+            {/* Quick access strip */}
+            <div className="hs-card" style={{ marginTop: -4 }}>
+                <div className="hs-card-row" onClick={() => onNav('contact')}>
+                    <div className="hs-card-icon" style={{ background: 'rgba(255,126,95,0.15)' }}>📩</div>
+                    <div className="hs-card-row-text">
+                        <div className="hs-card-row-title">Contact Support</div>
+                        <div className="hs-card-row-sub">Response within 24–48 hours</div>
+                    </div>
+                    <span className="hs-card-chevron"><ChevronRight /></span>
+                </div>
+                <div className="hs-card-row" onClick={() => onNav('report-bug')}>
+                    <div className="hs-card-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>🐛</div>
+                    <div className="hs-card-row-text">
+                        <div className="hs-card-row-title">Report a Bug</div>
+                        <div className="hs-card-row-sub">Help us improve Nearo</div>
+                    </div>
+                    <span className="hs-card-chevron"><ChevronRight /></span>
+                </div>
+                <div className="hs-card-row" onClick={() => onNav('faq')}>
+                    <div className="hs-card-icon" style={{ background: 'rgba(14,165,233,0.15)' }}>💬</div>
+                    <div className="hs-card-row-text">
+                        <div className="hs-card-row-title">FAQ</div>
+                        <div className="hs-card-row-sub">Most common questions answered</div>
+                    </div>
+                    <span className="hs-card-chevron"><ChevronRight /></span>
                 </div>
             </div>
         </>
@@ -148,24 +200,69 @@ function HelpCenter() {
 /* ============================================================
    SECTION: FAQ
    ============================================================ */
-const FAQ_ITEMS = [
-    { q: 'How do I create an account?', a: 'Open Nearo and tap "Sign Up". Enter your name, email, and a password. Verify your email via the link sent to your inbox, then set up your profile.' },
-    { q: 'How do I change my profile picture?', a: 'Go to your Profile page and tap your avatar. You can upload a photo from your camera roll or take a new one. A profile photo is required for verification.' },
-    { q: 'How do I hide my location?', a: 'Go to Profile → Privacy and toggle "Location Sharing" off, or enable Ghost Mode to stay invisible on the map while still being able to browse.' },
-    { q: 'How do I buy Premium?', a: 'Go to Profile → Premium Plans and choose Silver, Gold, or Diamond. You\'ll be guided through a secure payment flow. Subscriptions are monthly and auto-renew.' },
-    { q: 'How do I cancel Premium?', a: 'Contact us at ' + SUPPORT_EMAIL + ' and we\'ll process your cancellation within 24 hours. Your benefits remain active until the end of the current billing period.' },
-    { q: 'How do I block someone?', a: 'Open their profile or profile card on the map and tap the "⋮" menu → Block. Blocked users cannot see your profile, location, or send you messages. You can view your blocked list in Help & Support → Blocked Users.' },
-    { q: "Why can't I see nearby users?", a: 'Make sure your location permission is granted in your device Settings. Also check that you\'ve enabled "Share Location" in Profile → Privacy. Some users may have Ghost Mode on and won\'t appear on the map.' },
-    { q: "Why can't I send messages?", a: 'You can only message users who have accepted your poke request. If they have "Friends Only" messaging enabled, you\'ll need to be connected first. Some accounts may have been temporarily restricted.' },
-    { q: 'How do I delete my account?', a: 'Account deletion is permanent and removes all your data. To request deletion, email ' + SUPPORT_EMAIL + ' with the subject "Account Deletion Request" from your registered email address.' },
+const FAQ_CATEGORIES = [
+    {
+        title: "Account",
+        items: [
+            { q: 'How do I create an account?', a: 'Open Nearo and tap "Sign Up". Enter your name, email, and a password. Verify your email via the link sent to your inbox, then set up your profile.' },
+            { q: 'How do I change my username?', a: 'Go to your Profile, tap the Edit icon, and select your username to change it. Usernames must be unique and can only be changed once every 30 days.' },
+            { q: 'How do I delete my account?', a: 'Go to Settings > Privacy > Delete Account. Account deletion is permanent and removes all your data, including friends and chat history.' }
+        ]
+    },
+    {
+        title: "Map & Location",
+        items: [
+            { q: 'How does Nearby work?', a: 'Nearby uses your device\'s location to show you other Nearo users on an interactive map. You can control who sees you in your privacy settings.' },
+            { q: "Why can't I see nearby users?", a: 'Ensure you have granted location permissions in your device settings. Also check if you have toggled "Share Location" on. Some users may be in Ghost Mode.' },
+            { q: 'How do I hide my location?', a: 'You can instantly hide your location from everyone by enabling "Ghost Mode" in the quick settings menu or in Profile > Privacy.' }
+        ]
+    },
+    {
+        title: "Chat & Interactions",
+        items: [
+            { q: 'How do I block someone?', a: 'Open their profile or map card, tap the "⋮" menu, and select Block. They will not be notified, and they will no longer see your location or be able to message you.' },
+            { q: 'How do I report someone?', a: 'Use the "⋮" menu on their profile or chat and select Report. Choose a reason, and our safety team will review it within 24 hours.' },
+            { q: 'How do I delete chats?', a: 'Swipe left on a chat in your inbox to delete the conversation locally. Note that this does not delete the messages from the other person\'s device.' }
+        ]
+    },
+    {
+        title: "Voice & Video Calls",
+        items: [
+            { q: "Why isn't my microphone working?", a: 'Make sure you have granted Nearo microphone permissions in your iOS or Android system settings. Also check that you aren\'t muted in the call interface.' },
+            { q: "Why isn't my camera working?", a: 'Ensure Nearo has camera permissions in your device settings. If another app is using the camera, you may need to close it first.' }
+        ]
+    },
+    {
+        title: "Premium Subscription",
+        items: [
+            { q: 'How do I subscribe?', a: 'Go to Profile > Premium to view the available plans (Silver, Gold, Diamond). Tap a plan to securely purchase it via your App Store account.' },
+            { q: 'How do I cancel?', a: 'Because billing is handled by your App Store, you must cancel through your Apple ID or Google Play subscriptions page. Benefits continue until the end of the billing cycle.' },
+            { q: 'Why wasn\'t my payment successful?', a: 'Ensure your App Store payment method is valid and has sufficient funds. If the issue persists, contact Apple or Google support, as they handle transaction processing.' }
+        ]
+    },
+    {
+        title: "Privacy & Safety",
+        items: [
+            { q: 'Who can see my location?', a: 'By default, your approximate location is visible to nearby users, and your exact location is visible to friends. You can change this to "Friends Only" or "Ghost Mode" at any time.' },
+            { q: 'What is Ghost Mode?', a: 'Ghost Mode makes you completely invisible on the map to all users (including friends), while still allowing you to browse the app normally.' },
+            { q: 'How is my information protected?', a: 'We use industry-standard encryption and strict database security rules. We do not sell your personal data. Read our Privacy Policy in the Legal section for full details.' }
+        ]
+    }
 ];
 
 function FAQ() {
     return (
         <>
             <SectionHero icon="💬" title="Frequently Asked Questions" desc="Quick answers to the most common questions." bgColor="rgba(14,165,233,0.12)" />
-            <div className="hs-accordion">
-                {FAQ_ITEMS.map((f, i) => <AccordionItem key={i} question={f.q} answer={f.a} />)}
+            <div className="hs-faq-categories">
+                {FAQ_CATEGORIES.map((category, idx) => (
+                    <div key={idx} className="hs-faq-category" style={{ marginBottom: 24 }}>
+                        <h3 style={{ marginBottom: 12, fontSize: '1.1rem', color: 'var(--text-color)' }}>{category.title}</h3>
+                        <div className="hs-accordion">
+                            {category.items.map((f, i) => <AccordionItem key={i} question={f.q} answer={f.a} />)}
+                        </div>
+                    </div>
+                ))}
             </div>
         </>
     );
@@ -697,8 +794,12 @@ function Legal({ navigate }) {
     const links = [
         { icon: '🔏', bg: 'rgba(99,102,241,0.1)', label: 'Privacy Policy',        path: '/legal/privacy' },
         { icon: '📋', bg: 'rgba(14,165,233,0.1)',  label: 'Terms & Conditions',    path: '/legal/terms'   },
-        { icon: '🛡️', bg: 'rgba(34,197,94,0.1)',   label: 'Community Guidelines',  path: '/legal/safety'  },
+        { icon: '🛡️', bg: 'rgba(34,197,94,0.1)',   label: 'Community Guidelines',  path: '/legal/guidelines'  },
         { icon: '⚖️', bg: 'rgba(245,158,11,0.1)',  label: 'Cookie Policy',         path: '/legal/cookies' },
+        { icon: '💸', bg: 'rgba(239,68,68,0.1)',   label: 'Refund Policy',         path: '/legal/refunds' },
+        { icon: '🔒', bg: 'rgba(14,165,233,0.1)',  label: 'Safety Center',         path: '/legal/safety'  },
+        { icon: '💡', bg: 'rgba(234,179,8,0.1)',   label: 'Safety Tips',           path: '/legal/safety-tips' },
+        { icon: '🧒', bg: 'rgba(239,68,68,0.12)',  label: 'Child Safety Policy',   path: '/legal/child-safety' },
     ];
     return (
         <>
@@ -725,7 +826,7 @@ function About() {
     const INFO = [
         { icon: '📱', label: 'App Version',    val: `v${APP_VERSION}` },
         { icon: '🔧', label: 'Build Version',  val: BUILD_VERSION },
-        { icon: '🌐', label: 'Website',        val: 'nearo.app', link: 'https://nearo.app' },
+        { icon: '🌐', label: 'Website',        val: 'nearo.co.in', link: 'https://nearo.co.in' },
         { icon: '📧', label: 'Contact',        val: SUPPORT_EMAIL, link: `mailto:${SUPPORT_EMAIL}` },
         { icon: '©️',  label: 'Copyright',      val: `© ${new Date().getFullYear()} Nearo. All rights reserved.` },
     ];

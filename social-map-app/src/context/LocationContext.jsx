@@ -29,6 +29,9 @@ export function LocationProvider({ children }) {
   const isStationaryRef = useRef(false);
   const stationarySinceRef = useRef(null);
   const fuzzyCacheRef = useRef(null);
+  // Cache visibility_mode to avoid an extra SELECT on every location sync
+  const visibilityModeRef = useRef(null);
+  const visibilityLastFetched = useRef(0);
 
   // Initialize fuzzy location cache from localStorage safely on first paint
   if (fuzzyCacheRef.current === null) {
@@ -109,9 +112,9 @@ export function LocationProvider({ children }) {
             const fLoc = getCachedFuzzyLocation(userLocation, isStationaryRef.current, stationarySinceRef.current);
             
             supabase.from("profiles").update({
-              latitude: fLoc.latitude,
-              longitude: fLoc.longitude,
-              last_location: fLoc.last_location,
+              latitude: isGhost ? null : fLoc.latitude,
+              longitude: isGhost ? null : fLoc.longitude,
+              last_location: isGhost ? null : fLoc.last_location,
               is_location_on: !isGhost,
               is_ghost_mode: isGhost,
               visibility_mode: currentMode,
@@ -193,9 +196,9 @@ export function LocationProvider({ children }) {
                   const isGhost = currentMode === 'ghost';
 
                   supabase.from("profiles").update({
-                    latitude: fLoc.latitude,
-                    longitude: fLoc.longitude,
-                    last_location: fLoc.last_location,
+                    latitude: isGhost ? null : fLoc.latitude,
+                    longitude: isGhost ? null : fLoc.longitude,
+                    last_location: isGhost ? null : fLoc.last_location,
                     is_location_on: !isGhost,
                     is_ghost_mode: isGhost,
                     visibility_mode: currentMode,
@@ -242,9 +245,9 @@ export function LocationProvider({ children }) {
                           }
                           const isGhost = currentMode === 'ghost';
                           supabase.from("profiles").update({
-                            latitude: fLoc.latitude,
-                            longitude: fLoc.longitude,
-                            last_location: fLoc.last_location,
+                            latitude: isGhost ? null : fLoc.latitude,
+                            longitude: isGhost ? null : fLoc.longitude,
+                            last_location: isGhost ? null : fLoc.last_location,
                             is_location_on: !isGhost,
                             is_ghost_mode: isGhost,
                             visibility_mode: currentMode,
@@ -329,64 +332,84 @@ export function LocationProvider({ children }) {
               lat: pos.coords.latitude,
               lng: pos.coords.longitude,
             };
-            // 1. Calculate Jitter (in meters)
+            // 1. Calculate distance moved since last DB sync
             const now = Date.now();
             const localDistMeters = lastSyncLoc.current 
                 ? distanceMetres(lastSyncLoc.current.lat, lastSyncLoc.current.lng, newLoc.lat, newLoc.lng)
                 : Infinity;
 
-            // 2. Throttled DB update (Update every 15s ONLY IF moved 15m)
+            // 2. Throttling: sync only if moved ≥15m AND ≥15s elapsed,
+            //    OR force a heartbeat every 30s to keep 'live' status alive.
             const timeSinceSync = now - lastSyncTime.current;
-            
-            // Check threshold: 15s AND 15 meters, OR forced after 45s to keep 'live' status fresh
             const shouldSync = !lastSyncTime.current || 
                 (timeSinceSync > 15000 && localDistMeters > 15) || 
-                (timeSinceSync > 45000);
+                (timeSinceSync > 30000);
 
             setUserLocation(newLoc);
-            // 🔥 Persist for instant restore on next session load
             try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
-            if (shouldSync) {
-                lastSyncTime.current = now;
-                lastSyncLoc.current = newLoc;
+            if (!shouldSync) return;
 
-                // Stationary logic: if movement is <= 15m since last sync, we are stationary
-                if (localDistMeters <= 15) {
-                    if (!isStationaryRef.current) {
-                        isStationaryRef.current = true;
-                        stationarySinceRef.current = new Date().toISOString();
-                    }
-                } else {
-                    isStationaryRef.current = false;
-                    stationarySinceRef.current = null;
+            lastSyncTime.current = now;
+            lastSyncLoc.current = newLoc;
+
+            // Stationary logic
+            if (localDistMeters <= 15) {
+                if (!isStationaryRef.current) {
+                    isStationaryRef.current = true;
+                    stationarySinceRef.current = new Date().toISOString();
                 }
-
-                const fLoc = getCachedFuzzyLocation(newLoc, isStationaryRef.current, stationarySinceRef.current);
-                supabase.auth.getSession().then(({ data: { session } }) => {
-                    if (session?.user?.id) {
-                        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
-                            const currentMode = data?.visibility_mode || 'public';
-                            const isGhost = currentMode === 'ghost';
-
-                            supabase.from("profiles").update({
-                                latitude: fLoc.latitude,
-                                longitude: fLoc.longitude,
-                                last_location: fLoc.last_location,
-                                is_location_on: !isGhost,
-                                is_ghost_mode: isGhost,
-                                visibility_mode: currentMode,
-                                activity_status: isGhost ? 'offline' : 'live',
-                                last_seen: new Date().toISOString(),
-                                is_stationary: isStationaryRef.current,
-                                stationary_since: stationarySinceRef.current
-                            }).eq("id", session.user.id).then(({ error }) => {
-                                if (error) console.error("Location sync error:", error);
-                            });
-                        });
-                    }
-                }).catch(err => console.warn("Session error during location watch sync:", err));
+            } else {
+                isStationaryRef.current = false;
+                stationarySinceRef.current = null;
             }
+
+            const fLoc = getCachedFuzzyLocation(newLoc, isStationaryRef.current, stationarySinceRef.current);
+
+            // Use cached visibility mode — only re-fetch from DB every 60s
+            // to avoid an extra SELECT round-trip on every location sync.
+            const needsVisibilityRefresh = (now - visibilityLastFetched.current) > 60000;
+
+            supabase.auth.getSession().then(({ data: { session } }) => {
+                if (!session?.user?.id) return;
+                const userId = session.user.id;
+
+                // performSync is defined here so userId is in scope
+                const performSync = (visibilityMode) => {
+                    const isGhost = visibilityMode === 'ghost';
+                    supabase.from("profiles").update({
+                        latitude:         isGhost ? null : fLoc.latitude,
+                        longitude:        isGhost ? null : fLoc.longitude,
+                        last_location:    isGhost ? null : fLoc.last_location,
+                        is_location_on:   !isGhost,
+                        is_ghost_mode:    isGhost,
+                        visibility_mode:  visibilityMode,
+                        activity_status:  isGhost ? 'offline' : 'live',
+                        last_seen:        new Date().toISOString(),
+                        is_stationary:    isStationaryRef.current,
+                        stationary_since: stationarySinceRef.current
+                    }).eq("id", userId).then(({ error }) => {
+                        if (error) console.error("Location sync error:", error);
+                    });
+                };
+
+                if (visibilityModeRef.current && !needsVisibilityRefresh) {
+                    // Use cached value — no extra SELECT
+                    performSync(visibilityModeRef.current);
+                } else {
+                    // Refresh visibility mode from DB
+                    supabase.from("profiles")
+                        .select("visibility_mode")
+                        .eq("id", userId)
+                        .maybeSingle()
+                        .then(({ data }) => {
+                            const mode = data?.visibility_mode || 'public';
+                            visibilityModeRef.current = mode;
+                            visibilityLastFetched.current = now;
+                            performSync(mode);
+                        });
+                }
+            }).catch(err => console.warn("Session error during location watch sync:", err));
           },
           (err) => {
             // Code 3 is Timeout. It's non-fatal for watchPosition (it will keep trying), but it spams the console.

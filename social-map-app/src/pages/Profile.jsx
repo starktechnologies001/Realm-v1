@@ -58,6 +58,12 @@ export default function Profile() {
     // const [showBlockedModal, setShowBlockedModal] = useState(false); // Moved to BlockedUsers.jsx
     const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const [showLegalMenu, setShowLegalMenu] = useState(false);
+    
+    // Account deletion states
+    const [deleteConsentChecked, setDeleteConsentChecked] = useState(false);
+    const [deleteInputWord, setDeleteInputWord] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
     const { theme, updateTheme } = useTheme();
     const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
     const wallpaperInputRef = useRef(null);
@@ -301,11 +307,41 @@ export default function Profile() {
 
 
     const updateProfile = async (updates, successMessage = "Profile updated successfully! ✅") => {
+        // --- SECURITY HARDENING (Client-Side) ---
+        // Prevent accidental/malicious injection of restricted fields into the payload
+        const restrictedFields = ['is_admin', 'is_premium', 'account_status', 'subscription_tier', 'warning_count', 'ban_expires_at'];
+        const sanitizedUpdates = { ...updates };
+        restrictedFields.forEach(field => {
+            if (field in sanitizedUpdates) {
+                console.warn(`[SECURITY] Attempted to update restricted field: ${field}. Stripping from payload.`);
+                delete sanitizedUpdates[field];
+            }
+        });
+
+        // Input length validation (matches DB constraints)
+        if (sanitizedUpdates.username && sanitizedUpdates.username.length > 50) {
+            showToast("Username is too long (max 50 chars). ❌");
+            return;
+        }
+        if (sanitizedUpdates.bio && sanitizedUpdates.bio.length > 1000) {
+            showToast("Bio is too long (max 1000 chars). ❌");
+            return;
+        }
+        if (sanitizedUpdates.full_name && sanitizedUpdates.full_name.length > 100) {
+            showToast("Full name is too long (max 100 chars). ❌");
+            return;
+        }
+
+        if (Object.keys(sanitizedUpdates).length === 0) {
+            console.warn("[SECURITY] No valid fields to update after sanitization.");
+            return;
+        }
+
         // OPTIMISTIC UPDATE: Update local state + LocalStorage immediately
         const previousUser = { ...user };
-        const updatedUser = { ...user, ...updates };
+        const updatedUser = { ...user, ...sanitizedUpdates };
         
-        console.log('🟣 [Profile] updateProfile called with:', updates);
+        console.log('🟣 [Profile] updateProfile called with:', sanitizedUpdates);
         console.log('🟣 [Profile] Current user ID:', user.id);
         
         setUser(updatedUser);
@@ -316,7 +352,7 @@ export default function Profile() {
             console.log('🟣 [Profile] Attempting database update...');
             const { error, data } = await supabase
                 .from('profiles')
-                .update(updates)
+                .update(sanitizedUpdates)
                 .eq('id', user.id);
 
             if (error) {
@@ -330,7 +366,11 @@ export default function Profile() {
             // Revert state on failure
             setUser(previousUser);
             localStorage.setItem('currentUser', JSON.stringify(previousUser));
-            showToast("Failed to update profile ❌");
+            if (error.message?.includes('RATE_LIMIT_EXCEEDED')) {
+                showToast(error.message.replace('RATE_LIMIT_EXCEEDED: ', ''));
+            } else {
+                showToast("Failed to update profile ❌");
+            }
         }
     };
 
@@ -415,22 +455,20 @@ export default function Profile() {
     };
 
     const handleDeleteAccount = async () => {
-        if (window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
-            try {
-                // Delete account using secure RPC (deletes Auth User + Profile via cascade)
-                const { error } = await supabase.rpc('delete_user');
-                if (error) throw error;
-                
-                // Sign out
-                await supabase.auth.signOut();
-                localStorage.clear();
-                window.location.href = '/login';
-                localStorage.clear();
-                navigate('/login');
-            } catch (error) {
-                console.error("Delete account error:", error);
-                alert("Failed to delete account. Please try again.");
-            }
+        if (!deleteConsentChecked || deleteInputWord !== 'DELETE') return;
+        setIsDeleting(true);
+        try {
+            // Delete account using the secure custom RPC
+            const { error } = await supabase.rpc('secure_delete_account');
+            if (error) throw error;
+            
+            await supabase.auth.signOut();
+            localStorage.clear();
+            window.location.href = '/login';
+        } catch (error) {
+            console.error("Delete account error:", error);
+            showToast("Failed to delete account. Please try again.");
+            setIsDeleting(false);
         }
     };
 
@@ -1115,12 +1153,29 @@ export default function Profile() {
 
                     <MenuItem
                         icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>}
-                        label="Terms of Service"
+                        label="Legal & Policies"
                         hasArrow={true}
                         iconClass="icon-safety"
-                        onClick={() => navigate('/legal/terms')}
+                        onClick={() => setShowLegalMenu(true)}
                     />
                 </div>
+
+                {/* Admin Panel Button — visible only to admins */}
+                {user?.is_admin && (
+                    <button
+                        onClick={() => navigate('/admin')}
+                        style={{
+                            width: '100%', marginBottom: '12px',
+                            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                            color: '#fff', border: 'none', padding: '14px',
+                            borderRadius: '12px', fontWeight: 700,
+                            fontSize: '0.95rem', cursor: 'pointer',
+                            letterSpacing: '0.3px'
+                        }}
+                    >
+                        🛡️ Admin Moderation Dashboard
+                    </button>
+                )}
 
                 <button className="logout-btn" onClick={() => setActiveModal('logout-confirm')}>
                     Log Out
@@ -1268,15 +1323,60 @@ export default function Profile() {
                             </>
                         )}
                         {activeModal === 'delete' && (
-                            <>
-                                <div className="icon-warn">⚠️</div>
-                                <h3>Delete Account?</h3>
-                                <p>This action is permanent and cannot be undone.</p>
-                                <div className="modal-footer">
-                                    <button onClick={() => setActiveModal(null)} className="btn-sec">Keep</button>
-                                    <button onClick={handleDeleteAccount} className="btn-danger">Delete</button>
+                            <div style={{ textAlign: 'left', width: '100%', maxWidth: '400px' }}>
+                                <div className="icon-warn" style={{ margin: '0 auto 16px auto', fontSize: '32px' }}>⚠️</div>
+                                <h3 style={{ textAlign: 'center', marginBottom: '16px', color: '#ff453a' }}>Permanently Delete Account?</h3>
+                                
+                                <div style={{ fontSize: '0.9rem', color: '#ccc', marginBottom: '16px', background: 'rgba(255, 69, 58, 0.1)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #ff453a' }}>
+                                    <strong style={{ display: 'block', color: '#fff', marginBottom: '6px' }}>What will be deleted:</strong>
+                                    <ul style={{ paddingLeft: '20px', margin: '0 0 12px 0', lineHeight: '1.4' }}>
+                                        <li>Your profile, friends, and chat messages.</li>
+                                        <li>Your location history and uploaded photos.</li>
+                                    </ul>
+                                    <strong style={{ display: 'block', color: '#fff', marginBottom: '6px' }}>What happens to your data:</strong>
+                                    <ul style={{ paddingLeft: '20px', margin: 0, lineHeight: '1.4' }}>
+                                        <li>Trust & Safety reports you filed are anonymized to protect the community.</li>
+                                        <li>Active App Store/Google Play subscriptions must be cancelled manually.</li>
+                                    </ul>
                                 </div>
-                            </>
+
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', marginBottom: '16px' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={deleteConsentChecked}
+                                        onChange={(e) => setDeleteConsentChecked(e.target.checked)}
+                                        style={{ marginTop: '3px', accentColor: '#ff453a', width: '16px', height: '16px' }}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                                        I understand that my account and personal data will be permanently deleted and cannot be recovered.
+                                    </span>
+                                </label>
+
+                                <div style={{ marginBottom: '24px' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#ccc', display: 'block', marginBottom: '8px' }}>
+                                        To confirm, type <strong>DELETE</strong> below:
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={deleteInputWord}
+                                        onChange={(e) => setDeleteInputWord(e.target.value)}
+                                        placeholder="DELETE"
+                                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #333', background: '#000', color: '#fff' }}
+                                    />
+                                </div>
+
+                                <div className="modal-footer" style={{ marginTop: '0' }}>
+                                    <button onClick={() => { setActiveModal(null); setDeleteConsentChecked(false); setDeleteInputWord(''); }} className="btn-sec" disabled={isDeleting}>Cancel</button>
+                                    <button 
+                                        onClick={handleDeleteAccount} 
+                                        className="btn-danger"
+                                        disabled={!deleteConsentChecked || deleteInputWord !== 'DELETE' || isDeleting}
+                                        style={{ opacity: (!deleteConsentChecked || deleteInputWord !== 'DELETE' || isDeleting) ? 0.5 : 1 }}
+                                    >
+                                        {isDeleting ? 'Deleting...' : 'Permanently Delete'}
+                                    </button>
+                                </div>
+                            </div>
                         )}
                         {activeModal === 'logout-confirm' && (
                             <>
@@ -2009,8 +2109,61 @@ export default function Profile() {
                     </div>
                 </div>
             )}
-
-
+            {showLegalMenu && (
+                <div className="modal-backdrop" onClick={(e) => { if (e.target.classList.contains('modal-backdrop')) setShowLegalMenu(false) }}>
+                    <div className="modal-content legal-modal">
+                        <div className="modal-header">
+                            <h3>Legal & Policies</h3>
+                            <button className="btn-close" onClick={() => setShowLegalMenu(false)}>✕</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '0 0 16px 0' }}>
+                            {user?.legal_accepted_at && (
+                                <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontSize: '20px' }}>✓</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: '500' }}>Terms Accepted</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>
+                                            {new Date(user.legal_accepted_at).toLocaleDateString()} at {new Date(user.legal_accepted_at).toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="settings-list" style={{ marginTop: '0' }}>
+                                <MenuItem
+                                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>}
+                                    label="Terms of Service"
+                                    hasArrow={true}
+                                    onClick={() => navigate('/legal/terms')}
+                                />
+                                <MenuItem
+                                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>}
+                                    label="Privacy Policy"
+                                    hasArrow={true}
+                                    onClick={() => navigate('/legal/privacy')}
+                                />
+                                <MenuItem
+                                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}
+                                    label="Community Guidelines"
+                                    hasArrow={true}
+                                    onClick={() => navigate('/legal/guidelines')}
+                                />
+                                <MenuItem
+                                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>}
+                                    label="Child Safety Policy"
+                                    hasArrow={true}
+                                    onClick={() => navigate('/legal/child-safety')}
+                                />
+                                <MenuItem
+                                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>}
+                                    label="Refund Policy"
+                                    hasArrow={true}
+                                    onClick={() => navigate('/legal/refund')}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
 
 

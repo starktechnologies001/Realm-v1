@@ -30,6 +30,8 @@ export default function OAuthProfileSetup() {
   const [status, setStatus] = useState('');
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const clearFieldError = (field) => setFieldErrors(prev => ({ ...prev, [field]: '' }));
   
   
@@ -205,7 +207,9 @@ export default function OAuthProfileSetup() {
           relationship_status: status,
           interests: selectedInterests,
           avatar_url: finalAvatarUrl,
-          onboarding_completed: true   // ← mark complete so popup never shows again
+          onboarding_completed: true,   // ← mark complete so popup never shows again
+          age_confirmed_at: new Date().toISOString(),
+          legal_accepted_at: new Date().toISOString()
         })
         .eq('id', userId);
 
@@ -427,7 +431,34 @@ export default function OAuthProfileSetup() {
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="submit-btn">
+          <div style={{ marginTop: '16px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={ageConfirmed}
+                onChange={(e) => setAgeConfirmed(e.target.checked)}
+                style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                I confirm that I am at least 18 years of age.
+              </span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={legalAccepted}
+                onChange={(e) => setLegalAccepted(e.target.checked)}
+                style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                I agree to the <a href="/legal/terms" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Terms of Service</a>,{' '}
+                <a href="/legal/privacy" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Privacy Policy</a>, and{' '}
+                <a href="/legal/guidelines" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Community Guidelines</a>.
+              </span>
+            </label>
+          </div>
+
+          <button type="submit" disabled={loading || !ageConfirmed || !legalAccepted} className="submit-btn" style={{ opacity: (!ageConfirmed || !legalAccepted) ? 0.5 : 1 }}>
             {loading ? 'Saving...' : 'Complete Setup'}
           </button>
         </form>

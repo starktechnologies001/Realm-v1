@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { getAvatarHeadshot } from '../utils/avatarUtils';
 import Toast from './Toast';
 import FullProfileModal from './FullProfileModal';
+import ReportModal from './ReportModal';
 
 export default function MessageRequestsPage({ onClose, currentUser }) {
     const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
     const [toastMsg, setToastMsg] = useState(null);
     const [processingId, setProcessingId] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
+    const [reportTargetUser, setReportTargetUser] = useState(null);
 
     const showToast = (msg) => {
         setToastMsg(msg);
@@ -189,20 +191,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
             }
         } else if (action === 'report') {
             setSelectedUser(null);
-            const reason = prompt("Reason for reporting:");
-            if (reason) {
-                try {
-                    await supabase.from('reports').insert({
-                        reporter_id: localUser.id,
-                        reported_id: targetUser.id,
-                        reason: reason
-                    });
-                    showToast("Report submitted successfully ✅");
-                } catch (err) {
-                    console.error("Error reporting:", err);
-                    showToast("Failed to submit report");
-                }
-            }
+            setReportTargetUser(targetUser);
         }
     };
 
@@ -577,6 +566,16 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                     }
                 `}</style>
             </motion.div>
+
+            {/* Report Modal */}
+            {reportTargetUser && (
+                <ReportModal
+                    targetUser={reportTargetUser}
+                    onClose={() => setReportTargetUser(null)}
+                    onSuccess={() => showToast("Report submitted successfully ✅")}
+                    onError={(msg) => showToast(msg)}
+                />
+            )}
         </AnimatePresence>
     );
 }

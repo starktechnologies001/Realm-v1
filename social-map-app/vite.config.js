@@ -59,6 +59,9 @@ export default defineConfig({
 
           // Extra Heavy UI — dynamically loaded
           'vendor-emoji': ['emoji-picker-react'],
+
+          // Three.js and 3D Avatar dependencies
+          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
         },
       },
     },

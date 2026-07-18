@@ -17,6 +17,7 @@ import { useCall } from '../context/CallContext';
 import { fuzzyLocation, distanceMetres, fuzzyLocationForDB, parseThought, formatThought } from '../utils/locationPrivacy';
 import LimitedModeScreen from '../components/LimitedModeScreen';
 import LocationOnboarding from '../components/LocationOnboarding';
+import ReportModal from '../components/ReportModal';
 import StoryViewer from '../components/StoryViewer';
 import { uploadToStorage } from '../utils/fileUpload';
 import { DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
@@ -2785,6 +2786,8 @@ export default function MapHome() {
                         // Was already requested maybe? Refresh user?
                         showToast("Poke already sent!");
                         // Refetch to get truth
+                    } else if (error.message?.includes('RATE_LIMIT_EXCEEDED')) {
+                        showToast(error.message.replace('RATE_LIMIT_EXCEEDED: ', ''));
                     } else {
                         showToast("Failed to send poke.");
                         throw error;
@@ -4923,48 +4926,19 @@ export default function MapHome() {
 
             {/* Report Modal */}
             {showReportModal && reportTarget && (
-                <div className="report-modal-overlay" onClick={() => setShowReportModal(false)}>
-                    <div className="report-modal-card" onClick={e => e.stopPropagation()}>
-                        {/* Warning Icon Header */}
-                        <div className="report-icon-header">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                                <line x1="12" y1="9" x2="12" y2="13"></line>
-                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                            </svg>
-                        </div>
-
-                        <h3>Report {reportTarget.name}</h3>
-                        <p>Please select a reason for reporting:</p>
-
-                        <div className="report-reasons">
-                            <button onClick={() => handleReport('Fake or Misleading Profile')}>
-                                <span className="report-emoji">🎭</span>
-                                <span>Fake or Misleading Profile</span>
-                            </button>
-                            <button onClick={() => handleReport('Harassment or Misbehavior')}>
-                                <span className="report-emoji">😡</span>
-                                <span>Harassment or Misbehavior</span>
-                            </button>
-                            <button onClick={() => handleReport('Location Misuse')}>
-                                <span className="report-emoji">📍</span>
-                                <span>Location Misuse</span>
-                            </button>
-                            <button onClick={() => handleReport('Underage or Safety Concern')}>
-                                <span className="report-emoji">🔞</span>
-                                <span>Underage or Safety Concern</span>
-                            </button>
-                            <button onClick={() => handleReport('Other')}>
-                                <span className="report-emoji">❓</span>
-                                <span>Other</span>
-                            </button>
-                        </div>
-
-                        <button className="cancel-report-btn" onClick={() => setShowReportModal(false)}>
-                            Cancel
-                        </button>
-                    </div>
-                </div>
+                <ReportModal 
+                    targetUser={reportTarget} 
+                    onClose={() => {
+                        setShowReportModal(false);
+                        setReportTarget(null);
+                    }}
+                    onSuccess={(name) => {
+                        showToast(`⚠️ Reported ${name}`);
+                        setShowReportModal(false);
+                        setReportTarget(null);
+                    }}
+                    onError={(msg) => showToast(msg)}
+                />
             )}
 
             {/* Mute Duration Modal */}

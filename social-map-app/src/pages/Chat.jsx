@@ -12,6 +12,7 @@ import { usePresence } from '../hooks/usePresence';
 import { initializePresence, cleanupPresence } from '../services/presenceService';
 import { useIncomingCall } from '../hooks/useIncomingCall';
 import { initiateCall } from '../services/callSignalingService';
+import ReportModal from '../components/ReportModal';
 
 const AttachmentPicker = React.lazy(() => import('../components/AttachmentPicker'));
 const PremiumStickersPanel = React.lazy(() => import('../components/PremiumStickersPanel'));
@@ -1682,6 +1683,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [showFullProfile, setShowFullProfile] = useState(false);
     const [fullProfileUser, setFullProfileUser] = useState(null);
     const [viewingStoryUser, setViewingStoryUser] = useState(null);
+    const [reportTargetUser, setReportTargetUser] = useState(null);
     const { startCall } = useCall();
 
     // Fix for mobile browser address bar layout shifts and page viewport shifts
@@ -1841,8 +1843,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             await handleMenuAction('unfriend');
         } else if (action === 'report') {
             setShowFullProfile(false);
-            const reason = prompt("Reason for reporting:");
-            if (reason) showToast("Report submitted successfully ✅");
+            setReportTargetUser(targetUser);
         } else if (action === 'view-story') {
             // Fetch active stories for this user
             const fetchStories = async () => {
@@ -3613,7 +3614,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
         if (error) {
             console.error("Send error:", error);
-            showToast("Failed to send message ❌");
+            if (error.message?.includes('RATE_LIMIT_EXCEEDED')) {
+                showToast(error.message.replace('RATE_LIMIT_EXCEEDED: ', ''));
+            } else {
+                showToast("Failed to send message ❌");
+            }
             // Remove optimistic message on error
             setMessages(prev => prev.filter(m => m.tempId !== tempId));
         } else if (data && data[0]) {
@@ -4302,11 +4307,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                             Delete Chat
                                         </button>
 
-                                        <button onClick={() => {
-                                            const reason = prompt("Reason for reporting:");
-                                            if (reason) showToast("Report submitted successfully ✅");
-                                            setShowMenu(false);
-                                        }} className="danger">
+                                        <button onClick={() => { setShowMenu(false); handleProfileModalAction('report', targetUser); }} className="danger">
                                             <span className="icon">
                                                 <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                                             </span>
@@ -5227,6 +5228,16 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         onClose={() => setViewingStoryUser(null)}
                     />
                 </React.Suspense>
+            )}
+
+            {/* Report Modal */}
+            {reportTargetUser && (
+                <ReportModal
+                    targetUser={reportTargetUser}
+                    onClose={() => setReportTargetUser(null)}
+                    onSuccess={() => showToast("Report submitted successfully ✅")}
+                    onError={(msg) => showToast(msg)}
+                />
             )}
 
             <style>{`
