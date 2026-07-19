@@ -10,7 +10,7 @@ import ReplyThoughtModal from '../components/ReplyThoughtModal';
 import PokeNotifications from '../components/PokeNotifications';
 import Toast from '../components/Toast';
 import MessageRequestsPage from '../components/MessageRequestsPage';
-import { getAvatar2D, generateRandomRPMAvatar } from '../utils/avatarUtils';
+import { getAvatar2D } from '../utils/avatarUtils';
 import { getBlockedUserIds, getBlockerIds, isUserBlocked, isBlockedMutual } from '../utils/blockUtils';
 import { useLocationContext } from '../context/LocationContext';
 import { useCall } from '../context/CallContext';

@@ -59,9 +59,6 @@ export default defineConfig({
 
           // Extra Heavy UI — dynamically loaded
           'vendor-emoji': ['emoji-picker-react'],
-
-          // Three.js and 3D Avatar dependencies
-          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
         },
       },
     },
@@ -72,6 +69,6 @@ export default defineConfig({
 
   // Optimise deps pre-bundling
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'leaflet', 'react-leaflet', 'framer-motion', 'three', '@react-three/fiber', '@react-three/drei', 'agora-rtc-sdk-ng'],
+    include: ['react', 'react-dom', 'react-router-dom', 'leaflet', 'react-leaflet', 'framer-motion', 'agora-rtc-sdk-ng'],
   },
 })

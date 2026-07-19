@@ -4,16 +4,14 @@ import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
 
 // 🚀 Lazy-loaded heavy components — only download when needed
-const Avatar3D = React.lazy(() => import('../components/Avatar3D'));
-const AvatarEditor = React.lazy(() => import('../components/AvatarEditor'));
 const ImageCropper = React.lazy(() => import('../components/ImageCropper'));
 // useTheme is imported from '../context/ThemeContext' below with SILVER_THEMES
 import { useLocationContext } from '../context/LocationContext';
 import { getAvatar2D, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getStatusRingClass } from '../utils/statusUtils';
 import { uploadToStorage } from '../utils/fileUpload';
-import { premiumTiers, ACHIEVEMENTS, RARITY_META } from '../utils/premiumUtils';
-import { useTheme, SILVER_THEMES, PREMIUM_THEME_KEYS } from '../context/ThemeContext';
+import { ACHIEVEMENTS, RARITY_META } from '../utils/premiumUtils';
+import { useTheme } from '../context/ThemeContext';
 import { getPremiumCustomizations, AvatarAccessories, getUsernameEffectClass } from '../utils/premiumCustomizations.jsx';
 import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 import './Profile.css';
@@ -55,8 +53,6 @@ export default function Profile() {
     const navigate = useNavigate();
     const [toastMsg, setToastMsg] = useState(null);
     // const [blockedUsers, setBlockedUsers] = useState([]); // Moved to BlockedUsers.jsx
-    // const [showBlockedModal, setShowBlockedModal] = useState(false); // Moved to BlockedUsers.jsx
-    const [showAvatarEditor, setShowAvatarEditor] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const [showLegalMenu, setShowLegalMenu] = useState(false);
     
@@ -374,23 +370,7 @@ export default function Profile() {
         }
     };
 
-    const handleAvatarSave = (url) => {
-        setShowAvatarEditor(false);
-        // Append unique timestamp to force cache invalidation for 3D viewers
-        // Handle existing query params from AvatarEditor
-        const separator = url.includes('?') ? '&' : '?';
-        const timestampedUrl = `${url}${separator}t=${Date.now()}`;
-        console.log('🔵 [Profile] Avatar Save - Original URL:', url);
-        console.log('🔵 [Profile] Avatar Save - Timestamped URL:', timestampedUrl);
-        
-        // Aggressively preload the 2D version for the Map
-        const avatar2D = getAvatar2D(timestampedUrl);
-        const preloadImg = new Image();
-        preloadImg.src = avatar2D;
-        console.log('🔵 [Profile] Preloading 2D Avatar for Map:', avatar2D);
 
-        updateProfile({ avatar_url: timestampedUrl });
-    };
 
     const showToast = (msg) => {
         setToastMsg(msg);
@@ -507,7 +487,6 @@ export default function Profile() {
     if (!user) return null;
 
     const customizations = getPremiumCustomizations(user);
-    const is3DAvatar = user.avatar_url?.includes('.glb');
 
     const getProfileBgStyle = (styleKey) => {
         if (!styleKey || styleKey === 'default') return {};
@@ -554,14 +533,7 @@ export default function Profile() {
                 </Suspense>
             )}
 
-            {showAvatarEditor && (
-                <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}><div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>}>
-                    <AvatarEditor 
-                        onSave={handleAvatarSave} 
-                        onClose={() => setShowAvatarEditor(false)} 
-                    />
-                </Suspense>
-            )}
+
 
             {/* Cover Banner — shown only when no custom background */}
             {!hasCustomBg && (
@@ -569,37 +541,24 @@ export default function Profile() {
             )}
 
             {/* Header Card */}
-            <div className={`profile-header-card ${is3DAvatar ? 'expanded-3d' : ''} ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`} style={hasCustomBg ? { marginTop: '20px' } : {}}>
-                <div className={`avatar-wrapper ${is3DAvatar ? 'wrapper-3d' : ''}`} style={{ position: 'relative' }}>
-                    {is3DAvatar ? (
-                        <div className="avatar-3d-container" style={{ position: 'relative' }}>
-                            <Suspense fallback={
-                                <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ width: 30, height: 30, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0084ff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                                </div>
-                            }>
-                                <Avatar3D url={user.avatar_url} key={user.avatar_url} poster={getAvatar2D(user.avatar_url)} />
-                            </Suspense>
-                            <AvatarAccessories accessory={customizations.avatarAccessory} />
-                        </div>
-                    ) : (
-                        <div className={`profile-avatar-container ${
-                            user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
-                            user.subscription_tier === 'gold' ? 'avatar-ring-gold' :
-                            user.subscription_tier === 'diamond' ? `avatar-ring-diamond effect-${user.avatar_effect || 'none'}` :
-                            user.subscription_tier === 'legend' ? 'avatar-ring-legend' : ''
-                        }`} style={{ width: '100%', height: '100%', borderRadius: '50%', position: 'relative' }}>
-                            <img src={(() => {
-                                if (user.avatar_url) return user.avatar_url;
-                                // Fallback to realistic defaults
-                                const gender = user.gender;
-                                if (gender === 'Male') return DEFAULT_MALE_AVATAR;
-                                if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
-                                return DEFAULT_GENERIC_AVATAR;
-                            })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} width="104" height="104" fetchpriority="high" decoding="sync" />
-                            <AvatarAccessories accessory={customizations.avatarAccessory} />
-                        </div>
-                    )}
+            <div className={`profile-header-card ${user.subscription_tier === 'silver' ? 'profile-card-silver' : user.subscription_tier === 'gold' ? 'profile-card-gold' : user.subscription_tier === 'diamond' ? 'profile-card-diamond' : ''}`} style={hasCustomBg ? { marginTop: '20px' } : {}}>
+                <div className="avatar-wrapper" style={{ position: 'relative' }}>
+                    <div className={`profile-avatar-container ${
+                        user.subscription_tier === 'silver' ? 'avatar-ring-silver' :
+                        user.subscription_tier === 'gold' ? 'avatar-ring-gold' :
+                        user.subscription_tier === 'diamond' ? `avatar-ring-diamond effect-${user.avatar_effect || 'none'}` :
+                        user.subscription_tier === 'legend' ? 'avatar-ring-legend' : ''
+                    }`} style={{ width: '100%', height: '100%', borderRadius: '50%', position: 'relative' }}>
+                        <img src={(() => {
+                            if (user.avatar_url) return user.avatar_url;
+                            // Fallback to realistic defaults
+                            const gender = user.gender;
+                            if (gender === 'Male') return DEFAULT_MALE_AVATAR;
+                            if (gender === 'Female') return DEFAULT_FEMALE_AVATAR;
+                            return DEFAULT_GENERIC_AVATAR;
+                        })()} alt="Avatar" className={`profile-avatar ${getStatusRingClass(user, user)}`} width="104" height="104" fetchpriority="high" loading="eager" decoding="async" />
+                        <AvatarAccessories accessory={customizations.avatarAccessory} />
+                    </div>
                     
                     {/* Unified Update Button */}
                     <div className="avatar-overlay-btn" onClick={(e) => { e.stopPropagation(); setActiveModal('photo-options'); }}>

@@ -1070,32 +1070,7 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
     color: #7C3AED;
 }
 
-/* 3D Avatar Styles */
-.profile-header-card.expanded-3d {
-    background: transparent;
-    border-bottom: none;
-    padding-bottom: 20px;
-    padding-top: 0;
-    margin-top: 0;
-}
 
-.avatar-wrapper.wrapper-3d {
-    width: 100%;
-    height: auto;
-    background: transparent;
-    border-radius: 0;
-    margin-bottom: 20px;
-    margin-top: -30px; /* Pull up a bit more */
-    display: flex; 
-    justify-content: center;
-}
-
-.avatar-3d-container {
-    width: 100%;
-    max-width: 400px;
-    height: 180px; /* Shortened from 280px */
-    position: relative;
-}
 
 .edit-avatar-btn-overlay:hover {
     background: white;
@@ -1126,24 +1101,6 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
     cursor: pointer;
 }
 
-.edit-avatar-btn-3d {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.6);
-    border: 1px solid rgba(255,255,255,0.2);
-    color: white;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-weight: 600;
-    cursor: pointer;
-    backdrop-filter: blur(5px);
-    transition: all 0.2s;
-    display: flex; align-items: center; gap: 8px;
-    z-index: 10;
-}
-.edit-avatar-btn-3d:hover { background: rgba(0,0,0,0.8); border-color: var(--accent-cyan); }
 
 .edit-avatar-btn-overlay {
     position: absolute; bottom: 0; right: 0;
