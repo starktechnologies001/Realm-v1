@@ -56,7 +56,7 @@ const BottomNav = React.memo(function BottomNav({ friendRequestCount = 0, unread
   ];
 
   return (
-    <div className="bottom-nav">
+    <div className="bottom-nav" role="navigation" aria-label="Main Navigation">
       {tabs.map(tab => {
         const isActive = location.pathname === tab.path;
         const notificationCount = tab.id === 'friends' ? friendRequestCount : tab.id === 'chat' ? unreadMessageCount : 0;
@@ -66,6 +66,8 @@ const BottomNav = React.memo(function BottomNav({ friendRequestCount = 0, unread
             key={tab.id}
             className={`nav-item ${isActive ? 'active' : ''}`}
             onClick={() => navigate(tab.path)}
+            aria-label={`${tab.label} tab`}
+            aria-current={isActive ? 'page' : undefined}
           >
             <span className="nav-icon-wrapper">
                 {tab.icon(isActive)}
@@ -76,95 +78,6 @@ const BottomNav = React.memo(function BottomNav({ friendRequestCount = 0, unread
           </button>
         );
       })}
-
-      <style>{`
-        .bottom-nav {
-          position: fixed;
-          bottom: 0; left: 0; right: 0;
-          bottom: 0; left: 0; right: 0;
-          height: calc(60px + env(safe-area-inset-bottom)); /* Dynamic height for safe area content */
-          background: var(--glass-bg);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-top: 1px solid var(--glass-border);
-          display: flex;
-          justify-content: space-around;
-          align-items: center;
-          z-index: 2000;
-          padding-bottom: env(safe-area-inset-bottom);
-          box-shadow: 0 -4px 30px rgba(0,0,0,0.1);
-          transition: background 0.3s ease, border-color 0.3s ease;
-        }
-        
-        .nav-item {
-          background: none;
-          border: none;
-          color: var(--text-secondary);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          flex: 1;
-          height: 100%;
-          justify-content: center;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          cursor: pointer;
-        }
-        
-        .nav-item.active {
-          color: var(--brand-primary);
-        }
-        
-        .nav-icon-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        .nav-item svg {
-            transition: all 0.2s ease;
-        }
-
-        .nav-item.active .nav-icon-wrapper {
-          transform: translateY(-2px);
-        }
-        
-        .nav-label {
-          font-size: 0.72rem; /* Increased for legibility */
-          font-weight: 600;
-          letter-spacing: 0.2px;
-          opacity: 0.8;
-          margin-top: 2px;
-        }
-        .nav-item.active .nav-label {
-            opacity: 1;
-        }
-        
-        /* Subtle Glow Dot for Active State */
-        .active-dot {
-            position: absolute;
-            bottom: 4px;
-            width: 4px; height: 4px;
-            background: #7C3AED;
-            border-radius: 50%;
-            box-shadow: 0 0 8px #7C3AED;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @media (min-width: 768px) {
-            .bottom-nav {
-                max-width: 500px;
-                left: 50%;
-                transform: translateX(-50%);
-                bottom: 20px;
-                border-radius: 20px;
-                border: 1px solid rgba(255,255,255,0.1);
-            }
-        }
-      `}</style>
     </div>
   );
 });

@@ -792,12 +792,16 @@ export default function MapHome() {
         }
     };
 
+    const nearbyUserIdsKey = useMemo(() => {
+        return nearbyUsers.map(u => u.id).join(',');
+    }, [nearbyUsers]);
+
     // Trigger initial reactions fetch when visible user set changes
     useEffect(() => {
         if (!currentUser) return;
         const visibleUserIds = [currentUser.id, ...nearbyUsers.map(u => u.id)];
         fetchReactions(visibleUserIds);
-    }, [nearbyUsers.map(u => u.id).join(','), currentUser?.id]);
+    }, [nearbyUserIdsKey, currentUser?.id]);
 
     // Subscribe to thought reactions realtime changes
     useEffect(() => {
@@ -815,7 +819,7 @@ export default function MapHome() {
 
                 if (eventType === 'INSERT') {
                     const reactorId = newRec.user_id;
-                    let reactorUser = nearbyUsers.find(u => u.id === reactorId) || (currentUser.id === reactorId ? currentUser : null);
+                    let reactorUser = nearbyUsersRef.current.find(u => u.id === reactorId) || (currentUserRef.current?.id === reactorId ? currentUserRef.current : null);
                     if (!reactorUser) {
                         const { data } = await supabase
                             .from('profiles')
@@ -845,7 +849,7 @@ export default function MapHome() {
                     });
 
                     // Toast notification for incoming reactions on our thought
-                    if (newRec.thought_id === currentUser.id && newRec.user_id !== currentUser.id) {
+                    if (newRec.thought_id === currentUserRef.current?.id && newRec.user_id !== currentUserRef.current?.id) {
                         const reactorName = reactorUser?.username || reactorUser?.name || 'Someone';
                         const emojiMap = { love: '❤️', fire: '🔥', laugh: '😂', clap: '👏' };
                         const emoji = emojiMap[newRec.reaction_type] || '❤️';
@@ -854,10 +858,10 @@ export default function MapHome() {
                             text: `🔔 ${reactorName} reacted ${emoji} to your thought`,
                             onClick: () => {
                                 const selfUser = {
-                                    ...currentUser,
-                                    lat: currentUser.latitude || userLocation?.lat,
-                                    lng: currentUser.longitude || userLocation?.lng,
-                                    thought: currentUser.thought || currentUser.status_message,
+                                    ...currentUserRef.current,
+                                    lat: currentUserRef.current.latitude || userLocationRef.current?.lat,
+                                    lng: currentUserRef.current.longitude || userLocationRef.current?.lng,
+                                    thought: currentUserRef.current.thought || currentUserRef.current.status_message,
                                     friendshipStatus: null // self
                                 };
                                 setSelectedUser(selfUser);
@@ -895,9 +899,9 @@ export default function MapHome() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [currentUser?.id, nearbyUsers, currentUser, userLocation]);
+    }, [currentUser?.id]);
 
-    const handleToggleReaction = async (thoughtUserId, reactionType) => {
+    const handleToggleReaction = React.useCallback(async (thoughtUserId, reactionType) => {
         if (!currentUser) return;
         const currentUserId = currentUser.id;
         const existingList = thoughtReactions[thoughtUserId] || [];
@@ -990,7 +994,7 @@ export default function MapHome() {
                 [thoughtUserId]: existingList
             }));
         }
-    };
+    }, [currentUser, thoughtReactions]);
 
     useEffect(() => {
         window.handleThoughtClick = (id) => {
@@ -1073,6 +1077,18 @@ export default function MapHome() {
     // 🔥 Ref-based location for non-reactive reads (prevents GPS updates causing full re-renders)
     const userLocationRef = React.useRef(userLocation);
 
+    // Refs and effects to stabilize realtime subscription dependencies
+    const currentUserRef = useRef(currentUser);
+    const nearbyUsersRef = useRef(nearbyUsers);
+
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
+
+    useEffect(() => {
+        nearbyUsersRef.current = nearbyUsers;
+    }, [nearbyUsers]);
+
     // 🔥 NATIVE HARDWARE ACCELERATED ANIMATION MANAGER
     const animateNativeMarker = React.useCallback((id, newLat, newLng) => {
         const marker = markerRefs.current.get(id);
@@ -1139,10 +1155,10 @@ export default function MapHome() {
         userLocationRef.current = userLocation;
     }, [userLocation]);
 
-    // 🚀 LOCAL USER HIGH-FREQUENCY GPS TRACKING (Overrides Context internally for map smoothness)
+    // Sync circle center and animate/remove native marker when locationEnabled or userLocation updates
     useEffect(() => {
         if (!locationEnabled || !currentUser?.id) {
-            // If location turned OFF, visually remove marker & update DB
+            // If location turned OFF, visually remove marker
             if (currentUser?.id) {
                 const marker = markerRefs.current.get(currentUser.id);
                 if (marker) {
@@ -1153,51 +1169,11 @@ export default function MapHome() {
             return;
         }
 
-        let watchId = null;
-        let lastAnimatedLat = null;
-        let lastAnimatedLng = null;
-        
-        try {
-            watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    const newLat = pos.coords.latitude;
-                    const newLng = pos.coords.longitude;
-
-                    // Update circle center state when new position is received
-                    setCircleCenter([newLat, newLng]);
-
-                    // Only animate local marker if the user actually moved > 30 meters
-                    const movedEnough = !lastAnimatedLat || getDistance(lastAnimatedLat, lastAnimatedLng, newLat, newLng) >= 30;
-                    if (movedEnough) {
-                        lastAnimatedLat = newLat;
-                        lastAnimatedLng = newLng;
-                        animateNativeMarker(currentUser.id, newLat, newLng);
-                    }
-                },
-                (err) => { if (err.code !== 3) console.log('Map watch error:', err); },
-                { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
-            );
-        } catch (e) {
-            console.warn("Geolocation hardware locked during background wake", e);
-        }
-
-        return () => {
-             if (watchId !== null) {
-                 try {
-                     navigator.geolocation.clearWatch(watchId);
-                 } catch (e) {
-                     console.warn("Geolocation clearWatch failed during suspend", e);
-                 }
-             }
-        };
-    }, [locationEnabled, currentUser, animateNativeMarker]);
-
-    // Sync circle center when userLocation updates from context
-    useEffect(() => {
         if (userLocation?.lat && userLocation?.lng) {
             setCircleCenter([userLocation.lat, userLocation.lng]);
+            animateNativeMarker(currentUser.id, userLocation.lat, userLocation.lng);
         }
-    }, [userLocation]);
+    }, [locationEnabled, userLocation, currentUser?.id, animateNativeMarker]);
 
     // Check Profile Completeness
     useEffect(() => {
@@ -1209,7 +1185,7 @@ export default function MapHome() {
 
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('*')
+                .select('id, username, full_name, gender, relationship_status, avatar_url, onboarding_completed, is_location_on, is_ghost_mode, latitude, longitude, status, status_message, status_updated_at, last_active, is_verified, verified_at, visibility_mode, subscription_tier, thought_bubble_style, thought_bubble_color')
                 .eq('id', user.id)
                 .maybeSingle();
 
@@ -1273,29 +1249,15 @@ export default function MapHome() {
     }, []);
 
 
-    // Global Unread Count Logic
-    const [unreadCount, setUnreadCount] = [0, () => {}];
-
+    // Foreground New Message Toast Listener
     useEffect(() => {
         if (!currentUser?.id) return;
 
-        // Fetch initial count
-        const fetchUnread = async () => {
-            const { count, error } = await supabase
-                .from('messages')
-                .select('id', { count: 'exact', head: true })
-                .eq('receiver_id', currentUser.id)
-                .eq('is_read', false);
-            if (!error) setUnreadCount(count || 0);
-        };
-        fetchUnread();
-
-        // Subscribe to new messages
+        // Subscribe to new messages for toast notifications
         const channel = supabase
             .channel('global_unread')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, async (payload) => {
                 const newMessage = payload.new;
-                setUnreadCount(prev => prev + 1);
 
                 // Check mute settings before notifying
                 const { data: muteData } = await supabase
@@ -1311,11 +1273,16 @@ export default function MapHome() {
                     showToast(`New message from user! 📩`);
                 }
             })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, async () => {
-                // Re-fetch if messages are marked read elsewhere
-                fetchUnread();
-            })
             .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id]);
+
+    // Listen for all friendship and block changes
+    useEffect(() => {
+        if (!currentUser) return;
 
         // Listen for all friendship changes
         const friendshipChannel = supabase
@@ -1591,7 +1558,6 @@ export default function MapHome() {
             });
 
         return () => {
-            supabase.removeChannel(channel);
             supabase.removeChannel(friendshipChannel);
             supabase.removeChannel(blockChannel);
             supabase.removeChannel(messageRequestsChannel);

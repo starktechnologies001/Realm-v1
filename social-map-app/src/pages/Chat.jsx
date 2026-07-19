@@ -76,36 +76,8 @@ const CHAT_THEMES = {
     celebration_mode: { name: 'Celebration', emoji: '🎊', fontColor: '#6200ea', backgroundColor: '#f3e5f5', backgroundPattern: 'confetti', bubbleSent: '#d1c4e9', bubbleReceived: '#b39ddb', accentColor: '#651fff', iconColor: '#651fff', textColor: '#311b92', type: 'light' }
 };
 
-// ================= PERF INSTRUMENTATION START =================
-window.__perfLogs = window.__perfLogs || {};
-window.__dbToTemp = window.__dbToTemp || {};
+// ================= PERF INSTRUMENTATION DISABLED =================
 
-window.__getId = (msg) => {
-    if (!msg) return null;
-    if (msg.tempId) return msg.tempId;
-    if (msg.id && window.__dbToTemp[msg.id]) return window.__dbToTemp[msg.id];
-    if (msg.id) return msg.id;
-    return null;
-}
-
-window.__logStep = (step, id) => {
-    if (!id || id === 'unknown') return;
-    if (!window.__perfLogs[id]) window.__perfLogs[id] = [];
-    if (window.__perfLogs[id].some(e => e.step === step)) return;
-    window.__perfLogs[id].push({ step, time: performance.now() });
-    
-    if (step === 'Visible') {
-        const events = window.__perfLogs[id];
-        const t0 = events[0].time;
-        let out = '';
-        events.forEach(e => {
-            out += `${e.step}:\n${Math.round(e.time - t0)} ms\n\n`;
-        });
-        out += `Total:\n${Math.round(events[events.length-1].time - t0)} ms\n`;
-        console.log(out);
-    }
-}
-// ================= PERF INSTRUMENTATION END =================
 
 export default function Chat() {
     const [activeChatUser, setActiveChatUser] = useState(null);
@@ -516,7 +488,7 @@ export default function Chat() {
     const fetchProfileAndAddChat = async (userId, lastMsg, time, rawTime) => {
         const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, username, full_name, avatar_url, gender, relationship_status, status, status_message, last_active, is_verified, verified_at, subscription_tier, interests, birth_date')
             .eq('id', userId)
             .maybeSingle();
             
@@ -731,7 +703,7 @@ export default function Chat() {
         // Fetch full profile to get avatar and username
         const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, username, full_name, avatar_url, gender, relationship_status, status, status_message, last_active, is_verified, verified_at, subscription_tier, interests, birth_date, thought_bubble_style, thought_bubble_color')
             .eq('id', user.id)
             .maybeSingle();
             
@@ -1850,7 +1822,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 try {
                     const { data, error } = await supabase
                         .from('stories')
-                        .select('*')
+                        .select('id, user_id, media_url, media_type, caption, created_at')
                         .eq('user_id', targetUser.id)
                         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
                         .order('created_at', { ascending: true });
@@ -1899,21 +1871,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const messagesStateRef = useRef(messages);
     useEffect(() => { messagesStateRef.current = messages; }, [messages]);
 
-    // PERF TRACKER
-    useEffect(() => {
-        if (messages?.length > 0) {
-            const lastMsg = messages[messages.length - 1];
-            const pid = window.__getId(lastMsg);
-            if (pid) {
-                window.__logStep('React Commit', pid);
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        window.__logStep('Visible', pid);
-                    }, 0);
-                });
-            }
-        }
-    }, [messages]);
+    // PERF TRACKER REMOVED
+
 
     const processedMessageIdsRef = useRef(new Set());
     const activeChatChannelRef = useRef(null);
@@ -2271,7 +2230,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             // will be false after unfriending regardless.
             const { data: request } = await supabase
                 .from('message_requests')
-                .select('*')
+                .select('id, status, sender_id, receiver_id, content, created_at')
                 .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser.id}),and(sender_id.eq.${targetUser.id},receiver_id.eq.${currentUser.id})`)
                 .order('created_at', { ascending: false })
                 .limit(1)
@@ -2671,7 +2630,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         const fetchMuteSettings = async () => {
             const { data } = await supabase
                 .from('chat_settings')
-                .select('*')
+                .select('id, user_id, partner_id, muted_until, muted_forever')
                 .eq('user_id', currentUser.id)
                 .eq('partner_id', targetUser.id)
                 .eq('partner_id', targetUser.id)
@@ -3140,7 +3099,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 // Fetch pending sent message requests to inject into chat
                 const { data: pendingRequests } = await supabase
                     .from('message_requests')
-                    .select('*')
+                    .select('id, sender_id, receiver_id, content, thought_text, created_at, status')
                     .eq('sender_id', currentUser.id)
                     .eq('receiver_id', targetUser.id)
                     .eq('status', 'pending');
@@ -3185,8 +3144,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         const roomId = [currentUser.id, targetUser.id].sort().join('_');
         
         const handleNewMessage = async (msgObj) => {
-            const pid = window.__getId(msgObj) || msgObj.id;
-            window.__logStep('handleNewMessage', pid);
 
             // Deduplicate processing for the same message ID
             if (msgObj.id) {
@@ -3246,9 +3203,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
 
                 const newMessage = { ...msgObj, reply_to: replyToData };
-                
-                const pid = window.__getId(newMessage);
-                window.__logStep('setMessages', pid);
 
                 setMessages(prev => {
                     // Check if already applied (duplicate event protection)
@@ -3286,7 +3240,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     }
                 }
             }
-            window.__logStep('handleNewMessage Exit', window.__getId(msgObj) || msgObj.id);
         };
 
         const channel = supabase
@@ -3296,15 +3249,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 schema: 'public',
                 table: 'messages'
             }, async (payload) => {
-                const pid = window.__getId(payload.new) || payload.new.id;
-                window.__logStep('Postgres Received', pid);
                 await handleNewMessage(payload.new);
             })
             .on('broadcast', { event: 'new_message' }, async ({ payload }) => {
                 console.log('⚡ [Chat] Broadcast message received in active chat room:', payload);
                 if (payload && payload.message) {
-                    const pid = window.__getId(payload.message) || payload.message.id;
-                    window.__logStep('Broadcast Received', pid);
                     await handleNewMessage(payload.message);
                 }
             })
@@ -3553,7 +3502,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         if (!textToSend.trim() && type === 'text' && !imageUrl) return;
 
         const tempId = `temp_${Date.now()}_${Math.random()}`;
-        window.__logStep('Send Click', tempId);
         
         // Check if receiver is online (last_active within 1 minute)
         const { data: receiverProfile } = await supabase
@@ -3594,10 +3542,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         if (type === 'text') setInput('');
         
         // Clear reply state after adding to messages
-        const replyId = replyToMessage?.id || null;
         setReplyToMessage(null);
 
-        window.__logStep('Database INSERT Started', tempId);
         // DB Insert
         const { data, error } = await supabase.from('messages').insert({
             sender_id: currentUser.id,
@@ -3608,9 +3554,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             is_read: false,
             delivery_status: initialStatus,
             delivered_at: isReceiverOnline ? new Date().toISOString() : null,
-            reply_to_message_id: replyId
+            reply_to_message_id: optimisticMessage.reply_to_message_id
         }).select();
-        window.__logStep('Database INSERT Completed', tempId);
 
         if (error) {
             console.error("Send error:", error);
@@ -3623,7 +3568,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             setMessages(prev => prev.filter(m => m.tempId !== tempId));
         } else if (data && data[0]) {
             const realMessage = { ...data[0], reply_to: optimisticMessage.reply_to };
-            window.__dbToTemp[realMessage.id] = tempId;
             // Replace optimistic with real message
             setMessages(prev => prev.map(m => 
                 m.tempId === tempId ? realMessage : m
@@ -3631,7 +3575,6 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             // ⚡ Instant Broadcast Delivery to Active Room
             if (activeChatChannelRef.current) {
-                window.__logStep('Broadcast Sent', tempId);
                 activeChatChannelRef.current.send({
                     type: 'broadcast',
                     event: 'new_message',

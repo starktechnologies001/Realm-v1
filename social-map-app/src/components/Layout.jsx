@@ -145,19 +145,15 @@ export default function Layout() {
                 // Fetch unread messages to count unique conversations (senders)
                 const { data: unreadMsgs, error: mErr } = await supabase
                     .from('messages')
-                    .select('sender_id, deleted_for')
+                    .select('sender_id')
                     .eq('receiver_id', session.user.id)
                     .eq('is_read', false)
-                    .neq('message_type', 'system');
+                    .neq('message_type', 'system')
+                    .or(`deleted_for.is.null,deleted_for.not.cs.{"${session.user.id}"}`);
                 
                 if (mounted && !mErr && unreadMsgs) {
-                    // 1. Filter out deleted messages
-                    const activeUnread = unreadMsgs.filter(msg => 
-                        !msg.deleted_for || !msg.deleted_for.includes(session.user.id)
-                    );
-                    
-                    // 2. Count unique senders (Conversations)
-                    const uniqueSenders = new Set(activeUnread.map(m => m.sender_id));
+                    // Count unique senders (Conversations)
+                    const uniqueSenders = new Set(unreadMsgs.map(m => m.sender_id));
                     setUnreadMessageCount(uniqueSenders.size);
                 }
             } catch (err) {

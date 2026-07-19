@@ -345,7 +345,12 @@ export function LocationProvider({ children }) {
                 (timeSinceSync > 15000 && localDistMeters > 15) || 
                 (timeSinceSync > 30000);
 
-            setUserLocation(newLoc);
+            setUserLocation(prev => {
+                if (prev && distanceMetres(prev.lat, prev.lng, newLoc.lat, newLoc.lng) < 1) {
+                    return prev;
+                }
+                return newLoc;
+            });
             try { localStorage.setItem('lastKnownLocation', JSON.stringify(newLoc)); } catch {}
 
             if (!shouldSync) return;

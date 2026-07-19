@@ -55,7 +55,7 @@ export const CallProvider = ({ children }) => {
             }
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('*')
+                .select('id, username, full_name, avatar_url, gender, subscription_tier, mute_settings')
                 .eq('id', userId)
                 .maybeSingle();
             
@@ -140,7 +140,7 @@ export const CallProvider = ({ children }) => {
         const checkPendingCalls = async () => {
             const { data: pendingCalls, error } = await supabase
                 .from('calls')
-                .select('*')
+                .select('id, caller_id, receiver_id, status, type, channel_name, created_at')
                 .eq('receiver_id', currentUser.id)
                 .in('status', ['pending', 'ringing'])
                 .order('created_at', { ascending: false })
@@ -188,7 +188,7 @@ export const CallProvider = ({ children }) => {
                 }
             }
             
-            const { data: callerProfile } = await supabase.from('profiles').select('*').eq('id', callDataPayload.caller_id).maybeSingle();
+            const { data: callerProfile } = await supabase.from('profiles').select('id, username, full_name, avatar_url, gender').eq('id', callDataPayload.caller_id).maybeSingle();
             if (callerProfile) {
                 if (ignorableCallIds.current.has(callDataPayload.id)) return;
 

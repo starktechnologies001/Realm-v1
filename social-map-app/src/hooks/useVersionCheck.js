@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 // Interval to check for new versions (every 5 minutes)
-const POLLING_INTERVAL = 5 * 60 * 1000; 
+const POLLING_INTERVAL = 5 * 60 * 1000;
 
 export function useVersionCheck() {
-  const [currentVersion, setCurrentVersion] = useState(null);
+  // Use a ref so fetchVersion always reads the latest version
+  // without causing the effect to tear down and recreate the interval
+  const currentVersionRef = useRef(null);
 
   useEffect(() => {
     let checkInterval;
@@ -15,7 +17,7 @@ export function useVersionCheck() {
         const response = await fetch(`/version.json?t=${new Date().getTime()}`, {
           cache: 'no-store'
         });
-        
+
         if (!response.ok) return;
 
         const data = await response.json();
@@ -23,14 +25,16 @@ export function useVersionCheck() {
 
         if (!serverVersion) return;
 
-        if (currentVersion === null) {
-          // Initial load: just set the current running version
-          setCurrentVersion(serverVersion);
-        } else if (currentVersion !== serverVersion) {
-            console.log(`Update detected: ${currentVersion} -> ${serverVersion}. Triggering app refresh...`);
-            // Set flag to prevent intercept loops, then hard reload
-            sessionStorage.setItem('vite-preload-error-hard-reload', 'true');
-            window.location.reload(true);
+        if (currentVersionRef.current === null) {
+          // Initial load: record the current running version
+          currentVersionRef.current = serverVersion;
+        } else if (currentVersionRef.current !== serverVersion) {
+          console.log(
+            `Update detected: ${currentVersionRef.current} -> ${serverVersion}. Triggering app refresh...`
+          );
+          // Set flag to prevent intercept loops, then hard reload
+          sessionStorage.setItem('vite-preload-error-hard-reload', 'true');
+          window.location.reload(true);
         }
       } catch (error) {
         // Ignore network errors (offline mode or general fetch failures)
@@ -41,7 +45,7 @@ export function useVersionCheck() {
     // Initial check
     fetchVersion();
 
-    // Set polling interval
+    // Set polling interval — runs exactly once, never torn down until unmount
     checkInterval = setInterval(fetchVersion, POLLING_INTERVAL);
 
     // Also check when window regains focus (user switches back to the app)
@@ -52,5 +56,6 @@ export function useVersionCheck() {
       clearInterval(checkInterval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [currentVersion]);
+  }, []); // Runs once on mount — ref provides stable access to latest version
 }
+
