@@ -796,24 +796,30 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
         border-radius: 18px;
     }
     .menu-item {
-        padding: 11px 14px;
+        padding: 13px 16px !important;
     }
     .menu-label {
-        font-size: 0.9rem;
+        font-size: 1.02rem !important;
+        font-weight: 400 !important;
     }
     .menu-value {
-        font-size: 0.8rem;
+        font-size: 0.92rem !important;
+        font-weight: 500 !important;
+        color: var(--text-secondary, #6e6e73) !important;
     }
     .menu-icon-wrapper {
-        width: 30px;
-        height: 30px;
-        font-size: 0.85rem;
-        border-radius: 9px;
+        width: 34px !important;
+        height: 34px !important;
+        font-size: 1rem !important;
+        border-radius: 10px !important;
     }
     .section-label {
-        font-size: 0.76rem !important;
-        margin-top: 8px !important;
+        font-size: 0.82rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 1.1px !important;
+        margin-top: 12px !important;
         margin-bottom: 10px !important;
+        opacity: 0.8 !important;
     }
 
     /* ── Modal mobile sizing ── */
@@ -839,10 +845,10 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
         padding: 14px 16px 10px;
     }
     .modal-content h3 {
-        font-size: 1.1rem;
+        font-size: 1.15rem;
     }
     .modal-header h3 {
-        font-size: 0.95rem;
+        font-size: 1.05rem;
     }
     .modal-footer {
         flex-direction: column;
@@ -862,21 +868,22 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
     /* ── Stats Card (Friends / Thoughts / Streak / Badges) ── */
     .profile-stats-card {
         margin: 0 12px 12px 12px !important;
-        padding: 11px 4px !important;
-        border-radius: 18px !important;
+        padding: 12px 6px !important;
+        border-radius: 20px !important;
     }
     .stats-item {
-        gap: 5px !important;
-        padding: 3px !important;
+        gap: 6px !important;
+        padding: 4px !important;
     }
     .stats-icon {
-        width: 36px !important;
-        height: 36px !important;
-        border-radius: 10px !important;
-        font-size: 1rem !important;
+        width: 38px !important;
+        height: 38px !important;
+        border-radius: 12px !important;
+        font-size: 1.1rem !important;
     }
     .stats-value {
-        font-size: 0.65rem !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
         white-space: nowrap !important;
     }
 
@@ -884,70 +891,93 @@ html[data-theme="dark"] .modal-content.legal-modal .modal-header {
     .premium-preview-card,
     .premium-preview-card.minimal {
         margin: 0 12px 12px 12px !important;
-        padding: 12px 16px !important;
-        border-radius: 18px !important;
-        gap: 8px !important;
+        padding: 14px 18px !important;
+        border-radius: 20px !important;
+        gap: 10px !important;
     }
     .premium-icon-box {
-        width: 38px !important;
-        height: 38px !important;
-        font-size: 1.1rem !important;
-        border-radius: 10px !important;
+        width: 42px !important;
+        height: 42px !important;
+        font-size: 1.25rem !important;
+        border-radius: 12px !important;
         flex-shrink: 0 !important;
     }
     .premium-preview-content {
-        gap: 10px !important;
+        gap: 6px !important;
     }
     .premium-title {
-        font-size: 0.88rem !important;
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
     }
     .premium-subtitle {
-        font-size: 0.72rem !important;
+        font-size: 0.88rem !important;
+        font-weight: 400 !important;
     }
     .premium-upgrade-btn {
-        padding: 6px 13px !important;
-        font-size: 0.72rem !important;
+        padding: 8px 16px !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
         border-radius: 18px !important;
     }
 
     /* ── Achievements Card ── */
     .achievements-preview-card {
         margin: 0 12px 12px 12px !important;
-        padding: 12px 16px !important;
-        border-radius: 18px !important;
-        gap: 10px !important;
+        padding: 14px 18px !important;
+        border-radius: 20px !important;
+        gap: 12px !important;
     }
     .achievements-title {
-        font-size: 0.88rem !important;
+        font-size: 1.02rem !important;
+        font-weight: 700 !important;
     }
     .view-all-link {
-        font-size: 0.74rem !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
     }
     .achievements-preview-row {
         gap: 8px !important;
     }
     .achievement-icon-bubble {
-        width: 36px !important;
-        height: 36px !important;
-        font-size: 1.1rem !important;
+        width: 38px !important;
+        height: 38px !important;
+        font-size: 1.15rem !important;
     }
 
     /* ── Visitors Preview Card ── */
-    .visitors-preview-card {
+    .visitors-preview-card,
+    .profile-visitors-card {
         margin: 0 12px 12px 12px !important;
-        padding: 12px 16px !important;
-        border-radius: 18px !important;
+        padding: 14px 18px !important;
+        border-radius: 20px !important;
+    }
+    .visitor-name {
+        font-size: 1.0rem !important;
+        font-weight: 600 !important;
+    }
+    .visitor-time {
+        font-size: 0.82rem !important;
+        font-weight: 400 !important;
+    }
+    .visitor-btn {
+        font-size: 0.85rem !important;
+        padding: 6px 14px !important;
+        border-radius: 14px !important;
+        font-weight: 500 !important;
     }
 
     /* ── Settings / Menu sections ── */
     .settings-section {
         margin: 0 12px 12px 12px !important;
-        border-radius: 18px !important;
+        border-radius: 20px !important;
     }
     .section-label {
-        font-size: 0.76rem !important;
-        margin-top: 8px !important;
+        font-size: 0.82rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 1.1px !important;
+        margin-top: 12px !important;
         margin-bottom: 10px !important;
+        opacity: 0.8 !important;
     }
 }
 
