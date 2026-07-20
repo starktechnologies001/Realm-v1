@@ -773,16 +773,16 @@ export default function Profile() {
             {user.subscription_tier && user.subscription_tier !== 'free' ? (
                 <div className="profile-visitors-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #71717a)' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #71717a)' }}>
                             👀 Recent Profile Visitors
                         </span>
-                        <span style={{ fontSize: '0.85rem', color: '#7C3AED', fontWeight: 600, cursor: 'pointer' }} onClick={() => navigate('/profile/insights')}>
+                        <span style={{ fontSize: '0.80rem', color: '#7C3AED', fontWeight: 600, cursor: 'pointer' }} onClick={() => navigate('/profile/insights')}>
                             View Analytics &rarr;
                         </span>
                     </div>
 
                     {visitors.length === 0 ? (
-                        <div style={{ color: 'var(--text-secondary, #71717a)', fontSize: '0.92rem', textAlign: 'center', padding: '10px 0' }}>
+                        <div style={{ color: 'var(--text-secondary, #71717a)', fontSize: '0.85rem', textAlign: 'center', padding: '10px 0' }}>
                             No visitors in the last 30 days.
                         </div>
                     ) : (
@@ -834,18 +834,18 @@ export default function Profile() {
                     cursor: 'pointer'
                 }} onClick={() => navigate('/subscription')}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #6e6e73)' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-secondary, #6e6e73)' }}>
                             👀 Profile Visitors
                         </span>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 600 }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 600 }}>
                             🔒 Locked
                         </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
-                        <span style={{ fontSize: '1.2rem', color: 'var(--text-primary, #1d1d1f)', fontWeight: 700 }}>
+                        <span style={{ fontSize: '1.1rem', color: 'var(--text-primary, #1d1d1f)', fontWeight: 700 }}>
                             {visitors.length} {visitors.length === 1 ? 'person' : 'people'} viewed your profile this week
                         </span>
-                        <span style={{ fontSize: '0.92rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 400 }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6e6e73)', fontWeight: 400 }}>
                             Upgrade to Silver to see who viewed you.
                         </span>
                     </div>
