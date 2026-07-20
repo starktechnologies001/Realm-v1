@@ -351,8 +351,30 @@ export const CallProvider = ({ children }) => {
             caller_id: callerId || currentUser.id // Fallback to current user if not provided (assume creator is caller)
         };
 
-        // If we already have a log for this session and we are ending/updating it
-        if (activeCallMessageId.current && (status === 'ended' || status === 'declined' || status === 'missed' || status === 'rejected' || status === 'busy' || status === 'cancelled')) {
+        // If activeCallMessageId is not set in memory, check DB for an existing recent call log to update
+        if (!activeCallMessageId.current && partnerId) {
+            const { data: recentLogs } = await supabase
+                .from('messages')
+                .select('id, content')
+                .eq('message_type', 'call_log')
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${currentUser.id})`)
+                .gt('created_at', new Date(Date.now() - 120000).toISOString()) // Created within last 2 minutes
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (recentLogs && recentLogs.length > 0) {
+                try {
+                    const parsed = JSON.parse(recentLogs[0].content);
+                    if (['calling', 'ringing', 'active'].includes(parsed.status) || status !== 'calling') {
+                        activeCallMessageId.current = recentLogs[0].id;
+                        console.log(`📌 Found active call log in DB: ${recentLogs[0].id}`);
+                    }
+                } catch { /* parse error fallback */ }
+            }
+        }
+
+        // If we have an active call log (either from ref or DB search), UPDATE it!
+        if (activeCallMessageId.current) {
              console.log(`📝 Updating existing call log ${activeCallMessageId.current} to: ${status}`);
              const { error } = await supabase.from('messages')
                 .update({ content: JSON.stringify(contentPayload) })
@@ -361,7 +383,7 @@ export const CallProvider = ({ children }) => {
              if (error) console.error("Error updating call log:", error);
              
              // Clear ref after final update
-             if (status === 'ended' || status === 'declined' || status === 'missed' || status === 'rejected' || status === 'busy' || status === 'cancelled') {
+             if (['ended', 'declined', 'missed', 'rejected', 'busy', 'cancelled'].includes(status)) {
                  activeCallMessageId.current = null;
              }
         } else {
@@ -379,7 +401,7 @@ export const CallProvider = ({ children }) => {
                 console.error("Error logging call message:", error);
             } else if (data) {
                 // If this is a "starting" status, save the ID for future updates
-                if (status === 'ringing' || status === 'active' || status === 'calling') {
+                if (['ringing', 'active', 'calling'].includes(status)) {
                     activeCallMessageId.current = data.id;
                 }
             }

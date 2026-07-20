@@ -99,14 +99,7 @@ html[data-theme="dark"] {
   padding: 0;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  position: fixed;
-  inset: 0;
+body {
   font-family: var(--font-family);
   background-color: var(--bg-color);
   color: var(--text-primary);
@@ -114,8 +107,6 @@ html, body {
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
-  touch-action: none;
-  -webkit-text-size-adjust: 100%;
 }
 
 /* Ensure Leaflet container intercepts touch gestures for map zooming rather than browser page zooming */
@@ -136,12 +127,10 @@ button {
 
 #root {
   width: 100%;
-  height: 100%;
   height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
 }
 
 /* Proper Dark Mode Defaults */
@@ -571,6 +560,7 @@ html[data-theme-premium="dark_plus"] body {
   background: linear-gradient(90deg, #e0f7fa, #00d4ff, #e0f7fa);
   background-size: 200% auto;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: shineText 3s linear infinite;
 }
@@ -1257,6 +1247,7 @@ html[data-theme-premium="royal_diamond"] body {
   background: linear-gradient(90deg, #00d4ff, #d946ef, #00d4ff);
   background-size: 200% auto;
   -webkit-background-clip: text !important;
+  background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   animation: usernameShine 3s linear infinite !important;
   font-weight: 800 !important;
@@ -1272,6 +1263,7 @@ html[data-theme-premium="royal_diamond"] body {
   background: linear-gradient(120deg, var(--text-primary) 35%, #ffffff 50%, var(--text-primary) 65%);
   background-size: 200% auto;
   -webkit-background-clip: text !important;
+  background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   animation: usernameShimmer 2.5s linear infinite !important;
   font-weight: 700 !important;
@@ -1634,6 +1626,7 @@ html[data-theme-premium="aurora_motion"] body {
   background: linear-gradient(90deg, #fef08a, #facc15, #ca8a04);
   background-size: 200% auto;
   -webkit-background-clip: text !important;
+  background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   animation: usernameShine 3s linear infinite !important;
   font-weight: 800 !important;
@@ -1643,6 +1636,7 @@ html[data-theme-premium="aurora_motion"] body {
   background: linear-gradient(90deg, #ff007f, #00f0ff, #ff007f);
   background-size: 200% auto;
   -webkit-background-clip: text !important;
+  background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   animation: usernameShine 2.5s linear infinite !important;
   font-weight: 800 !important;
@@ -1652,6 +1646,7 @@ html[data-theme-premium="aurora_motion"] body {
   background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000);
   background-size: 200% auto;
   -webkit-background-clip: text !important;
+  background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   animation: usernameShine 4s linear infinite !important;
   font-weight: 800 !important;

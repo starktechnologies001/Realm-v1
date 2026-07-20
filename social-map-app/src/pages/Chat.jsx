@@ -3370,12 +3370,28 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         return !isDeleted && !isBlocked;
                     });
 
+                    // Deduplicate call_logs: If multiple call_log messages exist within 60s, keep only the latest one with updated status
+                    const deduplicatedData = [];
+                    for (let i = 0; i < filteredData.length; i++) {
+                        const msg = filteredData[i];
+                        if (msg.message_type === 'call_log') {
+                            const msgTime = new Date(msg.created_at).getTime();
+                            const hasLaterCallLog = filteredData.some((other, j) => 
+                                j > i && 
+                                other.message_type === 'call_log' &&
+                                Math.abs(new Date(other.created_at).getTime() - msgTime) < 60000
+                            );
+                            if (hasLaterCallLog) continue;
+                        }
+                        deduplicatedData.push(msg);
+                    }
+
                     setMessages(prev => {
                         const optimisticMessages = prev.filter(m => m.tempId);
                         
                         // Deduplicate: Don't show optimistic message if it's already in fetched data
                         const safeOptimistic = optimisticMessages.filter(oMsg => {
-                            const match = filteredData.find(fMsg => 
+                            const match = deduplicatedData.find(fMsg => 
                                 fMsg.sender_id === oMsg.sender_id &&
                                 fMsg.content === oMsg.content &&
                                 // Check if created within last 10 seconds to ensure it's the same message
@@ -3384,7 +3400,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             return !match;
                         });
 
-                        const combined = [...filteredData, ...safeOptimistic];
+                        const combined = [...deduplicatedData, ...safeOptimistic];
 
                         // Debug: Check if call logs are in the combined data
                         const callLogsInCombined = combined.filter(m => m.message_type === 'call_log');

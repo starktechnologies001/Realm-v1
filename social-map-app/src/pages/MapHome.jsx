@@ -236,28 +236,83 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, 
 }
 
 
-// 🔒 ZoomController — disables all map zoom when location is enabled
-function ZoomController({ locationEnabled }) {
+// 🔍 CustomZoomControl — Floating + and - buttons for 1-tap map zooming
+function CustomZoomControl() {
     const map = useMap();
+    const controlRef = useRef(null);
 
     useEffect(() => {
-        if (!map) return;
-        if (locationEnabled) {
-            map.scrollWheelZoom.disable();
-            map.doubleClickZoom.disable();
-            map.touchZoom.disable();
-            map.boxZoom.disable();
-            map.keyboard.disable();
-        } else {
-            map.scrollWheelZoom.enable();
-            map.doubleClickZoom.enable();
-            map.touchZoom.enable();
-            map.boxZoom.enable();
-            map.keyboard.enable();
+        if (controlRef.current) {
+            L.DomEvent.disableClickPropagation(controlRef.current);
+            L.DomEvent.disableScrollPropagation(controlRef.current);
         }
-    }, [map, locationEnabled]);
+    }, []);
 
-    return null;
+    return (
+        <div 
+            ref={controlRef}
+            className="leaflet-bottom leaflet-right" 
+            style={{ 
+                bottom: 'calc(134px + env(safe-area-inset-bottom))',
+                right: '10px',
+                zIndex: 400,
+                pointerEvents: 'auto',
+                position: 'absolute',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+            }}
+        >
+            <button
+                onClick={() => map.zoomIn()}
+                title="Zoom In"
+                style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    borderRadius: '50%',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#1f2937',
+                    fontSize: '22px',
+                    fontWeight: '600',
+                    transition: 'transform 0.15s ease, background 0.15s ease'
+                }}
+            >
+                +
+            </button>
+            <button
+                onClick={() => map.zoomOut()}
+                title="Zoom Out"
+                style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    borderRadius: '50%',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#1f2937',
+                    fontSize: '24px',
+                    fontWeight: '600',
+                    transition: 'transform 0.15s ease, background 0.15s ease'
+                }}
+            >
+                −
+            </button>
+        </div>
+    );
 }
 
 // 📍 MyLocationPin — pulsing "You Are Here" dot rendered at user's real GPS location
@@ -4243,8 +4298,8 @@ export default function MapHome() {
                     />
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
-                {/* 🔒 Disable zoom when location is active */}
-                <ZoomController locationEnabled={locationEnabled} />
+                {/* 🔍 Floating Zoom In / Zoom Out Controls */}
+                <CustomZoomControl />
                 {/* 📍 Pulsing "You Are Here" pin at real GPS location */}
                 {locationEnabled && userLocation?.lat && userLocation?.lng && (
                     <MyLocationPin lat={userLocation.lat} lng={userLocation.lng} />
