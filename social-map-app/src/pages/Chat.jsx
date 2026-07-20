@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { motion, AnimatePresence } from 'framer-motion';
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
 import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
@@ -12,8 +11,8 @@ import { usePresence } from '../hooks/usePresence';
 import { initializePresence, cleanupPresence } from '../services/presenceService';
 import { useIncomingCall } from '../hooks/useIncomingCall';
 import { initiateCall } from '../services/callSignalingService';
-import ReportModal from '../components/ReportModal';
 
+const ReportModal = React.lazy(() => import('../components/ReportModal'));
 const AttachmentPicker = React.lazy(() => import('../components/AttachmentPicker'));
 const PremiumStickersPanel = React.lazy(() => import('../components/PremiumStickersPanel'));
 const AttachmentPreview = React.lazy(() => import('../components/AttachmentPreview'));
@@ -23,7 +22,7 @@ const StoryViewer = React.lazy(() => import('../components/StoryViewer'));
 const FullProfileModal = React.lazy(() => import('../components/FullProfileModal'));
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
-import { mapEventChannel } from './MapHome'; // Instant map updates
+import { mapEventChannel } from '../utils/mapEvents'; // Instant map updates
 import { parseThought } from '../utils/locationPrivacy';
 import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
@@ -93,7 +92,14 @@ export default function Chat() {
         }
     });
     const [totalUnreadCount, setTotalUnreadCount] = useState(0);
-    const [currentUser, setCurrentUser] = useState(null);
+    const [currentUser, setCurrentUser] = useState(() => {
+        try {
+            const cached = localStorage.getItem('cached_current_user');
+            return cached ? JSON.parse(cached) : null;
+        } catch {
+            return null;
+        }
+    });
     const [loading, setLoading] = useState(() => {
         return !localStorage.getItem('cached_chats_list');
     });
@@ -700,16 +706,8 @@ export default function Chat() {
             return;
         }
         
-        // Fetch full profile to get avatar and username
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('id, username, full_name, avatar_url, gender, relationship_status, status, status_message, last_active, is_verified, verified_at, subscription_tier, interests, birth_date, thought_bubble_style, thought_bubble_color')
-            .eq('id', user.id)
-            .maybeSingle();
-            
-        setCurrentUser(profile || user);
-        
-        // Initialize presence tracking
+        // Load chats and presence immediately without waiting for database profile query
+        loadChats(user.id);
         initializePresence(user.id);
         
         // If navigated with a target user (from Map or Friends), open that chat immediately
@@ -718,7 +716,17 @@ export default function Chat() {
             setActiveChatUser(passedUser);
         }
 
-        loadChats(user.id);
+        // Fetch full profile in background to update cache & state asynchronously
+        supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url, gender, relationship_status, status, status_message, last_active, is_verified, verified_at, subscription_tier, interests, birth_date, thought_bubble_style, thought_bubble_color')
+            .eq('id', user.id)
+            .maybeSingle()
+            .then(({ data: profile }) => {
+                const fullUser = profile || user;
+                setCurrentUser(fullUser);
+                try { localStorage.setItem('cached_current_user', JSON.stringify(fullUser)); } catch {}
+            });
     };
 
     useEffect(() => {
@@ -4750,16 +4758,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         </React.Fragment>
                     );
                 })}
-                <AnimatePresence>
                     {typingUsers.length > 0 && (
-                        <motion.div
-                            key="typing-indicator"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            transition={{ duration: 0.2 }}
-                            className="typing-indicator-wrap"
-                        >
+                        <div key="typing-indicator" className="typing-indicator-wrap slide-up">
                             <div className="typing-dots">
                                 <div className="typing-dot" />
                                 <div className="typing-dot" />
@@ -4776,9 +4776,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                     }
                                 })()}
                             </span>
-                        </motion.div>
+                        </div>
                     )}
-                </AnimatePresence>
                 <div ref={messagesEndRef} />
             </div>
 
@@ -5153,7 +5152,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             )}
 
             {showFullProfile && fullProfileUser && (
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={<div className="modal-loading-placeholder" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600 }}>Loading Profile...</div>}>
                     <FullProfileModal
                         user={fullProfileUser}
                         currentUser={currentUser}
@@ -5164,7 +5163,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             )}
 
             {viewingStoryUser && (
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={<div className="story-loading-placeholder" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600 }}>Loading Story...</div>}>
                     <StoryViewer 
                         userStories={viewingStoryUser} 
                         currentUser={currentUser}
@@ -5175,12 +5174,14 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             {/* Report Modal */}
             {reportTargetUser && (
-                <ReportModal
-                    targetUser={reportTargetUser}
-                    onClose={() => setReportTargetUser(null)}
-                    onSuccess={() => showToast("Report submitted successfully ✅")}
-                    onError={(msg) => showToast(msg)}
-                />
+                <React.Suspense fallback={<div className="modal-loading-placeholder" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600 }}>Loading Report...</div>}>
+                    <ReportModal
+                        targetUser={reportTargetUser}
+                        onClose={() => setReportTargetUser(null)}
+                        onSuccess={() => showToast("Report submitted successfully ✅")}
+                        onError={(msg) => showToast(msg)}
+                    />
+                </React.Suspense>
             )}
 
             <style>{`
@@ -5533,12 +5534,17 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     transition: background 0.3s ease;
                     position: relative;
                     z-index: 10;
+                    min-height: 56px;
+                    contain: layout style;
+                    contain-intrinsic-size: 56px;
+                    box-sizing: border-box;
                 }
                 
                 @media (max-width: 768px) {
                     .chat-input-container {
                         padding: 6px 8px; /* Tighter padding on mobile */
                         padding-bottom: calc(6px + env(safe-area-inset-bottom));
+                        min-height: 56px;
                     }
                 }
                 
@@ -5555,6 +5561,8 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     width: 100%;
                     padding: 4px 6px;
                     background: transparent;
+                    min-height: 48px;
+                    box-sizing: border-box;
                 }
                 
                 .whatsapp-input-left-card {
@@ -6626,6 +6634,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     background-color: #0084ff;
                     border-radius: 50%;
                     opacity: 0.4;
+                    will-change: transform, opacity;
                     animation: typingBounce 1.4s infinite ease-in-out both;
                 }
 
@@ -6639,13 +6648,12 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                 @keyframes typingBounce {
                     0%, 80%, 100% {
-                        transform: scale(0.7);
+                        transform: scale3d(0.7, 0.7, 1);
                         opacity: 0.4;
                     }
                     40% {
-                        transform: scale(1.15);
+                        transform: scale3d(1.2, 1.2, 1);
                         opacity: 1;
-                        background-color: #00c6ff;
                     }
                 }
 
@@ -6936,7 +6944,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             {/* Attachment System Components */}
             {showAttachmentPicker && (
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={<div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 220, background: 'rgba(28,28,30,0.95)', borderTopLeftRadius: 20, borderTopRightRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', zIndex: 9999 }}>Loading Attachments...</div>}>
                     <AttachmentPicker
                         isOpen={showAttachmentPicker}
                         onClose={() => setShowAttachmentPicker(false)}
@@ -6949,7 +6957,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
             {/* Premium Stickers Panel */}
             {showStickerPanel && (
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={<div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 320, background: 'rgba(28,28,30,0.95)', borderTopLeftRadius: 20, borderTopRightRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', zIndex: 9999 }}>Loading Premium Stickers...</div>}>
                     <PremiumStickersPanel
                         currentUser={currentUser}
                         onClose={() => setShowStickerPanel(false)}
@@ -6977,7 +6985,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
             )}
 
             {showAttachmentPreview && (
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 9999 }}>Loading Preview...</div>}>
                      <AttachmentPreview
                         files={selectedFiles}
                         onRemove={handleRemoveFile}

@@ -125,6 +125,27 @@ function GoogleIcon() {
 export default function Welcome() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setGoogleLoading(true);
+      const siteUrl = window.location.origin;
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          redirectTo: `${siteUrl}/oauth-profile-setup`
+        }
+      });
+    } catch (err) {
+      console.error("Google Login Error:", err);
+      setGoogleLoading(false);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -214,9 +235,9 @@ export default function Welcome() {
           </div>
 
           {/* Social: Google */}
-          <button id="wl-google" className="welcome-google-btn" onClick={() => navigate('/login?social=google')}>
+          <button id="wl-google" className="welcome-google-btn" onClick={handleGoogleLogin} disabled={googleLoading} style={{ opacity: googleLoading ? 0.7 : 1, cursor: googleLoading ? 'wait' : 'pointer' }}>
             <GoogleIcon />
-            <span className="welcome-google-label">Continue with Google</span>
+            <span className="welcome-google-label">{googleLoading ? 'Redirecting to Google...' : 'Continue with Google'}</span>
           </button>
 
           {/* Terms and Privacy Policy links */}

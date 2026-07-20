@@ -597,6 +597,19 @@ const MessageBubble = ({
     );
 };
 
+const areReactionsEqual = (r1, r2) => {
+    if (r1 === r2) return true;
+    if (!r1 || !r2) return r1 === r2;
+    const k1 = Object.keys(r1);
+    const k2 = Object.keys(r2);
+    if (k1.length !== k2.length) return false;
+    for (let i = 0; i < k1.length; i++) {
+        const key = k1[i];
+        if (r1[key] !== r2[key]) return false;
+    }
+    return true;
+};
+
 // Custom comparison function for React.memo to prevent unnecessary re-renders
 const arePropsEqual = (prevProps, nextProps) => {
     // Check primitive props
@@ -616,7 +629,7 @@ const arePropsEqual = (prevProps, nextProps) => {
         prevProps.msg.content !== nextProps.msg.content ||
         prevProps.msg.delivery_status !== nextProps.msg.delivery_status ||
         prevProps.msg.is_read !== nextProps.msg.is_read ||
-        JSON.stringify(prevProps.msg.reactions) !== JSON.stringify(nextProps.msg.reactions)
+        !areReactionsEqual(prevProps.msg.reactions, nextProps.msg.reactions)
     ) {
         return false;
     }

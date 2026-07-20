@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Circle, useMap, useMapEvents, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, CircleMarker, useMap, useMapEvents, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { useTheme } from '../context/ThemeContext';
@@ -33,8 +33,8 @@ L.Icon.Default.mergeOptions({
     shadowUrl: null,
 });
 
-// Cross-tab communication channel for extremely fast local overrides
-export const mapEventChannel = new BroadcastChannel('map_events');
+import { mapEventChannel } from '../utils/mapEvents';
+export { mapEventChannel };
 
 // Helper: Distance
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -235,6 +235,94 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, 
     );
 }
 
+
+// 🔒 ZoomController — disables all map zoom when location is enabled
+function ZoomController({ locationEnabled }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!map) return;
+        if (locationEnabled) {
+            map.scrollWheelZoom.disable();
+            map.doubleClickZoom.disable();
+            map.touchZoom.disable();
+            map.boxZoom.disable();
+            map.keyboard.disable();
+        } else {
+            map.scrollWheelZoom.enable();
+            map.doubleClickZoom.enable();
+            map.touchZoom.enable();
+            map.boxZoom.enable();
+            map.keyboard.enable();
+        }
+    }, [map, locationEnabled]);
+
+    return null;
+}
+
+// 📍 MyLocationPin — pulsing "You Are Here" dot rendered at user's real GPS location
+// Must be rendered inside a MapContainer so useMap() works at the top level.
+function MyLocationPin({ lat, lng }) {
+    const map = useMap();
+
+    useEffect(() => {
+        // Inject pulse keyframe animation if not already present
+        const styleId = 'my-location-pin-style';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                @keyframes myLocationPulse {
+                    0%   { transform: scale(1);   opacity: 0.6; }
+                    50%  { transform: scale(2.4); opacity: 0; }
+                    100% { transform: scale(1);   opacity: 0.6; }
+                }
+                .my-location-dot-icon {
+                    background: transparent !important;
+                    border: none !important;
+                }
+                .my-location-dot-icon .pulse-ring {
+                    position: absolute;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: rgba(29, 155, 240, 0.35);
+                    top: 50%; left: 50%;
+                    transform: translate(-50%, -50%);
+                    animation: myLocationPulse 2s ease-out infinite;
+                }
+                .my-location-dot-icon .core-dot {
+                    position: absolute;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: #1D9BF0;
+                    border: 2.5px solid #fff;
+                    box-shadow: 0 0 6px rgba(29,155,240,0.7);
+                    top: 50%; left: 50%;
+                    transform: translate(-50%, -50%);
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!map || !lat || !lng) return;
+
+        const icon = L.divIcon({
+            className: 'my-location-dot-icon',
+            html: '<div class="pulse-ring"></div><div class="core-dot"></div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+        });
+
+        const marker = L.marker([lat, lng], { icon, zIndexOffset: 500, interactive: false }).addTo(map);
+        return () => { marker.remove(); };
+    }, [map, lat, lng]);
+
+    return null;
+}
 
 // Component to handle automatic recentering on load
 function RecenterAutomatically({ lat, lng, mapMode }) {
@@ -3377,23 +3465,30 @@ export default function MapHome() {
         const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
         const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
 
-        if (currentUser?.subscription_tier === 'diamond' && diamondFilters.enabled) {
+        if (diamondFilters.enabled) {
             visibleUsers = visibleUsers.filter(u => {
-                // 1. Gender filter
+                // 1. Case-insensitive Gender filter
                 if (diamondFilters.gender && diamondFilters.gender !== 'Everyone' && diamondFilters.gender !== 'All') {
-                    if (diamondFilters.gender === 'Men' && u.gender !== 'Male') return false;
-                    if (diamondFilters.gender === 'Women' && u.gender !== 'Female') return false;
-                    if (diamondFilters.gender === 'Other' && (u.gender === 'Male' || u.gender === 'Female')) return false;
+                    const rawGen = String(u.gender || u.fullProfile?.gender || '').toLowerCase().trim();
+                    if (diamondFilters.gender === 'Men') {
+                        if (rawGen !== 'male' && rawGen !== 'men' && rawGen !== 'man') return false;
+                    } else if (diamondFilters.gender === 'Women') {
+                        if (rawGen !== 'female' && rawGen !== 'women' && rawGen !== 'woman') return false;
+                    } else if (diamondFilters.gender === 'Other') {
+                        if (['male', 'men', 'man', 'female', 'women', 'woman'].includes(rawGen)) return false;
+                    }
                 }
 
                 // 2. Age Range filter
                 const isAgeFiltered = (diamondFilters.ageMin && diamondFilters.ageMin > 18) || (diamondFilters.ageMax && diamondFilters.ageMax < 99);
-                const bdate = u.birth_date || u.birthDate;
+                const bdate = u.birth_date || u.birthDate || u.fullProfile?.birth_date;
                 if (bdate) {
                     const dob = new Date(bdate);
-                    const age = new Date().getFullYear() - dob.getFullYear();
-                    if (diamondFilters.ageMin && age < diamondFilters.ageMin) return false;
-                    if (diamondFilters.ageMax && age > diamondFilters.ageMax) return false;
+                    if (!isNaN(dob.getTime())) {
+                        const age = new Date().getFullYear() - dob.getFullYear();
+                        if (diamondFilters.ageMin && age < diamondFilters.ageMin) return false;
+                        if (diamondFilters.ageMax && age > diamondFilters.ageMax) return false;
+                    }
                 } else if (isAgeFiltered) {
                     return false;
                 }
@@ -3406,7 +3501,6 @@ export default function MapHome() {
 
                 return true;
             });
-            return visibleUsers;
         }
 
         switch (activeFilter) {
@@ -4148,6 +4242,12 @@ export default function MapHome() {
                     />
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
+                {/* 🔒 Disable zoom when location is active */}
+                <ZoomController locationEnabled={locationEnabled} />
+                {/* 📍 Pulsing "You Are Here" pin at real GPS location */}
+                {locationEnabled && userLocation?.lat && userLocation?.lng && (
+                    <MyLocationPin lat={userLocation.lat} lng={userLocation.lng} />
+                )}
                 <RecenterControl 
                     markerRefs={markerRefs}
                     currentUserId={currentUser?.id}
@@ -4391,12 +4491,12 @@ export default function MapHome() {
                             title="Discovery Filters"
                             style={{
                                 position: 'relative',
-                                background: diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' ? 'rgba(0, 212, 255, 0.18)' : undefined,
-                                borderColor: diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' ? '#00d4ff' : undefined
+                                background: diamondFilters.enabled ? 'rgba(0, 212, 255, 0.18)' : undefined,
+                                borderColor: diamondFilters.enabled ? '#00d4ff' : undefined
                             }}
                         >
                             <span style={{ fontSize: '15px' }}>💎</span>
-                            {diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' && (
+                            {diamondFilters.enabled && (
                                 <span style={{
                                     position: 'absolute', top: '2px', right: '2px',
                                     width: '7px', height: '7px', borderRadius: '50%',
