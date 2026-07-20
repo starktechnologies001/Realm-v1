@@ -20,6 +20,11 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// Prevent Safari gesture zoom
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+
 // Register Service Worker for PWA & Push Notifications
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

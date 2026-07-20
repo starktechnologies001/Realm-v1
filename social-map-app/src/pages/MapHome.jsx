@@ -4199,6 +4199,7 @@ export default function MapHome() {
                 attributionControl={false}
                 scrollWheelZoom={true}
                 doubleClickZoom={true}
+                touchZoom={true}
                 dragging={true}
                 zoomAnimation={true}
                 preferCanvas={true}
