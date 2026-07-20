@@ -947,6 +947,14 @@ export default function Profile() {
                 <div className="section-label">Settings</div>
                 <div className="menu-group">
                     <MenuItem
+                        icon={<span style={{ fontSize: '1.1rem' }}>💎</span>}
+                        label="Map Discovery Filters"
+                        value={user?.subscription_tier === 'diamond' ? 'Configure' : 'Diamond Tier'}
+                        hasArrow={true}
+                        iconClass="icon-privacy"
+                        onClick={() => navigate('/?openFilters=true')}
+                    />
+                    <MenuItem
                         icon={<span style={{ fontSize: '1.1rem' }}>🎨</span>}
                         label="Themes & Backgrounds"
                         value={(user.subscription_tier === 'diamond' || user.subscription_tier === 'gold') ? 'Configure' : 'Premium'}

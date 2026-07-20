@@ -1,6 +1,6 @@
-import { MapContainer, TileLayer, Circle, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, useMap, useMapEvents, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
-import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -52,6 +52,57 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 
 function deg2rad(deg) {
     return deg * (Math.PI / 180);
+}
+
+// Calculate buffered bounds with a 50% outer margin around Leaflet viewport
+const getBufferedBounds = (bounds, bufferRatio = 0.5) => {
+    if (!bounds || !bounds.getSouthWest || !bounds.getNorthEast) return null;
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+
+    const latSpan = Math.abs(ne.lat - sw.lat);
+    const lngSpan = Math.abs(ne.lng - sw.lng);
+
+    const minLat = Math.max(-90, sw.lat - latSpan * bufferRatio);
+    const maxLat = Math.min(90, ne.lat + latSpan * bufferRatio);
+    const minLng = sw.lng - lngSpan * bufferRatio;
+    const maxLng = ne.lng + lngSpan * bufferRatio;
+
+    return { minLat, maxLat, minLng, maxLng };
+};
+
+// Check if visible bounds are completely contained within the previously fetched query bounds
+const isBoundsContained = (visibleBounds, fetchedBounds) => {
+    if (!visibleBounds || !fetchedBounds) return false;
+    const vSw = visibleBounds.getSouthWest();
+    const vNe = visibleBounds.getNorthEast();
+
+    return (
+        vSw.lat >= fetchedBounds.minLat &&
+        vNe.lat <= fetchedBounds.maxLat &&
+        vSw.lng >= fetchedBounds.minLng &&
+        vNe.lng <= fetchedBounds.maxLng
+    );
+};
+
+// Map Controller: Handle Viewport Bounds Changes for Scalable PostgREST Fetching
+function MapBoundsListener({ onBoundsChange }) {
+    const map = useMapEvents({
+        moveend: () => {
+            if (map) onBoundsChange(map.getBounds());
+        },
+        zoomend: () => {
+            if (map) onBoundsChange(map.getBounds());
+        }
+    });
+
+    React.useEffect(() => {
+        if (map) {
+            onBoundsChange(map.getBounds());
+        }
+    }, [map, onBoundsChange]);
+
+    return null;
 }
 
 // Generate Users with Drift for Animation
@@ -607,21 +658,21 @@ export default function MapHome() {
     }, [nearbyUsers]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
-    const [diamondFilters, setDiamondFilters] = useState({
-        gender: 'All',
-        ageMin: 18,
-        ageMax: 99,
-        relationshipStatus: 'All',
-        interests: '',
-        onlineOnly: false,
-        distanceMax: 5,
-        premiumOnly: false,
-        verifiedOnly: false,
-        recentlyActiveOnly: false,
-        enabled: false
+    const [diamondFilters, setDiamondFilters] = useState(() => {
+        try {
+            const saved = localStorage.getItem('diamond_discovery_filters');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return {
+            gender: 'Everyone',
+            ageMin: 18,
+            ageMax: 99,
+            movement: 'Everyone',
+            enabled: false
+        };
     });
     const [showDiamondFilterPanel, setShowDiamondFilterPanel] = useState(false);
+    const [showDiamondUpgradeModal, setShowDiamondUpgradeModal] = useState(false);
     const navigate = useNavigate();
     const routeLocation = useLocation();
 
@@ -656,10 +707,21 @@ export default function MapHome() {
                 premiumOnly: false,
                 verifiedOnly: false,
                 recentlyActiveOnly: false,
-                enabled: false
             });
         }
     }, [currentUser?.subscription_tier]);
+
+    // Auto-open Discovery Filters when navigated from Profile or URL with ?openFilters=true
+    useEffect(() => {
+        const searchParams = new URLSearchParams(routeLocation.search);
+        if (searchParams.get('openFilters') === 'true' || routeLocation.state?.openFilters) {
+            if (currentUser?.subscription_tier === 'diamond') {
+                setShowDiamondFilterPanel(true);
+            } else if (currentUser) {
+                setShowDiamondUpgradeModal(true);
+            }
+        }
+    }, [routeLocation.search, routeLocation.state, currentUser]);
 
     const [toastMsg, setToastMsg] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
@@ -1088,6 +1150,12 @@ export default function MapHome() {
     useEffect(() => {
         nearbyUsersRef.current = nearbyUsers;
     }, [nearbyUsers]);
+
+    // Viewport-based map query refs
+    const latestBoundsRef = useRef(null);
+    const lastFetchedBoundsRef = useRef(null);
+    const fetchAbortControllerRef = useRef(null);
+    const boundsTimeoutRef = useRef(null);
 
     // 🔥 NATIVE HARDWARE ACCELERATED ANIMATION MANAGER
     const animateNativeMarker = React.useCallback((id, newLat, newLng) => {
@@ -1593,276 +1661,272 @@ export default function MapHome() {
         };
     }, []);
 
-    // Poll for nearby users
-    useEffect(() => {
-        if (!currentUser) return; // Wait for user, but don't need location to fetch others
+    const fetchNearbyUsers = React.useCallback(async (boundsOverride = null, isPeriodicRefresh = false) => {
+        if (!currentUser?.id) return;
 
-        const fetchNearbyUsers = async () => {
-            if (!currentUser?.id) return; // Prevent API calls if user not loaded
+        const bounds = boundsOverride || latestBoundsRef.current;
+        const buffered = bounds ? getBufferedBounds(bounds, 0.5) : null;
 
-            try {
-                // Fetch blocked user IDs (both directions - users I blocked and users who blocked me)
-                const [blockedByMe, blockedMe] = await Promise.all([
-                    getBlockedUserIds(currentUser.id),  // Users I blocked
-                    getBlockerIds(currentUser.id)        // Users who blocked me
-                ]);
+        // Skip fetch if current visible bounds are already inside our fetched query buffer (unless periodic refresh)
+        if (!isPeriodicRefresh && bounds && lastFetchedBoundsRef.current && isBoundsContained(bounds, lastFetchedBoundsRef.current)) {
+            return;
+        }
 
-                // Combine both lists for mutual hiding
-                const allBlockedIds = new Set([...blockedByMe, ...blockedMe]);
-                blockedIdsRef.current = allBlockedIds; // Update Ref for real-time subscriptions
+        // Cancel previous pending fetch if user is panning rapidly
+        if (fetchAbortControllerRef.current) {
+            fetchAbortControllerRef.current.abort();
+        }
+        const abortController = new AbortController();
+        fetchAbortControllerRef.current = abortController;
 
-                // Run queries in parallel for faster loading.
-                // Use allSettled so a failed sub-query (e.g. 525 SSL) doesn't cancel the rest.
-                const [profilesResult, friendshipResult, storiesResult, viewsResult] = await Promise.allSettled([
-                    // Fetch all profiles with only needed fields
-                    supabase
-                        .from('profiles')
-                        .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since, subscription_tier, avatar_effect, interests, birth_date, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy, is_verified, verified_at')
-                        .neq('id', currentUser.id)
-                        .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
-                        .not('latitude', 'is', null)
-                        .not('longitude', 'is', null),
+        try {
+            // Fetch blocked user IDs (both directions - users I blocked and users who blocked me)
+            const [blockedByMe, blockedMe] = await Promise.all([
+                getBlockedUserIds(currentUser.id),  // Users I blocked
+                getBlockerIds(currentUser.id)        // Users who blocked me
+            ]);
 
-                    // Fetch my friendships (to sync map)
-                    supabase
-                        .from('friendships')
-                        .select('id, requester_id, receiver_id, status')
-                        .or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`),
+            // Combine both lists for mutual hiding
+            const allBlockedIds = new Set([...blockedByMe, ...blockedMe]);
+            blockedIdsRef.current = allBlockedIds; // Update Ref for real-time subscriptions
 
-                    // Fetch Active Stories (Last 24h)
-                    supabase
-                        .from('stories')
-                        .select('id, user_id')
-                        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+            // Build PostgREST profiles query
+            let profilesQuery = supabase
+                .from('profiles')
+                .select('id, username, full_name, gender, latitude, longitude, status, relationship_status, status_message, status_updated_at, last_active, avatar_url, hide_status, show_last_seen, is_public, is_location_on, mood, mood_updated_at, visibility_mode, activity_status, last_seen, is_stationary, stationary_since, subscription_tier, avatar_effect, interests, birth_date, thought_bubble_style, thought_bubble_color, hide_distance, hide_active_status, profile_view_policy, is_verified, verified_at')
+                .neq('id', currentUser.id)
+                .or('is_ghost_mode.eq.false,is_ghost_mode.is.null,visibility_mode.neq.ghost') 
+                .not('latitude', 'is', null)
+                .not('longitude', 'is', null);
 
-                    // Fetch my story views (to distinguish Seen/Unseen)
-                    supabase
-                        .from('story_views')
-                        .select('story_id')
-                        .eq('viewer_id', currentUser.id)
-                ]);
+            // Apply bounding-box range filter if viewport bounds are present
+            if (buffered && buffered.minLng <= buffered.maxLng) {
+                profilesQuery = profilesQuery
+                    .gte('latitude', buffered.minLat)
+                    .lte('latitude', buffered.maxLat)
+                    .gte('longitude', buffered.minLng)
+                    .lte('longitude', buffered.maxLng);
+            }
 
-                // Unwrap allSettled results safely — a rejected promise won't crash the rest
-                const safeValue = (settled) => settled?.status === 'fulfilled' ? settled.value : { data: null, error: settled?.reason };
-                const pr = safeValue(profilesResult);
-                const fr = safeValue(friendshipResult);
-                const sr = safeValue(storiesResult);
-                const vr = safeValue(viewsResult);
+            profilesQuery = profilesQuery.limit(300).abortSignal(abortController.signal);
 
-                // Silently warn on non-critical failures (stories/views can gracefully degrade)
-                if (sr.error) console.warn('⚠️ Stories fetch failed (non-fatal):', sr.error?.message || sr.error);
-                if (vr.error) console.warn('⚠️ Views fetch failed (non-fatal):', vr.error?.message || vr.error);
+            // Run queries in parallel for faster loading.
+            // Use allSettled so a failed sub-query (e.g. 525 SSL) doesn't cancel the rest.
+            const [profilesResult, friendshipResult, storiesResult, viewsResult] = await Promise.allSettled([
+                profilesQuery,
+                supabase.from('friendships').select('id, requester_id, receiver_id, status').or(`requester_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`).abortSignal(abortController.signal),
+                supabase.from('stories').select('id, user_id').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).abortSignal(abortController.signal),
+                supabase.from('story_views').select('story_id').eq('viewer_id', currentUser.id).abortSignal(abortController.signal)
+            ]);
 
-                // Reassign to familiar variable names
-                const profilesData = pr;
-                const friendshipData = fr;
-                const storiesData = sr;
-                const viewsData = vr;
+            if (abortController.signal.aborted) return;
 
+            // Unwrap allSettled results safely — a rejected promise won't crash the rest
+            const safeValue = (settled) => settled?.status === 'fulfilled' ? settled.value : { data: null, error: settled?.reason };
+            const profilesData = safeValue(profilesResult);
+            const friendshipData = safeValue(friendshipResult);
+            const storiesData = safeValue(storiesResult);
+            const viewsData = safeValue(viewsResult);
 
-                // Populate friendships map
-                const myFriendships = new Map();
+            // Silently warn on non-critical failures (stories/views can gracefully degrade)
+            if (storiesData.error) console.warn('⚠️ Stories fetch failed (non-fatal):', storiesData.error?.message || storiesData.error);
+            if (viewsData.error) console.warn('⚠️ Views fetch failed (non-fatal):', viewsData.error?.message || viewsData.error);
 
-                if (friendshipData.data) {
-                    friendshipData.data.forEach(f => {
-                        const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
-                        if (f.status === 'accepted') {
-                            friendshipsRef.current.set(f.id, partnerId);
-                            myFriendships.set(partnerId, { status: 'accepted', id: f.id });
-                        }
-                        if (f.status === 'pending') {
-                            // Cache pending ID too for deletion lookup
-                            friendshipsRef.current.set(f.id, partnerId);
-                            myFriendships.set(partnerId, {
-                                status: 'pending',
-                                id: f.id,
-                                requesterId: f.requester_id // Store requester to know direction
-                            });
-                        }
-                    });
-                }
-                friendshipsMapRef.current = myFriendships;
+            // Populate friendships map
+            const myFriendships = new Map();
 
-                // Process Stories & Views
-                const usersWithStories = new Set();
-                const usersWithUnseenStories = new Set();
-
-                const myViewedStoryIds = new Set(
-                    viewsData.data ? viewsData.data.map(v => v.story_id) : []
-                );
-
-                if (storiesData.data) {
-                    // Group stories by user
-                    const storiesByUser = {};
-                    storiesData.data.forEach(s => {
-                        if (!storiesByUser[s.user_id]) storiesByUser[s.user_id] = [];
-                        storiesByUser[s.user_id].push(s);
-                        usersWithStories.add(s.user_id);
-                    });
-
-                    // Check for unseen
-                    Object.keys(storiesByUser).forEach(userId => {
-                        const userStories = storiesByUser[userId];
-                        const hasUnseen = userStories.some(s => !myViewedStoryIds.has(s.id));
-                        if (hasUnseen) {
-                            usersWithUnseenStories.add(userId);
-                        }
-                    });
-                }
-
-                // Debug: Log raw fetch results
-                if (profilesData.error) {
-                    console.error('❌ [MapHome] Fetch Error:', profilesData.error);
-                }
-
-                // Filter and map users (exclude blocked users, offline users, AND current user)
-                const validUsers = (profilesData.data || [])
-                    .filter(u => {
-                        const isBlocked = allBlockedIds.has(u.id);
-                        const isMe = u.id === currentUser.id;
-                        
-                        if (isBlocked || isMe) return false;
-
-                        // Step 9: Offline system
-                        if (u.activity_status === 'offline') return false;
-
-                        if (u.last_seen) {
-                            const lastSeenDate = new Date(u.last_seen);
-                            const now = new Date();
-                            const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                            if (diffMinutes > 60) return false;
-                        }
-
-                        // Filter if they have visibility_mode = 'ghost'
-                        if (u.visibility_mode === 'ghost') return false;
-
-                        // Filter if visibility_mode is 'friends' (or 'friend') and they are not our friend
-                        if (u.visibility_mode === 'friends' || u.visibility_mode === 'friend') {
-                            const fData = myFriendships.get(u.id);
-                            if (!fData || fData.status !== 'accepted') {
-                                return false;
-                            }
-                        }
-
-                        // Check location enabled explicitly
-                        if (u.is_location_on === false) return false;
-
-                        return true;
-                    })
-                    .map(u => {
-                        // Use actual avatar if available, otherwise gender-based fallback
-                        const safeName = encodeURIComponent(u.username || u.full_name || 'User');
-                        // Standardized Fallback Logic (No DiceBear)
-                        let fallbackAvatar;
-                        if (u.gender === 'Male') fallbackAvatar = DEFAULT_MALE_AVATAR;
-                        else if (u.gender === 'Female') fallbackAvatar = DEFAULT_FEMALE_AVATAR;
-                        else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
-
-                        const lat = parseFloat(u.latitude);
-                                const lng = parseFloat(u.longitude);
-
-                        const fuzzyLoc = getFuzzyLocationForUser(u.id, lat, lng);
-                        const renderLat = fuzzyLoc.lat;
-                        const renderLng = fuzzyLoc.lng;
-
-                        // Get friendship data from map
-                        const fData = myFriendships.get(u.id);
-
-                        // Check Status Expiration (3 Hours)
-                        let statusMessage = u.status_message;
-                        let statusEmoji = u.status;
-                        
-                        if (u.status_updated_at) {
-                            const statusDate = new Date(u.status_updated_at);
-                            const now = new Date();
-                            const diffHours = (now - statusDate) / (1000 * 60 * 60);
-                            
-                            if (diffHours > 3) {
-                                statusMessage = null;
-                                statusEmoji = null;
-                            }
-                        }
-
-                        return {
-                            id: u.id,
-                            name: u.username || 'User',
-                            lat: renderLat,
-                            lng: renderLng,
-                            avatar: u.avatar_url || fallbackAvatar, // Use real avatar if exists
-                            originalAvatar: u.avatar_url,
-                            status: statusEmoji,
-                            hide_status: u.hide_status,
-                            show_last_seen: u.show_last_seen,
-                            relationshipStatus: u.relationship_status,
-                            thought: statusMessage,
-                            mood: u.mood,
-                            moodUpdatedAt: u.mood_updated_at,
-                            activity_status: u.activity_status,
-                            is_stationary: u.is_stationary,
-                            stationary_since: u.stationary_since,
-                            lastActive: u.last_active || u.last_seen,
-                            isLocationOn: u.is_location_on,
-                            isLocationShared: true,
-                            friendshipStatus: fData?.status || null,
-                            friendshipId: fData?.id || null,
-                            is_public: u.is_public,
-                            status_updated_at: u.status_updated_at, // 🔥 Critical for expiration check
-                            visibility_mode: u.visibility_mode,
-                            subscription_tier: u.subscription_tier || 'free',
-                            avatar_effect: u.avatar_effect || 'none',
-                            thought_bubble_style: u.thought_bubble_style || 'default',
-                            thought_bubble_color: u.thought_bubble_color || null,
-                            interests: u.interests || [],
-                            birth_date: u.birth_date || null,
-                            is_verified: u.is_verified,
-                            verified_at: u.verified_at,
-                            // PRIVACY CHECK: Only show story if public OR friends
-                            hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
-                            hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
-                        };
-                    });
-
-                setNearbyUsers(prev => {
-                    const map = new Map();
-
-                    // keep existing realtime users
-                    prev.forEach(u => map.set(u.id, u));
-
-                    // update / insert fetched users
-                    validUsers.forEach(u => {
-                        map.set(u.id, {
-                            ...map.get(u.id),
-                            ...u
-                        });
-                    });
-                    return Array.from(map.values());
-                });
-
-                // Proximity check for Crossing Paths (safely log distance <= 50m)
-                if (currentUser && validUsers.length > 0) {
-                    const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
-                    const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
-                    if (myLat && myLng) {
-                        validUsers.forEach(u => {
-                            if (u.lat && u.lng) {
-                                const dist = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng) * 1000;
-                                if (dist <= 50) {
-                                    import('../utils/premiumUtils').then(({ recordCrossingPath }) => {
-                                        recordCrossingPath(currentUser.id, u.id);
-                                    });
-                                }
-                            }
+            if (friendshipData.data) {
+                friendshipData.data.forEach(f => {
+                    const partnerId = f.requester_id === currentUser.id ? f.receiver_id : f.requester_id;
+                    if (f.status === 'accepted') {
+                        friendshipsRef.current.set(f.id, partnerId);
+                        myFriendships.set(partnerId, { status: 'accepted', id: f.id });
+                    }
+                    if (f.status === 'pending') {
+                        // Cache pending ID too for deletion lookup
+                        friendshipsRef.current.set(f.id, partnerId);
+                        myFriendships.set(partnerId, {
+                            status: 'pending',
+                            id: f.id,
+                            requesterId: f.requester_id // Store requester to know direction
                         });
                     }
-                }
-
-                initialLoadComplete.current = true;
-            } catch (err) {
-                console.error(err);
+                });
             }
-        };
+            friendshipsMapRef.current = myFriendships;
 
-        // Real-time Subscription for Instant Updates (both UPDATE and INSERT)
+            // Process Stories & Views
+            const usersWithStories = new Set();
+            const usersWithUnseenStories = new Set();
+
+            const myViewedStoryIds = new Set(
+                viewsData.data ? viewsData.data.map(v => v.story_id) : []
+            );
+
+            if (storiesData.data) {
+                // Group stories by user
+                const storiesByUser = {};
+                storiesData.data.forEach(s => {
+                    if (!storiesByUser[s.user_id]) storiesByUser[s.user_id] = [];
+                    storiesByUser[s.user_id].push(s);
+                    usersWithStories.add(s.user_id);
+                });
+
+                // Check for unseen
+                Object.keys(storiesByUser).forEach(userId => {
+                    const userStories = storiesByUser[userId];
+                    const hasUnseen = userStories.some(s => !myViewedStoryIds.has(s.id));
+                    if (hasUnseen) {
+                        usersWithUnseenStories.add(userId);
+                    }
+                });
+            }
+
+            // Debug: Log raw fetch results
+            if (profilesData.error) {
+                console.error('❌ [MapHome] Fetch Error:', profilesData.error);
+            }
+
+            // Filter and map users (exclude blocked users, offline users, AND current user)
+            const validUsers = (profilesData.data || [])
+                .filter(u => {
+                    const isBlocked = allBlockedIds.has(u.id);
+                    const isMe = u.id === currentUser.id;
+                    
+                    if (isBlocked || isMe) return false;
+
+                    // Step 9: Offline system
+                    if (u.activity_status === 'offline') return false;
+
+                    if (u.last_seen) {
+                        const lastSeenDate = new Date(u.last_seen);
+                        const now = new Date();
+                        const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                        if (diffMinutes > 60) return false;
+                    }
+
+                    // Filter if they have visibility_mode = 'ghost'
+                    if (u.visibility_mode === 'ghost') return false;
+
+                    if (u.visibility_mode === 'friends' || u.visibility_mode === 'friend') {
+                        const fData = myFriendships.get(u.id);
+                        if (!fData || fData.status !== 'accepted') {
+                            return false;
+                        }
+                    }
+
+                    // Check location enabled explicitly
+                    if (u.is_location_on === false) return false;
+
+                    return true;
+                })
+                .map(u => {
+                    let fallbackAvatar;
+                    if (u.gender === 'Male') fallbackAvatar = DEFAULT_MALE_AVATAR;
+                    else if (u.gender === 'Female') fallbackAvatar = DEFAULT_FEMALE_AVATAR;
+                    else fallbackAvatar = DEFAULT_GENERIC_AVATAR;
+
+                    const lat = parseFloat(u.latitude);
+                    const lng = parseFloat(u.longitude);
+
+                    const fuzzyLoc = getFuzzyLocationForUser(u.id, lat, lng);
+                    const renderLat = fuzzyLoc.lat;
+                    const renderLng = fuzzyLoc.lng;
+
+                    const fData = myFriendships.get(u.id);
+
+                    let statusMessage = u.status_message;
+                    let statusEmoji = u.status;
+                    
+                    if (u.status_updated_at) {
+                        const statusDate = new Date(u.status_updated_at);
+                        const now = new Date();
+                        const diffHours = (now - statusDate) / (1000 * 60 * 60);
+                        
+                        if (diffHours > 3) {
+                            statusMessage = null;
+                            statusEmoji = null;
+                        }
+                    }
+
+                    return {
+                        id: u.id,
+                        name: u.username || 'User',
+                        lat: renderLat,
+                        lng: renderLng,
+                        avatar: u.avatar_url || fallbackAvatar,
+                        originalAvatar: u.avatar_url,
+                        status: statusEmoji,
+                        hide_status: u.hide_status,
+                        show_last_seen: u.show_last_seen,
+                        relationshipStatus: u.relationship_status,
+                        thought: statusMessage,
+                        mood: u.mood,
+                        moodUpdatedAt: u.mood_updated_at,
+                        activity_status: u.activity_status,
+                        is_stationary: u.is_stationary,
+                        stationary_since: u.stationary_since,
+                        lastActive: u.last_active || u.last_seen,
+                        isLocationOn: u.is_location_on,
+                        isLocationShared: true,
+                        friendshipStatus: fData?.status || null,
+                        friendshipId: fData?.id || null,
+                        is_public: u.is_public,
+                        status_updated_at: u.status_updated_at,
+                        visibility_mode: u.visibility_mode,
+                        subscription_tier: u.subscription_tier || 'free',
+                        avatar_effect: u.avatar_effect || 'none',
+                        thought_bubble_style: u.thought_bubble_style || 'default',
+                        thought_bubble_color: u.thought_bubble_color || null,
+                        interests: u.interests || [],
+                        birth_date: u.birth_date || null,
+                        is_verified: u.is_verified,
+                        verified_at: u.verified_at,
+                        hasStory: usersWithStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted'),
+                        hasUnseenStory: usersWithUnseenStories.has(u.id) && (u.is_public !== false || fData?.status === 'accepted')
+                    };
+                });
+
+            setNearbyUsers(validUsers);
+
+            if (buffered) {
+                lastFetchedBoundsRef.current = buffered;
+            }
+
+            if (currentUser && validUsers.length > 0) {
+                const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
+                const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
+                if (myLat && myLng) {
+                    validUsers.forEach(u => {
+                        if (u.lat && u.lng) {
+                            const dist = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng) * 1000;
+                            if (dist <= 50) {
+                                import('../utils/premiumUtils').then(({ recordCrossingPath }) => {
+                                    recordCrossingPath(currentUser.id, u.id);
+                                });
+                            }
+                        }
+                    });
+                }
+            }
+
+            initialLoadComplete.current = true;
+        } catch (err) {
+            if (err?.name !== 'AbortError') {
+                console.error('❌ [MapHome] Fetch Error:', err);
+            }
+        }
+    }, [currentUser]);
+
+    const handleBoundsChange = React.useCallback((bounds) => {
+        latestBoundsRef.current = bounds;
+        fetchNearbyUsers(bounds);
+    }, [fetchNearbyUsers]);
+
+    // Real-time Subscription for Instant Updates (both UPDATE and INSERT)
+    useEffect(() => {
+        if (!currentUser) return;
+
         const channel = supabase
             .channel('public:profiles')
             // Unified UPDATE listener for Location + Profile changes
@@ -2192,11 +2256,7 @@ export default function MapHome() {
             .subscribe();
 
 
-        const interval = setInterval(fetchNearbyUsers, 30000); // Poll every 30s (Realtime handles immediate changes)
-        fetchNearbyUsers(); // Initial fetch
-
         return () => {
-            clearInterval(interval);
             supabase.removeChannel(channel);
         };
     }, [currentUser]); // 🔥 Removed userLocation to prevent re-fetching on every move
@@ -3317,67 +3377,31 @@ export default function MapHome() {
         const myLat = userLocationRef.current?.lat ?? currentUser?.latitude;
         const myLng = userLocationRef.current?.lng ?? currentUser?.longitude;
 
-        if (currentUser.subscription_tier === 'diamond' && diamondFilters.enabled) {
+        if (currentUser?.subscription_tier === 'diamond' && diamondFilters.enabled) {
             visibleUsers = visibleUsers.filter(u => {
                 // 1. Gender filter
-                if (diamondFilters.gender && diamondFilters.gender !== 'All') {
-                    if (u.gender !== diamondFilters.gender) return false;
+                if (diamondFilters.gender && diamondFilters.gender !== 'Everyone' && diamondFilters.gender !== 'All') {
+                    if (diamondFilters.gender === 'Men' && u.gender !== 'Male') return false;
+                    if (diamondFilters.gender === 'Women' && u.gender !== 'Female') return false;
+                    if (diamondFilters.gender === 'Other' && (u.gender === 'Male' || u.gender === 'Female')) return false;
                 }
-                
-                // 2. Age Range filter (calculate age from birth_date or birthDate)
+
+                // 2. Age Range filter
+                const isAgeFiltered = (diamondFilters.ageMin && diamondFilters.ageMin > 18) || (diamondFilters.ageMax && diamondFilters.ageMax < 99);
                 const bdate = u.birth_date || u.birthDate;
                 if (bdate) {
                     const dob = new Date(bdate);
                     const age = new Date().getFullYear() - dob.getFullYear();
-                    if (age < diamondFilters.ageMin || age > diamondFilters.ageMax) return false;
-                } else {
-                    // Skip if age ranges are set but user age is unknown
-                    if (diamondFilters.ageMin > 18 || diamondFilters.ageMax < 99) return false;
+                    if (diamondFilters.ageMin && age < diamondFilters.ageMin) return false;
+                    if (diamondFilters.ageMax && age > diamondFilters.ageMax) return false;
+                } else if (isAgeFiltered) {
+                    return false;
                 }
 
-                // 3. Relationship Status filter
-                if (diamondFilters.relationshipStatus && diamondFilters.relationshipStatus !== 'All') {
-                    const rel = u.relationship_status || u.relationshipStatus;
-                    if (rel !== diamondFilters.relationshipStatus) return false;
-                }
-
-                // 4. Interests keyword filter
-                if (diamondFilters.interests && diamondFilters.interests.trim()) {
-                    const tags = diamondFilters.interests.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
-                    const uInterests = (u.interests || []).map(i => i.toLowerCase());
-                    const matched = tags.some(t => uInterests.some(ui => ui.includes(t)));
-                    if (!matched) return false;
-                }
-
-                // 5. Online Status filter
-                if (diamondFilters.onlineOnly) {
-                    if (!u.lastActive) return false;
-                    const diff = Date.now() - new Date(u.lastActive).getTime();
-                    if (diff >= 5 * 60 * 1000) return false;
-                }
-
-                // 6. Distance Range filter
-                if (diamondFilters.distanceMax && myLat && myLng) {
-                    const distKm = getDistanceFromLatLonInKm(myLat, myLng, u.lat, u.lng);
-                    if (distKm > diamondFilters.distanceMax) return false;
-                }
-
-                // 7. Premium Users filter
-                if (diamondFilters.premiumOnly) {
-                    if (!u.subscription_tier || u.subscription_tier === 'free') return false;
-                }
-
-                // 8. Verified Users filter
-                if (diamondFilters.verifiedOnly) {
-                    if (!u.email_verified) return false;
-                }
-
-                // 9. Recently Active filter (active within last 24 hours)
-                if (diamondFilters.recentlyActiveOnly) {
-                    const lastAct = u.lastActive || u.last_seen || u.last_active;
-                    if (!lastAct) return false;
-                    const diff = Date.now() - new Date(lastAct).getTime();
-                    if (diff >= 24 * 60 * 60 * 1000) return false;
+                // 3. Movement filter
+                if (diamondFilters.movement && diamondFilters.movement !== 'Everyone') {
+                    if (diamondFilters.movement === 'Moving' && u.is_stationary === true) return false;
+                    if (diamondFilters.movement === 'Stationary' && u.is_stationary !== true) return false;
                 }
 
                 return true;
@@ -4132,6 +4156,7 @@ export default function MapHome() {
                     onRecenter={handleRecenterCallback}
                 />
                 <UserSelectionController selectedUser={selectedUser} />
+                <MapBoundsListener onBoundsChange={handleBoundsChange} />
 
                 {(circleCenter || (userLocation?.lat && userLocation?.lng)) && (
                     <Circle
@@ -4351,13 +4376,43 @@ export default function MapHome() {
                         </div>
                     </div>
 
-                    {/* Right: Floating Thought Button */}
-                    <button className="map-action-btn" onClick={() => handleOpenThoughtInput()} title="Set Floating Thought">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2D55" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                            <path d="M8 10h.01M12 10h.01M16 10h.01"/>
-                        </svg>
-                    </button>
+                    {/* Right Action Buttons */}
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {/* 💎 Discovery Filters Button */}
+                        <button 
+                            className="map-action-btn" 
+                            onClick={() => {
+                                if (currentUser?.subscription_tier === 'diamond') {
+                                    setShowDiamondFilterPanel(true);
+                                } else {
+                                    setShowDiamondUpgradeModal(true);
+                                }
+                            }} 
+                            title="Discovery Filters"
+                            style={{
+                                position: 'relative',
+                                background: diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' ? 'rgba(0, 212, 255, 0.18)' : undefined,
+                                borderColor: diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' ? '#00d4ff' : undefined
+                            }}
+                        >
+                            <span style={{ fontSize: '15px' }}>💎</span>
+                            {diamondFilters.enabled && currentUser?.subscription_tier === 'diamond' && (
+                                <span style={{
+                                    position: 'absolute', top: '2px', right: '2px',
+                                    width: '7px', height: '7px', borderRadius: '50%',
+                                    background: '#00d4ff', boxShadow: '0 0 8px #00d4ff'
+                                }} />
+                            )}
+                        </button>
+
+                        {/* Floating Thought Button */}
+                        <button className="map-action-btn" onClick={() => handleOpenThoughtInput()} title="Set Floating Thought">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF2D55" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                <path d="M8 10h.01M12 10h.01M16 10h.01"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="search-bar-wrapper">
@@ -5110,196 +5165,370 @@ export default function MapHome() {
             {/* Diamond Discovery Filter Panel */}
             {showDiamondFilterPanel && (
                 <div className="thought-input-overlay" onClick={() => setShowDiamondFilterPanel(false)}>
-                    <div className="new-thought-card" style={{ position: 'relative', background: 'var(--bg-secondary, #1a1a1a)', color: 'var(--text-primary, #fff)', border: '1px solid var(--glass-border, rgba(255,255,255,0.15))', maxWidth: '360px', width: '90%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', borderRadius: '24px', padding: '20px' }} onClick={e => e.stopPropagation()}>
-                        <button type="button" className="thought-close-btn" onClick={() => setShowDiamondFilterPanel(false)} style={{ color: '#aaa' }}>&times;</button>
+                    <div 
+                        className="new-thought-card" 
+                        style={{ 
+                            position: 'relative', 
+                            background: isDarkMode ? 'rgba(24, 24, 32, 0.96)' : 'rgba(255, 255, 255, 0.98)', 
+                            color: isDarkMode ? '#fff' : '#1c1c1e', 
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.08)', 
+                            maxWidth: '390px', 
+                            width: '92%', 
+                            maxHeight: '85vh', 
+                            overflowY: 'auto', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: '18px', 
+                            borderRadius: '28px', 
+                            padding: '24px',
+                            backdropFilter: 'blur(24px) saturate(180%)',
+                            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+                            boxShadow: isDarkMode 
+                                ? '0 24px 60px rgba(0,0,0,0.7), 0 0 40px rgba(0, 212, 255, 0.12)' 
+                                : '0 24px 60px rgba(0,0,0,0.14), 0 10px 30px rgba(0, 114, 255, 0.08)'
+                        }} 
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Close button */}
+                        <button 
+                            type="button" 
+                            onClick={() => setShowDiamondFilterPanel(false)} 
+                            style={{ 
+                                position: 'absolute', top: '18px', right: '18px',
+                                width: '32px', height: '32px', borderRadius: '50%',
+                                border: 'none',
+                                background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                                color: isDarkMode ? '#aaa' : '#666',
+                                fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer', transition: 'all 0.15s ease'
+                            }}
+                        >
+                            &times;
+                        </button>
                         
-                        <div className="thought-emoji-header">
-                            <span className="thought-emoji-bubble" style={{ background: 'linear-gradient(135deg, #00d4ff, #a855f7)', boxShadow: '0 4px 15px rgba(168, 85, 247, 0.4)' }}>💎</span>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ 
+                                width: '46px', height: '46px', borderRadius: '16px', 
+                                background: 'linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7F00FF 100%)', 
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                fontSize: '1.5rem', boxShadow: '0 6px 18px rgba(0, 114, 255, 0.4)',
+                                flexShrink: 0
+                            }}>
+                                💎
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <h3 style={{ color: isDarkMode ? '#fff' : '#1c1c1e', fontSize: '1.3rem', fontWeight: '800', margin: 0, letterSpacing: '-0.02em' }}>Discovery Filters</h3>
+                                <div>
+                                    <span style={{ 
+                                        display: 'inline-block',
+                                        background: isDarkMode ? 'rgba(0, 212, 255, 0.12)' : 'rgba(0, 114, 255, 0.08)', 
+                                        color: isDarkMode ? '#00d4ff' : '#0066FF', 
+                                        padding: '2px 10px', 
+                                        borderRadius: '12px', 
+                                        fontSize: '0.76rem', 
+                                        fontWeight: '700' 
+                                    }}>
+                                        Showing {filteredUsers.length} users
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        
-                        <h3 className="thought-card-title" style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold', margin: '0 0 10px 0' }}>Discovery Filters</h3>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {/* Enable Switch */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Enable Filters</span>
-                                <label className="toggle-switch">
-                                    <input 
-                                        type="checkbox"
-                                        checked={diamondFilters.enabled}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, enabled: e.target.checked }))}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                            </div>
 
-                            {/* Gender Select */}
-                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Gender</label>
-                                <select 
-                                    value={diamondFilters.gender}
-                                    onChange={e => setDiamondFilters(prev => ({ ...prev, gender: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
-                                >
-                                    <option value="All">All</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-
-                            {/* Age Range Select */}
-                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Age Range ({diamondFilters.ageMin} - {diamondFilters.ageMax})</label>
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
-                                    <input 
-                                        type="number"
-                                        min={18} max={99}
-                                        value={diamondFilters.ageMin}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, ageMin: Math.max(18, parseInt(e.target.value) || 18) }))}
-                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', textAlign: 'center', outline: 'none' }}
-                                    />
-                                    <span style={{ color: 'var(--text-secondary)' }}>to</span>
-                                    <input 
-                                        type="number"
-                                        min={18} max={99}
-                                        value={diamondFilters.ageMax}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, ageMax: Math.min(99, parseInt(e.target.value) || 99) }))}
-                                        style={{ width: '80px', padding: '8px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', textAlign: 'center', outline: 'none' }}
-                                    />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                            {/* 1. Gender Filter */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: isDarkMode ? 'rgba(255,255,255,0.5)' : '#6e6e73', textTransform: 'uppercase', letterSpacing: '0.08em' }}>🚻 Gender</label>
+                                <div style={{ 
+                                    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
+                                    background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                                    padding: '4px', borderRadius: '16px',
+                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.04)'
+                                }}>
+                                    {['Everyone', 'Men', 'Women', 'Other'].map(opt => {
+                                        const isSelected = (diamondFilters.gender || 'Everyone') === opt;
+                                        return (
+                                            <button
+                                                key={opt}
+                                                type="button"
+                                                onClick={() => setDiamondFilters(prev => ({ ...prev, gender: opt }))}
+                                                style={{
+                                                    padding: '9px 4px',
+                                                    borderRadius: '12px',
+                                                    border: 'none',
+                                                    background: isSelected 
+                                                        ? (isDarkMode ? 'linear-gradient(135deg, #00C6FF, #0072FF)' : 'linear-gradient(135deg, #0072FF, #00C6FF)')
+                                                        : 'transparent',
+                                                    color: isSelected ? '#fff' : (isDarkMode ? '#ccc' : '#444'),
+                                                    fontWeight: isSelected ? '700' : '600',
+                                                    fontSize: '0.8rem',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                                                    boxShadow: isSelected ? '0 4px 12px rgba(0, 114, 255, 0.35)' : 'none'
+                                                }}
+                                            >
+                                                {opt}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
-                            {/* Relationship Status Select */}
-                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Relationship Status</label>
-                                <select 
-                                    value={diamondFilters.relationshipStatus}
-                                    onChange={e => setDiamondFilters(prev => ({ ...prev, relationshipStatus: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
-                                >
-                                    <option value="All">All</option>
-                                    <option value="Single">Single</option>
-                                    <option value="In a relationship">In a relationship</option>
-                                    <option value="Married">Married</option>
-                                    <option value="It's complicated">It's complicated</option>
-                                    <option value="Open relationship">Open relationship</option>
-                                </select>
+                            {/* 2. Age Range Filter */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <label style={{ fontSize: '0.75rem', fontWeight: '800', color: isDarkMode ? 'rgba(255,255,255,0.5)' : '#6e6e73', textTransform: 'uppercase', letterSpacing: '0.08em' }}>🎂 Age Range</label>
+                                    <span style={{ fontSize: '0.82rem', color: isDarkMode ? '#00d4ff' : '#0066FF', fontWeight: '700' }}>{diamondFilters.ageMin || 18} – {diamondFilters.ageMax || 99} yrs</span>
+                                </div>
+                                {/* Preset Range Pills */}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {[
+                                        { label: 'All', min: 18, max: 99 },
+                                        { label: '18–22', min: 18, max: 22 },
+                                        { label: '23–27', min: 23, max: 27 },
+                                        { label: '28–35', min: 28, max: 35 },
+                                        { label: '35+', min: 35, max: 99 },
+                                    ].map(preset => {
+                                        const isSelected = diamondFilters.ageMin === preset.min && diamondFilters.ageMax === preset.max;
+                                        return (
+                                            <button
+                                                key={preset.label}
+                                                type="button"
+                                                onClick={() => setDiamondFilters(prev => ({ ...prev, ageMin: preset.min, ageMax: preset.max }))}
+                                                style={{
+                                                    padding: '7px 13px',
+                                                    borderRadius: '20px',
+                                                    border: isSelected 
+                                                        ? (isDarkMode ? '1.5px solid #00d4ff' : '1.5px solid #0066FF')
+                                                        : (isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)'),
+                                                    background: isSelected 
+                                                        ? (isDarkMode ? 'rgba(0, 212, 255, 0.18)' : 'rgba(0, 114, 255, 0.12)')
+                                                        : (isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
+                                                    color: isSelected 
+                                                        ? (isDarkMode ? '#00d4ff' : '#0066FF')
+                                                        : (isDarkMode ? '#ccc' : '#555'),
+                                                    fontWeight: isSelected ? '700' : '600',
+                                                    fontSize: '0.78rem',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {/* Custom Range Inputs */}
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '2px' }}>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: isDarkMode ? '#888' : '#777', fontWeight: '600' }}>Min Age</span>
+                                        <input 
+                                            type="number" 
+                                            min={18} max={99}
+                                            value={diamondFilters.ageMin || 18}
+                                            onChange={e => setDiamondFilters(prev => ({ ...prev, ageMin: Math.max(18, parseInt(e.target.value) || 18) }))}
+                                            style={{ 
+                                                width: '100%', padding: '10px', borderRadius: '14px', 
+                                                background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', 
+                                                color: isDarkMode ? '#fff' : '#1c1c1e', 
+                                                border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.12)', 
+                                                boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(0,0,0,0.04)',
+                                                textAlign: 'center', outline: 'none', fontWeight: '700', fontSize: '0.95rem' 
+                                            }}
+                                        />
+                                    </div>
+                                    <span style={{ color: isDarkMode ? '#666' : '#999', marginTop: '16px', fontWeight: '700' }}>–</span>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: isDarkMode ? '#888' : '#777', fontWeight: '600' }}>Max Age</span>
+                                        <input 
+                                            type="number" 
+                                            min={18} max={99}
+                                            value={diamondFilters.ageMax || 99}
+                                            onChange={e => setDiamondFilters(prev => ({ ...prev, ageMax: Math.min(99, parseInt(e.target.value) || 99) }))}
+                                            style={{ 
+                                                width: '100%', padding: '10px', borderRadius: '14px', 
+                                                background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', 
+                                                color: isDarkMode ? '#fff' : '#1c1c1e', 
+                                                border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.12)', 
+                                                boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(0,0,0,0.04)',
+                                                textAlign: 'center', outline: 'none', fontWeight: '700', fontSize: '0.95rem' 
+                                            }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Interests search */}
-                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Interests (comma separated)</label>
-                                <input 
-                                    type="text"
-                                    placeholder="Gym, Coffee, Travel..."
-                                    value={diamondFilters.interests}
-                                    onChange={e => setDiamondFilters(prev => ({ ...prev, interests: e.target.value }))}
-                                    style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)', outline: 'none' }}
-                                />
-                            </div>
-
-                            {/* Online Switch */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Online Now Only</span>
-                                <label className="toggle-switch">
-                                    <input 
-                                        type="checkbox"
-                                        checked={diamondFilters.onlineOnly}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, onlineOnly: e.target.checked }))}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                            </div>
-
-                            {/* Premium Switch */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Premium Members Only 💎</span>
-                                <label className="toggle-switch">
-                                    <input 
-                                        type="checkbox"
-                                        checked={diamondFilters.premiumOnly}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, premiumOnly: e.target.checked }))}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                            </div>
-
-                            {/* Verified Switch */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Verified Users Only ✅</span>
-                                <label className="toggle-switch">
-                                    <input 
-                                        type="checkbox"
-                                        checked={diamondFilters.verifiedOnly}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, verifiedOnly: e.target.checked }))}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                            </div>
-
-                            {/* Recently Active Switch */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Active within 24h Only 🕒</span>
-                                <label className="toggle-switch">
-                                    <input 
-                                        type="checkbox"
-                                        checked={diamondFilters.recentlyActiveOnly}
-                                        onChange={e => setDiamondFilters(prev => ({ ...prev, recentlyActiveOnly: e.target.checked }))}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                            </div>
-
-                            {/* Distance range */}
-                            <div className="setting-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <label className="setting-label" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>Distance Limit: {diamondFilters.distanceMax} km</label>
-                                <input 
-                                    type="range"
-                                    min={0.5} max={10} step={0.5}
-                                    value={diamondFilters.distanceMax}
-                                    onChange={e => setDiamondFilters(prev => ({ ...prev, distanceMax: parseFloat(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: '#00d4ff' }}
-                                />
+                            {/* 3. Movement Filter */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: isDarkMode ? 'rgba(255,255,255,0.5)' : '#6e6e73', textTransform: 'uppercase', letterSpacing: '0.08em' }}>🚶 Movement</label>
+                                <div style={{ 
+                                    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px',
+                                    background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                                    padding: '4px', borderRadius: '16px',
+                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.04)'
+                                }}>
+                                    {[
+                                        { label: 'Everyone', value: 'Everyone' },
+                                        { label: 'Moving 🏃', value: 'Moving' },
+                                        { label: 'Stationary 📍', value: 'Stationary' }
+                                    ].map(m => {
+                                        const isSelected = (diamondFilters.movement || 'Everyone') === m.value;
+                                        return (
+                                            <button
+                                                key={m.value}
+                                                type="button"
+                                                onClick={() => setDiamondFilters(prev => ({ ...prev, movement: m.value }))}
+                                                style={{
+                                                    padding: '10px 4px',
+                                                    borderRadius: '12px',
+                                                    border: 'none',
+                                                    background: isSelected 
+                                                        ? (isDarkMode ? 'linear-gradient(135deg, #00C6FF, #0072FF)' : 'linear-gradient(135deg, #0072FF, #00C6FF)')
+                                                        : 'transparent',
+                                                    color: isSelected ? '#fff' : (isDarkMode ? '#ccc' : '#444'),
+                                                    fontWeight: isSelected ? '700' : '600',
+                                                    fontSize: '0.78rem',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                                                    boxShadow: isSelected ? '0 4px 12px rgba(0, 114, 255, 0.35)' : 'none'
+                                                }}
+                                            >
+                                                {m.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="modal-footer" style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                        {/* Footer Buttons */}
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
                             <button 
-                                className="btn-pri" 
+                                type="button"
                                 onClick={() => {
-                                    setDiamondFilters(prev => ({ ...prev, enabled: true }));
-                                    setShowDiamondFilterPanel(false);
-                                    showToast("Discovery filters applied! 🎯");
-                                }}
-                                style={{ flex: 1, background: 'linear-gradient(135deg, #00d4ff, #a855f7)', color: '#fff', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
-                            >
-                                Apply
-                            </button>
-                            <button 
-                                className="btn-sec" 
-                                onClick={() => {
-                                    setDiamondFilters({
-                                        gender: 'All',
+                                    const resetState = {
+                                        gender: 'Everyone',
                                         ageMin: 18,
                                         ageMax: 99,
-                                        relationshipStatus: 'All',
-                                        interests: '',
-                                        onlineOnly: false,
-                                        distanceMax: 5,
-                                        premiumOnly: false,
-                                        verifiedOnly: false,
-                                        recentlyActiveOnly: false,
+                                        movement: 'Everyone',
                                         enabled: false
-                                    });
+                                    };
+                                    setDiamondFilters(resetState);
+                                    try { localStorage.setItem('diamond_discovery_filters', JSON.stringify(resetState)); } catch (e) {}
                                     setShowDiamondFilterPanel(false);
                                     showToast("Filters reset! 🔓");
                                 }}
-                                style={{ flex: 1, background: 'var(--btn-secondary-bg)', color: 'var(--btn-secondary-text)', padding: '10px', borderRadius: '10px', fontWeight: 'bold' }}
+                                style={{ 
+                                    flex: 1, padding: '14px', borderRadius: '16px', 
+                                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', 
+                                    color: isDarkMode ? '#ccc' : '#444', 
+                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)', 
+                                    fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem',
+                                    transition: 'all 0.15s ease'
+                                }}
                             >
                                 Reset
                             </button>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const nextState = { ...diamondFilters, enabled: true };
+                                    setDiamondFilters(nextState);
+                                    try { localStorage.setItem('diamond_discovery_filters', JSON.stringify(nextState)); } catch (e) {}
+                                    setShowDiamondFilterPanel(false);
+                                    showToast("Discovery filters applied! 🎯");
+                                }}
+                                style={{ 
+                                    flex: 1.5, padding: '14px', borderRadius: '16px', 
+                                    background: 'linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7F00FF 100%)', 
+                                    color: '#fff', border: 'none', fontWeight: '800', 
+                                    cursor: 'pointer', fontSize: '0.92rem', 
+                                    boxShadow: '0 6px 20px rgba(0, 114, 255, 0.4)',
+                                    transition: 'transform 0.15s ease, boxShadow 0.15s ease'
+                                }}
+                            >
+                                Apply Filters
+                            </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Premium Upgrade Modal for Non-Diamond Users */}
+            {showDiamondUpgradeModal && (
+                <div className="thought-input-overlay" onClick={() => setShowDiamondUpgradeModal(false)}>
+                    <div 
+                        className="new-thought-card" 
+                        style={{ 
+                            position: 'relative', 
+                            background: isDarkMode ? 'rgba(24, 24, 32, 0.96)' : 'rgba(255, 255, 255, 0.98)', 
+                            color: isDarkMode ? '#fff' : '#1c1c1e', 
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.08)', 
+                            maxWidth: '360px', 
+                            width: '90%', 
+                            textAlign: 'center', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            gap: '18px', 
+                            borderRadius: '28px', 
+                            padding: '28px 24px',
+                            backdropFilter: 'blur(24px) saturate(180%)',
+                            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+                            boxShadow: isDarkMode 
+                                ? '0 24px 60px rgba(0,0,0,0.7), 0 0 40px rgba(0, 212, 255, 0.15)' 
+                                : '0 24px 60px rgba(0,0,0,0.14), 0 10px 30px rgba(0, 114, 255, 0.08)'
+                        }} 
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <button 
+                            type="button" 
+                            onClick={() => setShowDiamondUpgradeModal(false)} 
+                            style={{ 
+                                position: 'absolute', top: '18px', right: '18px',
+                                width: '32px', height: '32px', borderRadius: '50%',
+                                border: 'none',
+                                background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                                color: isDarkMode ? '#aaa' : '#666',
+                                fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            &times;
+                        </button>
+                        
+                        <div style={{ 
+                            width: '64px', height: '64px', borderRadius: '22px', 
+                            background: 'linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7F00FF 100%)', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            fontSize: '2rem', boxShadow: '0 8px 25px rgba(0, 114, 255, 0.45)' 
+                        }}>
+                            💎
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <h3 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: isDarkMode ? '#fff' : '#1c1c1e', letterSpacing: '-0.02em' }}>Diamond Feature</h3>
+                            <p style={{ fontSize: '0.92rem', color: isDarkMode ? '#aaa' : '#6e6e73', margin: 0, lineHeight: 1.4, fontWeight: '500' }}>
+                                Upgrade to Diamond to unlock Advanced Discovery Filters.
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowDiamondUpgradeModal(false);
+                                navigate('/subscription');
+                            }}
+                            style={{ 
+                                width: '100%', padding: '14px', borderRadius: '16px', 
+                                background: 'linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7F00FF 100%)', 
+                                color: '#fff', border: 'none', fontWeight: '800', 
+                                cursor: 'pointer', fontSize: '0.95rem', 
+                                boxShadow: '0 6px 20px rgba(0, 114, 255, 0.45)' 
+                            }}
+                        >
+                            Unlock Diamond Filters
+                        </button>
                     </div>
                 </div>
             )}
