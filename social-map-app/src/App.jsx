@@ -13,7 +13,7 @@ import { LocationProvider } from './context/LocationContext';
 
 import { supabase } from './supabaseClient';
 
-// Wrapper for React.lazy to handle Vite dynamic import failures
+// Wrapper for React.lazy to handle Vite dynamic import failures and stale production asset chunks
 const lazyWithRetry = (componentImport) =>
   lazy(async () => {
     const pageHasAlreadyBeenForceRefreshed = JSON.parse(
@@ -28,17 +28,17 @@ const lazyWithRetry = (componentImport) =>
       window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
       return component;
     } catch (error) {
+      console.warn('Dynamic import failed (stale deployment chunk):', error);
       if (!pageHasAlreadyBeenForceRefreshed) {
-        // Assume that the error was because of a stale cache 
-        // (TypeError: Failed to fetch dynamically imported module)
-        console.warn('Dynamic import failed, reloading page to fetch latest chunks...', error);
         window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
         window.location.reload();
-        return new Promise(() => {}); // Prevent React from crashing while reloading
+        return new Promise(() => {});
       }
       
-      // The page has already been reloaded, so assuming this is an actual error
-      throw error;
+      // Clear flag and refresh to latest build assets
+      window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
+      window.location.href = window.location.pathname + window.location.search;
+      return new Promise(() => {});
     }
   });
 
