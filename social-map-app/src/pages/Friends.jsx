@@ -39,12 +39,12 @@ export default function Friends() {
         const [pendingResult, myFriendsResult] = await Promise.all([
             supabase
                 .from('friendships')
-                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status)')
+                .select('id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, last_seen, activity_status, hide_online_status)')
                 .eq('receiver_id', user.id)
                 .eq('status', 'pending'),
             supabase
                 .from('friendships')
-                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status)')
+                .select('id, requester_id, receiver_id, requester:profiles!requester_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, last_seen, activity_status, hide_online_status), receiver:profiles!receiver_id(id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, last_seen, activity_status, hide_online_status)')
                 .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
                 .eq('status', 'accepted')
         ]);
@@ -102,7 +102,7 @@ export default function Friends() {
 
                         const { data: profile } = await supabase
                             .from('profiles')
-                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, hide_online_status')
+                            .select('id, full_name, username, avatar_url, status, relationship_status, gender, hide_status, show_last_seen, subscription_tier, avatar_effect, is_verified, verified_at, is_online, last_active, last_seen, activity_status, hide_online_status')
                             .eq('id', newRow.requester_id)
                             .maybeSingle();
 
@@ -322,11 +322,18 @@ export default function Friends() {
     };
 
     const checkIsOnline = (friend) => {
-        if (friend.hide_online_status) return false;
-        if (!friend.is_online) return false;
-        if (!friend.last_active) return false;
-        const diffMs = Date.now() - new Date(friend.last_active).getTime();
-        return diffMs < 5 * 60 * 1000;
+        if (!friend) return false;
+        if (friend.hide_online_status || friend.hide_active_status) return false;
+        if (friend.is_online === false || friend.activity_status === 'offline') return false;
+        if (friend.visibility_mode === 'ghost' || friend.is_ghost_mode) return false;
+
+        if (friend.is_online !== true && friend.activity_status !== 'live') return false;
+
+        const lastTime = friend.last_seen || friend.last_active;
+        if (!lastTime) return false;
+
+        const diffMs = Date.now() - new Date(lastTime).getTime();
+        return !isNaN(diffMs) && diffMs < 2 * 60 * 1000;
     };
 
     const filteredFriends = friends.filter(friend => {

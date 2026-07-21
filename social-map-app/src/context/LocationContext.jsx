@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { distanceMetres, fuzzyLocationForDB } from "../utils/locationPrivacy";
+import { setOnline } from "../services/presenceService";
 
 const LocationContext = createContext();
 
@@ -140,23 +141,42 @@ export function LocationProvider({ children }) {
     // ✅ Clear manual disable flag since the user explicitly wants to turn it ON
     localStorage.removeItem("manualLocationDisable");
 
-    // 🔥 PHASE 1: Immediately broadcast "live" to DB — no GPS fix needed yet.
+    // 🔥 PHASE 1: Immediately broadcast "live" + cached location to DB — zero delay for nearby users!
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        supabase.from("profiles").select("visibility_mode, is_ghost_mode").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+        supabase.from("profiles").select("visibility_mode, is_ghost_mode, latitude, longitude").eq("id", session.user.id).maybeSingle().then(({ data }) => {
           let currentMode = data?.visibility_mode || 'public';
           if (forcePublic && currentMode === 'ghost') {
               currentMode = 'public';
           }
           const isGhost = currentMode === 'ghost';
+
+          const cachedLoc = userLocation || (() => {
+            try {
+              const c = localStorage.getItem('lastKnownLocation');
+              return c ? JSON.parse(c) : null;
+            } catch { return null; }
+          })();
           
-          supabase.from("profiles").update({
+          const updatePayload = {
             is_location_on: !isGhost,
             is_ghost_mode: isGhost,
             visibility_mode: currentMode,
             activity_status: isGhost ? 'offline' : 'live',
+            is_online: !isGhost,
             last_seen: new Date().toISOString()
-          }).eq("id", session.user.id).then();
+          };
+
+          const useLat = cachedLoc?.lat || (data?.latitude ? parseFloat(data.latitude) : null);
+          const useLng = cachedLoc?.lng || (data?.longitude ? parseFloat(data.longitude) : null);
+          if (useLat && useLng && !isGhost) {
+            const fLoc = getCachedFuzzyLocation({ lat: useLat, lng: useLng }, false, null);
+            updatePayload.latitude = fLoc.latitude;
+            updatePayload.longitude = fLoc.longitude;
+            updatePayload.last_location = fLoc.last_location;
+          }
+
+          supabase.from("profiles").update(updatePayload).eq("id", session.user.id).then();
         });
       }
     });
@@ -546,49 +566,52 @@ export function LocationProvider({ children }) {
   }, [locationEnabled]);
 
   // ----------------------------------------
-  // 🔹 APP VISIBILITY MANAGER (Optimization & Grace Period)
+  // 🔹 PRESENCE & APP VISIBILITY MANAGER
   // ----------------------------------------
   useEffect(() => {
-      const handleVisibilityChange = () => {
-          if (document.hidden) {
-              // App backgrounded: Pause hardware GPS tracking to save battery
-              if (watchIdRef.current) {
-                  try { navigator.geolocation.clearWatch(watchIdRef.current); } catch {}
-                  watchIdRef.current = null;
-              }
-              // Send final heartbeat timestamp before backgrounding
-              if (locationEnabled && visibilityModeRef.current !== 'ghost') {
-                  supabase.auth.getSession().then(({ data: { session } }) => {
-                      if (session?.user?.id) {
-                          supabase.from("profiles").update({
-                              last_seen: new Date().toISOString()
-                          }).eq("id", session.user.id).then();
-                      }
-                  }).catch(() => {});
-              }
-          } else {
-              // App foregrounded: Immediately refresh heartbeat & resume tracking
-              if (locationEnabled) {
-                  if (!watchIdRef.current) {
-                      startWatching();
-                  }
-                  if (visibilityModeRef.current !== 'ghost') {
-                      supabase.auth.getSession().then(({ data: { session } }) => {
-                          if (session?.user?.id) {
-                              supabase.from("profiles").update({
-                                  last_seen: new Date().toISOString(),
-                                  activity_status: 'live',
-                                  is_online: true
-                              }).eq("id", session.user.id).then();
-                          }
-                      }).catch(() => {});
-                  }
-              }
+      // Global startup: Mark online when user is logged in
+      supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user?.id) {
+              setOnline(session.user.id, true);
           }
+      });
+
+      const handleUnload = () => {
+          supabase.auth.getSession().then(({ data: { session } }) => {
+              if (session?.user?.id) {
+                  setOnline(session.user.id, false);
+              }
+          });
       };
 
+      const handleVisibilityChange = () => {
+          supabase.auth.getSession().then(({ data: { session } }) => {
+              if (!session?.user?.id) return;
+              const userId = session.user.id;
+
+              if (document.hidden) {
+                  // App backgrounded / tab hidden / exited: Mark offline immediately
+                  setOnline(userId, false);
+                  if (watchIdRef.current) {
+                      try { navigator.geolocation.clearWatch(watchIdRef.current); } catch {}
+                      watchIdRef.current = null;
+                  }
+              } else {
+                  // App foregrounded / opened / active: Mark online immediately
+                  setOnline(userId, true);
+                  if (locationEnabled && !watchIdRef.current) {
+                      startWatching();
+                  }
+              }
+          });
+      };
+
+      window.addEventListener("beforeunload", handleUnload);
       document.addEventListener("visibilitychange", handleVisibilityChange);
-      return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+      return () => {
+          window.removeEventListener("beforeunload", handleUnload);
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
   }, [locationEnabled]);
 
   // ----------------------------------------

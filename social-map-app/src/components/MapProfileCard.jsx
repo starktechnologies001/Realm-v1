@@ -38,19 +38,34 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
     // Privacy logic: Can show last seen if BOTH users have show_last_seen enabled AND privacy allows
     const canShowLastSeen = canViewDetails && (user.show_last_seen !== false) && (currentUser?.show_last_seen !== false) && !user.hide_last_seen;
 
-    // Calculate if user is online (active in last 5 minutes)
+    // Calculate if user is online
     const userLastActive = user.lastActive || user.last_active || user.last_seen || user.lastSeen;
-    const diffMs = userLastActive ? Date.now() - new Date(userLastActive).getTime() : null;
-    const isOnline = diffMs != null && !isNaN(diffMs) && diffMs < 5 * 60 * 1000 && !user.hide_online_status && !user.hide_active_status;
+    
+    const checkIsUserOnline = () => {
+        if (user.hide_online_status || user.hide_active_status) return false;
+        if (user.is_online === false || user.activity_status === 'offline' || user.isLocationOn === false) return false;
+        if (user.visibility_mode === 'ghost' || user.is_ghost_mode) return false;
+        if (!userLastActive) return false;
+        const diffMs = Date.now() - new Date(userLastActive).getTime();
+        return !isNaN(diffMs) && diffMs < 2 * 60 * 1000;
+    };
+
+    const isOnline = checkIsUserOnline();
 
     const getLastActiveText = () => {
         if (user.hide_last_seen || user.hide_active_status) return null;
         if (!userLastActive) return null;
+
         const diff = Date.now() - new Date(userLastActive).getTime();
-        if (diff < 5 * 60 * 1000 && !user.hide_online_status) return 'Active now';
+        if (isNaN(diff)) return null;
+
+        if (isOnline) {
+            return 'Active now';
+        }
+
         if (!canShowLastSeen) return null;
-        
-        const diffMins = Math.floor(diff / 60000);
+
+        const diffMins = Math.max(1, Math.floor(diff / 60000));
         if (diffMins < 60) return `Active ${diffMins}m ago`;
         const diffHours = Math.floor(diffMins / 60);
         if (diffHours < 24) return `Active ${diffHours}h ago`;

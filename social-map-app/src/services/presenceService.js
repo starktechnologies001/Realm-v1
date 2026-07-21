@@ -43,11 +43,14 @@ export const updateActivity = async (userId) => {
   if (!userId) return;
 
   try {
+    const now = new Date().toISOString();
     await supabase
       .from('profiles')
       .update({ 
-        last_active: new Date().toISOString(),
-        is_online: true 
+        last_active: now,
+        last_seen: now,
+        is_online: true,
+        activity_status: 'live'
       })
       .eq('id', userId);
   } catch (error) {
@@ -62,15 +65,44 @@ export const setOnline = async (userId, isOnline) => {
   if (!userId) return;
 
   try {
-    const updates = { is_online: isOnline };
-    if (isOnline) {
-      updates.last_active = new Date().toISOString();
-    }
+    const now = new Date().toISOString();
+    const updates = { 
+      is_online: isOnline,
+      activity_status: isOnline ? 'live' : 'offline',
+      last_active: now,
+      last_seen: now
+    };
 
     await supabase
       .from('profiles')
       .update(updates)
       .eq('id', userId);
+
+    // Guaranteed beacon/fetch for fast offline update on app exit or unload
+    if (!isOnline && typeof fetch === 'function') {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (supabaseUrl && supabaseAnonKey) {
+          fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, {
+            method: 'PATCH',
+            keepalive: true,
+            headers: {
+              'apikey': supabaseAnonKey,
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify({
+              is_online: false,
+              activity_status: 'offline',
+              last_seen: now,
+              last_active: now
+            })
+          }).catch(() => {});
+        }
+      } catch (e) {}
+    }
   } catch (error) {
     console.error('Error setting online status:', error);
   }

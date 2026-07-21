@@ -300,7 +300,7 @@ export default function Chat() {
 
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active, subscription_tier, avatar_effect, hide_online_status, hide_last_seen, is_verified, verified_at')
+            .select('id, full_name, username, avatar_url, status, gender, hide_status, show_last_seen, is_online, last_active, last_seen, activity_status, subscription_tier, avatar_effect, hide_online_status, hide_last_seen, is_verified, verified_at')
             .in('id', validPartnerIds);
 
         if (!profiles) {
@@ -445,9 +445,11 @@ export default function Chat() {
             }
             const genderAvatar = getAvatarHeadshot(rawAvatar);
 
-            // Consider online if is_online flag is true AND last_active within 5 minutes
-            const lastActiveMs = partner.last_active ? Date.now() - new Date(partner.last_active).getTime() : Infinity;
-            const isOnline = !!partner.is_online && lastActiveMs < 5 * 60 * 1000 && !partner.hide_online_status;
+            // Consider online if is_online/live is true, not offline, AND last_active/last_seen within 2 minutes
+            const lastTimeVal = partner.last_seen || partner.last_active;
+            const lastActiveMs = lastTimeVal ? Date.now() - new Date(lastTimeVal).getTime() : Infinity;
+            const isOnlineState = partner.is_online === true && partner.activity_status !== 'offline' && partner.visibility_mode !== 'ghost';
+            const isOnline = isOnlineState && lastActiveMs < 2 * 60 * 1000 && !partner.hide_online_status;
 
             return {
                 id: partner.id,

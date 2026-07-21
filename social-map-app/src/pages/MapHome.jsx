@@ -4237,7 +4237,7 @@ export default function MapHome() {
                 {mapMode === 'satellite' && (
                     <TileLayer
                         attribution='&copy; Google Maps'
-                        url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                        url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
                         maxNativeZoom={20}
                         maxZoom={22}
                         keepBuffer={4}
