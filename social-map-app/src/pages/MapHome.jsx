@@ -236,84 +236,7 @@ function RecenterControl({ markerRefs, currentUserId, fallbackLat, fallbackLng, 
 }
 
 
-// 🔍 CustomZoomControl — Floating + and - buttons for 1-tap map zooming
-function CustomZoomControl() {
-    const map = useMap();
-    const controlRef = useRef(null);
 
-    useEffect(() => {
-        if (controlRef.current) {
-            L.DomEvent.disableClickPropagation(controlRef.current);
-            L.DomEvent.disableScrollPropagation(controlRef.current);
-        }
-    }, []);
-
-    return (
-        <div 
-            ref={controlRef}
-            className="leaflet-bottom leaflet-right" 
-            style={{ 
-                bottom: 'calc(134px + env(safe-area-inset-bottom))',
-                right: '10px',
-                zIndex: 400,
-                pointerEvents: 'auto',
-                position: 'absolute',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-            }}
-        >
-            <button
-                onClick={() => map.zoomIn()}
-                title="Zoom In"
-                style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    borderRadius: '50%',
-                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#1f2937',
-                    fontSize: '22px',
-                    fontWeight: '600',
-                    transition: 'transform 0.15s ease, background 0.15s ease'
-                }}
-            >
-                +
-            </button>
-            <button
-                onClick={() => map.zoomOut()}
-                title="Zoom Out"
-                style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    borderRadius: '50%',
-                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#1f2937',
-                    fontSize: '24px',
-                    fontWeight: '600',
-                    transition: 'transform 0.15s ease, background 0.15s ease'
-                }}
-            >
-                −
-            </button>
-        </div>
-    );
-}
 
 // 📍 MyLocationPin — pulsing "You Are Here" dot rendered at user's real GPS location
 // Must be rendered inside a MapContainer so useMap() works at the top level.
@@ -1106,6 +1029,29 @@ export default function MapHome() {
         };
     }, [currentUser?.id]);
 
+    // ⏱️ 5-Minute Presence Timeout Cleanup (In-memory, zero DB queries)
+    // Automatically prunes users from the map if no heartbeat/update was received for > 5 minutes.
+    useEffect(() => {
+        const timeoutInterval = setInterval(() => {
+            const now = Date.now();
+            setNearbyUsers(prev => {
+                const filtered = prev.filter(u => {
+                    const lastSeenVal = u.last_seen || u.lastActive;
+                    if (lastSeenVal) {
+                        const lastSeenTime = new Date(lastSeenVal).getTime();
+                        if (!isNaN(lastSeenTime) && (now - lastSeenTime > 5 * 60 * 1000)) {
+                            return false; // Remove user after 5 minutes of inactivity
+                        }
+                    }
+                    return true;
+                });
+                return filtered.length !== prev.length ? filtered : prev;
+            });
+        }, 15000); // Check every 15 seconds
+
+        return () => clearInterval(timeoutInterval);
+    }, []);
+
     const handleToggleReaction = React.useCallback(async (thoughtUserId, reactionType) => {
         if (!currentUser) return;
         const currentUserId = currentUser.id;
@@ -1585,7 +1531,7 @@ export default function MapHome() {
                                 const lastSeenDate = new Date(friendProfile.last_seen);
                                 const now = new Date();
                                 const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                                if (diffMinutes > 60) isVisible = false;
+                                if (diffMinutes > 5) isVisible = false;
                             }
                             if (isVisible) {
                                 setNearbyUsers(prev => {
@@ -1945,7 +1891,7 @@ export default function MapHome() {
                         const lastSeenDate = new Date(u.last_seen);
                         const now = new Date();
                         const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                        if (diffMinutes > 60) return false;
+                        if (diffMinutes > 5) return false;
                     }
 
                     // Filter if they have visibility_mode = 'ghost'
@@ -2009,6 +1955,7 @@ export default function MapHome() {
                         activity_status: u.activity_status,
                         is_stationary: u.is_stationary,
                         stationary_since: u.stationary_since,
+                        last_seen: u.last_seen || u.last_active,
                         lastActive: u.last_active || u.last_seen,
                         isLocationOn: u.is_location_on,
                         isLocationShared: true,
@@ -2128,7 +2075,7 @@ export default function MapHome() {
                     const lastSeenDate = new Date(updatedUser.last_seen);
                     const now = new Date();
                     const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                    if (diffMinutes > 60) isVisible = false;
+                    if (diffMinutes > 5) isVisible = false;
                 }
 
                 setNearbyUsers(prev => {
@@ -2207,6 +2154,7 @@ export default function MapHome() {
                         show_last_seen: updatedUser.show_last_seen,
                         activity_status: updatedUser.activity_status,
                         visibility_mode: updatedUser.visibility_mode,
+                        last_seen: updatedUser.last_seen || updatedUser.last_active,
                         is_verified: updatedUser.is_verified,
                         verified_at: updatedUser.verified_at,
                         friendshipStatus: exists ? prev[existingIndex].friendshipStatus : null,
@@ -2297,7 +2245,7 @@ export default function MapHome() {
                     const lastSeenDate = new Date(newUser.last_seen);
                     const now = new Date();
                     const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                    if (diffMinutes > 60) isVisible = false;
+                    if (diffMinutes > 5) isVisible = false;
                 }
 
                 if (isVisible) {
@@ -2358,6 +2306,7 @@ export default function MapHome() {
                             friendshipStatus: friendshipsMapRef.current.get(newUser.id)?.status || null,
                             friendshipId: friendshipsMapRef.current.get(newUser.id)?.id || null,
                             visibility_mode: newUser.visibility_mode,
+                            last_seen: newUser.last_seen || newUser.last_active,
                             hasStory: false,
                             hasUnseenStory: false
                         }];
@@ -4298,8 +4247,7 @@ export default function MapHome() {
                     />
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
-                {/* 🔍 Floating Zoom In / Zoom Out Controls */}
-                <CustomZoomControl />
+
                 {/* 📍 Pulsing "You Are Here" pin at real GPS location */}
                 {locationEnabled && userLocation?.lat && userLocation?.lng && (
                     <MyLocationPin lat={userLocation.lat} lng={userLocation.lng} />

@@ -29,17 +29,18 @@ const VisibilitySettings = () => {
         setVisibilityMode(mode);
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+            const isGhost = mode === 'ghost';
             await supabase.from('profiles').update({ 
                 visibility_mode: mode,
-                is_ghost_mode: mode === 'ghost'
+                is_ghost_mode: isGhost,
+                is_location_on: !isGhost,
+                latitude: isGhost ? null : undefined,
+                longitude: isGhost ? null : undefined,
+                last_location: isGhost ? null : undefined,
+                activity_status: isGhost ? 'offline' : 'live'
             }).eq('id', session.user.id);
 
-            if (mode === 'ghost') {
-                // Keep location tracking active so user can access the map and see everyone's avatar, but they are hidden (handled via DB columns).
-                startLocation();
-            } else {
-                startLocation();
-            }
+            startLocation();
         }
     };
 

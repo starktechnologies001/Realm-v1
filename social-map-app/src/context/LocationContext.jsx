@@ -479,7 +479,11 @@ export function LocationProvider({ children }) {
               is_location_on: false,
               is_ghost_mode: isGhost,
               visibility_mode: data?.visibility_mode || 'public',
-              activity_status: isGhost ? 'offline' : 'recently_active',
+              activity_status: 'offline',
+              is_online: false,
+              latitude: null,
+              longitude: null,
+              last_location: null,
               last_seen: new Date().toISOString(),
               is_stationary: false,
               stationary_since: null
@@ -510,20 +514,75 @@ export function LocationProvider({ children }) {
   };
 
   // ----------------------------------------
-  // 🔹 APP VISIBILITY MANAGER (Optimization)
+  // 🔹 HEARTBEAT SYSTEM (30s Lightweight Heartbeat)
+  // ----------------------------------------
+  useEffect(() => {
+    if (!locationEnabled) return;
+
+    const heartbeatInterval = setInterval(() => {
+      const now = Date.now();
+      // Avoid extra DB calls if watchPosition already synced within the last 20 seconds
+      if (now - lastSyncTime.current < 20000) return;
+
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session?.user?.id) return;
+        const userId = session.user.id;
+
+        const isGhost = visibilityModeRef.current === 'ghost';
+        if (isGhost) return; // Do NOT send heartbeat in ghost mode
+
+        lastSyncTime.current = now;
+        supabase.from("profiles").update({
+          last_seen: new Date().toISOString(),
+          activity_status: 'live',
+          is_online: true
+        }).eq("id", userId).then(({ error }) => {
+          if (error) console.error("Heartbeat sync error:", error);
+        });
+      }).catch(err => console.warn("Session error during heartbeat:", err));
+    }, 30000); // 30s heartbeat
+
+    return () => clearInterval(heartbeatInterval);
+  }, [locationEnabled]);
+
+  // ----------------------------------------
+  // 🔹 APP VISIBILITY MANAGER (Optimization & Grace Period)
   // ----------------------------------------
   useEffect(() => {
       const handleVisibilityChange = () => {
           if (document.hidden) {
-              // App backgrounded: Stop hardware GPS tracking to save battery
+              // App backgrounded: Pause hardware GPS tracking to save battery
               if (watchIdRef.current) {
-                  navigator.geolocation.clearWatch(watchIdRef.current);
+                  try { navigator.geolocation.clearWatch(watchIdRef.current); } catch {}
                   watchIdRef.current = null;
               }
+              // Send final heartbeat timestamp before backgrounding
+              if (locationEnabled && visibilityModeRef.current !== 'ghost') {
+                  supabase.auth.getSession().then(({ data: { session } }) => {
+                      if (session?.user?.id) {
+                          supabase.from("profiles").update({
+                              last_seen: new Date().toISOString()
+                          }).eq("id", session.user.id).then();
+                      }
+                  }).catch(() => {});
+              }
           } else {
-              // App foregrounded: Resume tracking if location is enabled
-              if (locationEnabled && !watchIdRef.current) {
-                  startWatching();
+              // App foregrounded: Immediately refresh heartbeat & resume tracking
+              if (locationEnabled) {
+                  if (!watchIdRef.current) {
+                      startWatching();
+                  }
+                  if (visibilityModeRef.current !== 'ghost') {
+                      supabase.auth.getSession().then(({ data: { session } }) => {
+                          if (session?.user?.id) {
+                              supabase.from("profiles").update({
+                                  last_seen: new Date().toISOString(),
+                                  activity_status: 'live',
+                                  is_online: true
+                              }).eq("id", session.user.id).then();
+                          }
+                      }).catch(() => {});
+                  }
               }
           }
       };
