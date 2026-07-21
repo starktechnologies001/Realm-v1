@@ -310,7 +310,7 @@ export default function OAuthProfileSetup() {
                       style={{
                           position: 'absolute', bottom: '5px', right: '5px',
                           width: '36px', height: '36px',
-                          background: '#0a84ff', // Brand blue
+                          background: '#7C3AED',
                           borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer',
@@ -473,12 +473,14 @@ export default function OAuthProfileSetup() {
           background: #000;
           background-image: radial-gradient(circle at 50% 0%, rgba(0, 122, 255, 0.15) 0%, transparent 50%);
           padding: 20px;
+          overflow-y: auto;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .oauth-setup-card {
           width: 100%;
           max-width: 500px;
+          margin: auto;
           background: #1c1c1e;
           border-radius: 20px;
           padding: 40px 32px;

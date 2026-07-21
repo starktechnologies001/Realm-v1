@@ -760,7 +760,7 @@ export default function Login() {
                           style={{
                               position: 'absolute', bottom: '0', right: '0',
                               width: '32px', height: '32px',
-                              background: 'var(--brand-blue)',
+                              background: '#7C3AED',
                               borderRadius: '50%',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               cursor: 'pointer',
@@ -880,6 +880,36 @@ export default function Login() {
                 </div>
               )}
 
+              {/* Legal Checkboxes (full-width above the navigation buttons in step 2) */}
+              {signupStep === 2 && (
+                <div style={{ marginTop: '16px', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', textAlign: 'left' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={ageConfirmed}
+                      onChange={(e) => setAgeConfirmed(e.target.checked)}
+                      style={{ marginTop: '3px', accentColor: '#7C3AED', width: '16px', height: '16px' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                      I confirm that I am at least 18 years of age.
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={legalAccepted}
+                      onChange={(e) => setLegalAccepted(e.target.checked)}
+                      style={{ marginTop: '3px', accentColor: '#7C3AED', width: '16px', height: '16px' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
+                      I agree to the <a href="/legal/terms" target="_blank" rel="noreferrer" style={{ color: '#7C3AED', textDecoration: 'none' }}>Terms of Service</a>,{' '}
+                      <a href="/legal/privacy" target="_blank" rel="noreferrer" style={{ color: '#7C3AED', textDecoration: 'none' }}>Privacy Policy</a>, and{' '}
+                      <a href="/legal/guidelines" target="_blank" rel="noreferrer" style={{ color: '#7C3AED', textDecoration: 'none' }}>Community Guidelines</a>.
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {/* Navigation Buttons */}
               <div className="step-navigation">
                 {signupStep > 1 && (
@@ -892,38 +922,9 @@ export default function Login() {
                     Next →
                   </button>
                 ) : (
-                  <>
-                    <div style={{ marginTop: '16px', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={ageConfirmed}
-                          onChange={(e) => setAgeConfirmed(e.target.checked)}
-                          style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
-                        />
-                        <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
-                          I confirm that I am at least 18 years of age.
-                        </span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={legalAccepted}
-                          onChange={(e) => setLegalAccepted(e.target.checked)}
-                          style={{ marginTop: '3px', accentColor: '#0caeff', width: '16px', height: '16px' }}
-                        />
-                        <span style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: 1.4 }}>
-                          I agree to the <a href="/legal/terms" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Terms of Service</a>,{' '}
-                          <a href="/legal/privacy" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Privacy Policy</a>, and{' '}
-                          <a href="/legal/guidelines" target="_blank" rel="noreferrer" style={{ color: '#0caeff', textDecoration: 'none' }}>Community Guidelines</a>.
-                        </span>
-                      </label>
-                    </div>
-
-                    <button type="submit" disabled={loading || !ageConfirmed || !legalAccepted} className="btn-submit" style={{ opacity: (!ageConfirmed || !legalAccepted) ? 0.5 : 1 }}>
-                      {loading ? 'Creating Account...' : 'Sign Up'}
-                    </button>
-                  </>
+                  <button type="submit" disabled={loading || !ageConfirmed || !legalAccepted} className="btn-submit" style={{ opacity: (!ageConfirmed || !legalAccepted) ? 0.5 : 1 }}>
+                    {loading ? 'Creating Account...' : 'Sign Up'}
+                  </button>
                 )}
               </div>
             </>
@@ -1132,6 +1133,7 @@ export default function Login() {
         .login-card {
           width: 100%;
           max-width: 400px;
+          margin: auto;
           background: var(--card-bg, rgba(255, 255, 255, 0.85));
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
@@ -1154,7 +1156,29 @@ export default function Login() {
         }
 
         @media (max-width: 480px) {
-          .login-card { padding: 18px 20px 20px; border-radius: 28px; }
+          .login-card { padding: 12px 16px 14px; border-radius: 24px; margin: auto; }
+          .app-title-logo { height: 30px; margin: 0 auto 4px auto; }
+          .app-subtitle { margin: 0 0 6px 0 !important; font-size: 0.8rem !important; }
+          .auth-toggle { margin-bottom: 8px !important; }
+          .auth-toggle .toggle-btn { padding: 6px 10px !important; font-size: 0.85rem !important; }
+          .step-indicator { margin-bottom: 8px !important; }
+          .step { width: 24px !important; height: 24px !important; font-size: 0.78rem !important; }
+          .step-line { max-width: 32px !important; margin: 0 6px !important; }
+          .step-title { font-size: 0.95rem !important; margin: 0 0 6px 0 !important; }
+          .avatar-section { margin-bottom: 6px !important; gap: 4px !important; }
+          .avatar-section div[style*="width: 100px"] { width: 72px !important; height: 72px !important; }
+          .avatar-section label[style*="width: 32px"] { width: 24px !important; height: 24px !important; }
+          .avatar-section label[style*="width: 32px"] span { font-size: 0.9rem !important; margin-top: -3.5px !important; }
+          .avatar-section p { display: none !important; }
+          .field-section { margin-bottom: 6px !important; }
+          .field-section label { margin-bottom: 2px !important; font-size: 0.76rem !important; }
+          .glass-select, .input-field { padding: 7px 10px !important; font-size: 0.85rem !important; }
+          .glass-input-small { padding: 7px 10px !important; font-size: 0.85rem !important; }
+          .add-interest-row button { padding: 0 10px !important; font-size: 0.85rem !important; }
+          .auth-separator { margin: 8px 0 !important; }
+          .btn-google, .btn-submit, .btn-back { padding: 8px !important; font-size: 0.88rem !important; }
+          .chip-group { margin-bottom: 6px !important; }
+          .chip { padding: 4px 8px !important; font-size: 0.75rem !important; }
         }
 
         .app-title-logo {
