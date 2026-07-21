@@ -3105,6 +3105,22 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     const deletedFor = msg.deleted_for || [];
                     return !deletedFor.includes(currentUser.id);
                 });
+
+                // Deduplicate call_logs instantly so they never flash double call logs
+                const deduplicated = [];
+                for (let i = 0; i < filteredMessages.length; i++) {
+                    const msg = filteredMessages[i];
+                    if (msg.message_type === 'call_log') {
+                        const msgTime = new Date(msg.created_at).getTime();
+                        const hasLaterCallLog = filteredMessages.some((other, j) => 
+                            j > i && 
+                            other.message_type === 'call_log' &&
+                            Math.abs(new Date(other.created_at).getTime() - msgTime) < 60000
+                        );
+                        if (hasLaterCallLog) continue;
+                    }
+                    deduplicated.push(msg);
+                }
                 
                 // Fetch pending sent message requests to inject into chat
                 const { data: pendingRequests } = await supabase
@@ -3127,13 +3143,13 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         is_request: true
                     }));
                     
-                    const mergedMessages = [...filteredMessages, ...requestMessages].sort((a, b) => {
+                    const mergedMessages = [...deduplicated, ...requestMessages].sort((a, b) => {
                         return new Date(a.created_at) - new Date(b.created_at);
                     });
                     setMessages(mergedMessages);
                 } else {
                     setHasPendingSentRequest(false);
-                    setMessages(filteredMessages);
+                    setMessages(deduplicated);
                 }
 
                 // Mark UNREAD messages from this user as READ (excluding system messages)
@@ -4574,14 +4590,18 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 {messages.length === 0 && (
                     <div className="empty-chat-state">
                         <div className="empty-chat-icon">
-                            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                             </svg>
                         </div>
-                        <h3>No messages yet</h3>
-                        <p>Start a conversation with <strong style={{ cursor: 'pointer', color: 'var(--theme-accent, #0084ff)' }} onClick={() => { setFullProfileUser(partner || targetUser); setShowFullProfile(true); }}>{partner.username}</strong></p>
+                        <h3>Start a conversation</h3>
+                        <p className="empty-chat-subtitle">Send a text, sticker, photo, or voice note to begin chatting!</p>
                         <button className="tap-to-chat-btn" onClick={() => document.querySelector('.msg-input')?.focus()}>
-                            Tap to chat
+                            <span>Tap to chat</span>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
                         </button>
                     </div>
                 )}
@@ -4863,7 +4883,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 <div className="chat-input-container disabled" onClick={(e) => e.stopPropagation()} style={{ opacity: 0.6, pointerEvents: 'none' }}>
                     <div className="glass-input-bar">
                         <button className="input-icon-btn attachment-btn" disabled>
-                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="12" y1="8" x2="12" y2="16"></line>
                                 <line x1="8" y1="12" x2="16" y2="12"></line>
@@ -5042,7 +5062,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                     title="Attach files"
                                     disabled={uploading || hasPendingSentRequest}
                                 >
-                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
                                         <line x1="12" y1="5" x2="12" y2="19"></line>
                                         <line x1="5" y1="12" x2="19" y2="12"></line>
                                     </svg>
@@ -5073,11 +5093,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                 title={input.trim() ? "Send message" : "Record voice message"}
                             >
                                 {input.trim() ? (
-                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
                                         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
                                     </svg>
                                 ) : (
-                                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
                                         <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                                         <line x1="12" y1="19" x2="12" y2="23"></line>
@@ -5670,19 +5690,21 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                 }
                 
                 .whatsapp-right-btn {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 50%;
-                    background-color: var(--theme-accent, var(--brand-primary, #0084ff));
-                    color: #ffffff;
-                    border: none;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    cursor: pointer;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                    flex-shrink: 0;
-                    transition: transform 0.1s ease, background-color 0.2s;
+                    width: 26px !important;
+                    height: 26px !important;
+                    min-width: 26px !important;
+                    border-radius: 50% !important;
+                    background-color: var(--theme-accent, var(--brand-primary, #0084ff)) !important;
+                    color: #ffffff !important;
+                    border: none !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    cursor: pointer !important;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+                    flex-shrink: 0 !important;
+                    transition: transform 0.1s ease, background-color 0.2s !important;
+                    align-self: center !important;
                 }
                 
                 .whatsapp-right-btn:active {
@@ -6453,50 +6475,74 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     align-items: center;
                     justify-content: center;
                     height: 100%;
-                    color: rgba(255,255,255,0.5);
+                    color: var(--theme-text-color, rgba(0,0,0,0.5));
                     padding: 40px;
                     text-align: center;
+                    animation: emptyStateFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+                @keyframes emptyStateFadeIn {
+                    from {
+                        opacity: 0;
+                        transform: translateY(12px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
                 }
                 .empty-chat-icon {
-                    width: 100px;
-                    height: 100px;
-                    background: rgba(255,255,255,0.03);
+                    width: 108px;
+                    height: 108px;
+                    background: var(--theme-bubble-sent, rgba(0,0,0,0.03));
                     border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    margin-bottom: 20px;
-                    color: var(--theme-accent, #00C6FF);
-                    border: 1px solid rgba(255,255,255,0.05);
+                    margin-bottom: 24px;
+                    color: var(--theme-accent, #7C3AED);
+                    border: 1.5px solid rgba(0,0,0,0.05);
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+                    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+                }
+                .empty-chat-icon:hover {
+                    transform: scale(1.05) rotate(-3deg);
                 }
                 .empty-chat-state h3 {
                     font-size: 1.5rem;
-                    color: white;
+                    color: var(--theme-text-color, #111111);
                     margin: 0 0 8px 0;
-                    font-weight: 600;
+                    font-weight: 700;
+                    letter-spacing: -0.3px;
                 }
-                .empty-chat-state p {
-                    font-size: 1rem;
-                    margin: 0 0 24px 0;
-                    max-width: 250px;
-                    line-height: 1.5;
+                .empty-chat-subtitle {
+                    font-size: 0.95rem;
+                    color: var(--theme-text-color, rgba(0,0,0,0.5));
+                    opacity: 0.7;
+                    margin: 0 0 28px 0;
+                    max-width: 260px;
+                    line-height: 1.45;
                 }
                 .tap-to-chat-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
                     padding: 12px 28px;
-                    background: rgba(255,255,255,0.1);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: var(--theme-accent, #7C3AED);
+                    border: none;
                     border-radius: 99px;
                     color: white;
                     font-weight: 600;
-                    font-size: 1rem;
+                    font-size: 0.95rem;
                     cursor: pointer;
-                    transition: all 0.2s;
+                    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.22);
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
                 }
                 .tap-to-chat-btn:hover {
-                    background: var(--theme-accent, #00C6FF);
-                    border-color: transparent;
                     transform: translateY(-2px);
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.32);
+                }
+                .tap-to-chat-btn:active {
+                    transform: translateY(0) scale(0.97);
                 }
                 /* Reply Preview Styling */
                 .reply-preview {
@@ -6877,15 +6923,31 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                     background: #7C3AED !important;
                     color: #ffffff !important;
                     border-radius: 50% !important;
-                    width: 36px !important;
-                    height: 36px !important;
-                    min-width: 36px !important;
+                    width: 26px !important;
+                    height: 26px !important;
+                    min-width: 26px !important;
                     display: inline-flex !important;
                     align-items: center !important;
                     justify-content: center !important;
                     padding: 0 !important;
                 }
                 .chat-room-container[data-theme-type="light"] .attachment-btn svg {
+                    stroke: #ffffff !important;
+                }
+                .chat-room-container[data-theme-type="light"] .whatsapp-right-btn {
+                    background: #1c1c1e !important;
+                    color: #ffffff !important;
+                    border-radius: 50% !important;
+                    width: 26px !important;
+                    height: 26px !important;
+                    min-width: 26px !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    padding: 0 !important;
+                    align-self: center !important;
+                }
+                .chat-room-container[data-theme-type="light"] .whatsapp-right-btn svg {
                     stroke: #ffffff !important;
                 }
                 .chat-room-container[data-theme-type="light"] .send-btn {

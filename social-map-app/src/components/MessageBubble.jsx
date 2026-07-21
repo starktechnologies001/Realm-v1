@@ -458,35 +458,27 @@ const MessageBubble = ({
                         const isAudio = log.call_type === 'audio';
                         const isMissed = ['missed', 'declined', 'rejected', 'busy'].includes(log.status);
                         
-                        // Determine Text
-                        const isMyCall = log.caller_id ? log.caller_id === userId : isMe;
-                        const typeLabel = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
+                        const isMyCall = log.caller_id ? String(log.caller_id) === String(userId) : isMe;
+                        const typeStr = isVideo ? 'video call' : 'audio call';
                         
-                        let mainText = typeLabel;
+                        let mainText = '';
                         let durationText = '';
 
-                        const status = log.status; // ended, declined, missed, busy, rejected
-                        const typeStr = isVideo ? 'Video call' : (isAudio ? 'Audio call' : 'Call');
+                        const status = log.status; // ended, declined, missed, busy, rejected, cancelled
 
-                        if (status === 'ended' && log.duration > 0) {
+                        if (status === 'declined' || status === 'rejected') {
+                            mainText = 'Declined call';
+                        } else if (status === 'missed' || status === 'busy' || status === 'cancelled') {
+                            mainText = 'Missed call';
+                        } else {
                             const direction = isMyCall ? 'Outgoing' : 'Incoming';
                             mainText = `${direction} ${typeStr}`;
                             
-                            const mins = Math.floor(log.duration / 60);
-                            const secs = log.duration % 60;
-                            durationText = ` • ${mins}:${secs.toString().padStart(2, '0')}`;
-                            
-                        } else if (status === 'declined' || status === 'rejected') {
-                            mainText = `${typeStr} declined`;
-
-                        } else if (status === 'missed' || status === 'busy') {
-                            mainText = `Missed ${typeStr.toLowerCase()}`;
-                            
-                        } else if (status === 'ended' && log.duration === 0) {
-                            const direction = isMyCall ? 'Outgoing' : 'Incoming';
-                            mainText = `${direction} ${typeStr} ended`;
-                        } else {
-                            mainText = typeStr;
+                            if (status === 'ended' && log.duration > 0) {
+                                const mins = Math.floor(log.duration / 60);
+                                const secs = log.duration % 60;
+                                durationText = ` • ${mins}:${secs.toString().padStart(2, '0')}`;
+                            }
                         }
 
                         return (

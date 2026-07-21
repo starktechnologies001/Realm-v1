@@ -259,7 +259,8 @@ export default function Welcome() {
           position: fixed; inset: 0;
           background: linear-gradient(155deg, #F0E6FF 0%, #F5F3FF 25%, #FAFAFA 50%, #FFF5E6 75%, #FFEAD2 100%);
           font-family: "Outfit", "Inter", -apple-system, sans-serif;
-          overflow: hidden;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           width: 100vw;
           height: 100vh;
         }
@@ -361,16 +362,16 @@ export default function Welcome() {
         .welcome-layout {
           position: relative;
           z-index: 10;
-          height: 100%;
+          min-height: 100%;
           max-width: 440px;
           margin: 0 auto;
           display: flex;
           flex-direction: column;
           justify-content: center; /* Center-aligns top and bottom closer to reduce the gap */
-          gap: 20px; /* Reduced controlled gap between logo-feature section and action buttons */
-          padding: 30px 28px;
-          padding-top: max(env(safe-area-inset-top), 24px);
-          padding-bottom: max(env(safe-area-inset-bottom), 24px);
+          gap: 16px; /* Reduced controlled gap between logo-feature section and action buttons */
+          padding: 24px 24px;
+          padding-top: max(env(safe-area-inset-top), 20px);
+          padding-bottom: max(env(safe-area-inset-bottom), 20px);
           opacity: 0;
           transform: translateY(20px);
           transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
@@ -684,6 +685,46 @@ export default function Welcome() {
         .welcome-link:hover {
           color: #4F46E5;
           text-decoration-color: rgba(79, 70, 229, 0.5);
+        }
+
+        @media (max-height: 740px) {
+          .circular-map-container {
+            width: 140px !important;
+            height: 140px !important;
+            margin-bottom: 12px !important;
+          }
+          .circular-map-circle {
+            width: 108px !important;
+            height: 108px !important;
+          }
+          .circular-map-logo {
+            width: 60px !important;
+            height: 60px !important;
+          }
+          .welcome-logo-glow {
+            width: 75px !important;
+            height: 75px !important;
+          }
+          .welcome-app-name {
+            font-size: 2.8rem !important;
+            margin-bottom: 10px !important;
+          }
+          .welcome-headline {
+            font-size: 2rem !important;
+            margin-bottom: 8px !important;
+          }
+          .welcome-sub {
+            font-size: 0.9rem !important;
+            margin-bottom: 12px !important;
+          }
+          .welcome-btn-primary, .welcome-btn-outline, .welcome-google-btn {
+            padding: 12px !important;
+            border-radius: 12px !important;
+          }
+          .welcome-layout {
+            gap: 10px !important;
+            padding: 16px 20px !important;
+          }
         }
       `}</style>
     </div>
