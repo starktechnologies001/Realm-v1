@@ -108,7 +108,7 @@ export default function MessageRequestsPage({ onClose, currentUser }) {
                     state: {
                         targetUser: {
                             id: sender.id,
-                            name: sender.full_name || sender.username,
+                            name: sender.username || sender.full_name,
                             username: sender.username,
                             avatar_url: sender.avatar_url,
                             gender: sender.gender,

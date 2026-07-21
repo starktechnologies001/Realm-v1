@@ -442,7 +442,7 @@ export default function Insights() {
                                     <div className="scrollable-list">
                                         {visitors.map((v, i) => {
                                             const prof = v.visitor || {};
-                                            const name = prof.full_name || prof.username || 'Nearo User';
+                                            const name = prof.username || prof.full_name || 'Nearo User';
                                             const avatar = getAvatar2D(prof.avatar_url || (prof.gender === 'Male' ? DEFAULT_MALE_AVATAR : prof.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR));
                                             const vTier = prof.subscription_tier || 'free';
                                             return (
@@ -484,7 +484,7 @@ export default function Insights() {
                                     <div className="scrollable-list">
                                         {reactors.map((r, i) => {
                                             const prof = r.user || {};
-                                            const name = prof.full_name || prof.username || 'Nearo User';
+                                            const name = prof.username || prof.full_name || 'Nearo User';
                                             const avatar = getAvatar2D(prof.avatar_url || (prof.gender === 'Male' ? DEFAULT_MALE_AVATAR : prof.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR));
                                             const rTier = prof.subscription_tier || 'free';
                                             

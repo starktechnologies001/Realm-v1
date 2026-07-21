@@ -159,7 +159,10 @@ export default function IncomingCallModal({ incomingCall, onAnswer, onReject, on
                             src={avatarUrl}
                             alt="Caller" 
                             className="banner-avatar"
+                            width="96"
+                            height="96"
                             onError={(e) => handleAvatarError(e, incomingCall.caller.username)}
+                            style={{ aspectRatio: '1/1', objectFit: 'cover' }}
                         />
                         <div className="pulsing-ring"></div>
                     </div>

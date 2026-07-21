@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Toast from '../components/Toast';
 import Badge from '../components/Badge';
-import { getAvatarHeadshot, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
+import { getAvatarHeadshot, getOptimizedStorageUrl, DEFAULT_MALE_AVATAR, DEFAULT_FEMALE_AVATAR, DEFAULT_GENERIC_AVATAR } from '../utils/avatarUtils';
 import { getBlockedUserIds, blockUser, unblockUser, isUserBlocked } from '../utils/blockUtils';
 import MessageBubble from '../components/MessageBubble';
 import { uploadToStorage, validateFile } from '../utils/fileUpload';
@@ -113,6 +113,11 @@ export default function Chat() {
     const location = useLocation();
     const { incomingCall, startCall: startGlobalCall, answerCall, rejectCall, sendQuickReply } = useCall();
     const { isLocationEnabled } = useLocationContext();
+    const isInitialPassedUserRef = useRef(false);
+    const [cameDirectly, setCameDirectly] = useState(() => {
+        const passedUser = location.state?.targetUser || location.state?.selectedUser || location.state?.openChatWith;
+        return !!passedUser;
+    });
     const [messageRequestsCount, setMessageRequestsCount] = useState(0);
     const [globalTypingUsers, setGlobalTypingUsers] = useState({});
     const processedListMessageIdsRef = useRef(new Set());
@@ -185,9 +190,13 @@ export default function Chat() {
     // 1. Sync URL with activeChatUser — push a history entry so back button can return to chat list
     useEffect(() => {
         if (activeChatUser) {
-            // Push a new history entry so the browser back gesture can be intercepted
             const newUrl = `${window.location.pathname}?chatId=${activeChatUser.id}`;
-            window.history.pushState({ chatId: activeChatUser.id }, '', newUrl);
+            if (isInitialPassedUserRef.current) {
+                window.history.replaceState({ chatId: activeChatUser.id }, '', newUrl);
+                isInitialPassedUserRef.current = false;
+            } else {
+                window.history.pushState({ chatId: activeChatUser.id }, '', newUrl);
+            }
         } else {
             // Clear param
             window.history.replaceState(null, '', window.location.pathname);
@@ -197,15 +206,15 @@ export default function Chat() {
     // Intercept browser/device back button while in a chat room
     useEffect(() => {
         const handlePopState = (e) => {
-            // If we have an active chat, intercept back and go to chat list
-            if (activeChatUser) {
+            // If we have an active chat and did not come directly, intercept back and go to chat list
+            if (activeChatUser && !cameDirectly) {
                 setActiveChatUser(null);
                 // Do NOT call navigate(-1) — staying on /chat page
             }
         };
         window.addEventListener('popstate', handlePopState);
         return () => window.removeEventListener('popstate', handlePopState);
-    }, [activeChatUser]);
+    }, [activeChatUser, cameDirectly]);
 
     // 2. Restore chat from URL on Load
     useEffect(() => {
@@ -715,6 +724,7 @@ export default function Chat() {
         // If navigated with a target user (from Map or Friends), open that chat immediately
         const passedUser = location.state?.targetUser || location.state?.selectedUser || location.state?.openChatWith;
         if (passedUser) {
+            isInitialPassedUserRef.current = true;
             setActiveChatUser(passedUser);
         }
 
@@ -834,11 +844,13 @@ export default function Chat() {
                 quickReplyText={location.state?.quickReplyText} // Pass quick reply text from navigation
                 globalTypingUsers={globalTypingUsers}
                 onBack={() => {
-                    setActiveChatUser(null);
-                    // Go back in history to keep browser history in sync
-                    window.history.back();
-                    // Refresh chat list to show latent changes if any
-                    loadChats(currentUser.id);
+                    if (cameDirectly) {
+                        navigate(-1);
+                    } else {
+                        setActiveChatUser(null);
+                        window.history.back();
+                        loadChats(currentUser.id);
+                    }
                 }}
             />
         );
@@ -954,7 +966,7 @@ const ChatItemRow = React.memo(({
                 (chat.fullProfile?.subscription_tier || chat.subscription_tier) === 'diamond' ? 'avatar-ring-diamond' : ''
             }`} style={{ padding: (chat.fullProfile?.subscription_tier || chat.subscription_tier) ? 2 : 0, borderRadius: '50%' }}>
                 <img 
-                    src={chat.avatar} 
+                    src={getAvatarHeadshot(chat.avatar)} 
                     alt={chat.name} 
                     className="chat-avatar" 
                     width="46"
@@ -3991,19 +4003,30 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     // If they were friends and unfriended, canChat becomes false immediately via checkChatAccess.
     const canChat = (friendshipStatus === 'accepted') || requestAccepted || hasChattedBefore;
 
+    const getOptimizedWallpaperUrl = (wpValue) => {
+        if (!wpValue || typeof wpValue !== 'string') return wpValue;
+        const match = wpValue.match(/^url\(['"]?([^'"]+)['"]?\)$/);
+        if (match) {
+            const rawUrl = match[1];
+            const optimized = getOptimizedStorageUrl(rawUrl, { width: 800, quality: 75 });
+            return `url('${optimized}')`;
+        }
+        return wpValue;
+    };
+
     return (
         <div 
             className="chat-room-container" 
             data-theme-type={currentTheme.type}
             style={{
                 // Direct application for reliability
-                background: chatBackground || currentTheme.backgroundColor,
+                background: getOptimizedWallpaperUrl(chatBackground) || currentTheme.backgroundColor,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
                 
                 // CSS Variables for children
-                '--theme-bg': chatBackground || currentTheme.backgroundColor,
+                '--theme-bg': getOptimizedWallpaperUrl(chatBackground) || currentTheme.backgroundColor,
                 '--theme-bubble-sent': currentTheme.bubbleSent,
                 '--theme-bubble-received': currentTheme.bubbleReceived,
                 '--theme-text-color': currentTheme.textColor,
@@ -4220,7 +4243,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                             partner.subscription_tier === 'gold' ? 'avatar-ring-gold' :
                             partner.subscription_tier === 'diamond' ? 'avatar-ring-diamond' : ''
                         }`} style={{ padding: partner.subscription_tier ? 2 : 0, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" width="36" height="36" fetchpriority="high" decoding="sync" style={{ border: partner.subscription_tier ? '2px solid #1c1c1e' : 'none' }} />
+                            <img src={getAvatarHeadshot(partner.avatar_url || partner.avatar)} className="header-avatar" alt="avatar" width="36" height="36" fetchpriority="high" decoding="sync" style={{ border: partner.subscription_tier ? '2px solid #1c1c1e' : 'none', aspectRatio: '1/1', objectFit: 'cover' }} />
                         </div>
                         <div className="header-text">
                             <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -5141,7 +5164,15 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         {isVideoUrl(viewingImage) ? (
                             <video src={viewingImage} controls autoPlay playsInline />
                         ) : (
-                            <img src={viewingImage} alt="Full size" decoding="async" loading="lazy" />
+                            <img 
+                                src={viewingImage} 
+                                alt="Full size" 
+                                decoding="async" 
+                                loading="lazy" 
+                                width="1200"
+                                height="800"
+                                style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', aspectRatio: '3/2' }} 
+                            />
                         )}
                     </div>
                 </div>
@@ -7138,7 +7169,7 @@ function ForwardModal({ chats, onClose, onSend, loading }) {
                             onClick={() => toggleChat(chat.id)}
                             style={{ padding: '10px', borderRadius: '12px', background: selected.has(chat.id) ? 'rgba(0,240,255,0.15)' : 'transparent', border: '1px solid', borderColor: selected.has(chat.id) ? 'rgba(0,240,255,0.3)' : 'transparent' }}
                         >
-                            <img src={chat.avatar} className="header-avatar" alt="" style={{ width: '40px', height: '40px' }} />
+                            <img src={getAvatarHeadshot(chat.avatar)} className="header-avatar" alt="" width="40" height="40" style={{ width: '40px', height: '40px', aspectRatio: '1/1', objectFit: 'cover' }} />
                             <span style={{ marginLeft: '12px', fontWeight: 500, color: 'white', flex: 1 }}>{chat.name}</span>
                             {selected.has(chat.id) && <span style={{ color: '#00f0ff' }}>✓</span>}
                         </div>

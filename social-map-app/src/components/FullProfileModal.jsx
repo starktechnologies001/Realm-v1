@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
-import { getAvatar2D } from '../utils/avatarUtils';
+import { getAvatar2D, getOptimizedStorageUrl } from '../utils/avatarUtils';
 import { canViewStatus, getStatusRingClass, getAvatarTapAction } from '../utils/statusUtils';
 import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
 
@@ -218,6 +218,9 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                             src={getAvatar2D(user.avatar || user.avatar_url)} 
                             alt={user.name} 
                             className="fp-avatar-img"
+                            width="160"
+                            height="160"
+                            style={{ aspectRatio: '1/1', objectFit: 'cover' }}
                         />
                         <div className={`fp-status-dot-new ${user.isLocationOn ? 'online' : 'offline'}`} />
                         
@@ -413,9 +416,12 @@ export default function FullProfileModal({ user, currentUser, onClose, onAction 
                 {isFullPhoto && (
                     <div className="full-photo-zoom-overlay" onClick={() => setIsFullPhoto(false)}>
                         <img 
-                            src={getAvatar2D(user.avatar || user.avatar_url)} 
+                            src={getOptimizedStorageUrl(user.avatar || user.avatar_url, { width: 800 })} 
                             alt={user.username || user.name}
                             className="full-photo-zoom-image"
+                            width="800"
+                            height="800"
+                            style={{ objectFit: 'contain', aspectRatio: '1/1' }}
                         />
                     </div>
                 )}

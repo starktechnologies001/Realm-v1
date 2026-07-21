@@ -134,7 +134,7 @@ export default function ProfileVisitors() {
                         ) : (
                             visitors.map((v, i) => {
                                 const profile = v.visitor || {};
-                                const name = profile.full_name || profile.username || 'Visitor';
+                                const name = profile.username || profile.full_name || 'Visitor';
                                 const avatar = getAvatar2D(profile.avatar_url || (profile.gender === 'Male' ? DEFAULT_MALE_AVATAR : profile.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR));
                                 const tier = profile.subscription_tier || 'free';
                                 return (

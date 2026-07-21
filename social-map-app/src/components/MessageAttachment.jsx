@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatFileSize } from '../utils/fileUpload';
+import { getOptimizedStorageUrl } from '../utils/avatarUtils';
 import './MessageAttachment.css';
 
 const MessageAttachment = ({ attachment }) => {
@@ -13,14 +14,30 @@ const MessageAttachment = ({ attachment }) => {
         return (
             <>
                 <div className="message-attachment image-attachment" onClick={() => setLightboxOpen(true)}>
-                    <img src={attachment.file_url} alt={attachment.file_name} loading="lazy" decoding="async" />
+                    <img 
+                        src={getOptimizedStorageUrl(attachment.file_url, { width: 300 })} 
+                        alt={attachment.file_name} 
+                        width="300"
+                        height="300"
+                        loading="lazy" 
+                        decoding="async" 
+                        style={{ width: '100%', height: 'auto', aspectRatio: '1/1', objectFit: 'cover' }}
+                    />
                 </div>
 
                 {lightboxOpen && (
                     <div className="lightbox-overlay" onClick={() => setLightboxOpen(false)}>
                         <div className="lightbox-content">
                             <button className="lightbox-close" onClick={() => setLightboxOpen(false)}>✕</button>
-                            <img src={attachment.file_url} alt={attachment.file_name} loading="lazy" decoding="async" />
+                            <img 
+                                src={getOptimizedStorageUrl(attachment.file_url, { width: 1200 })} 
+                                alt={attachment.file_name} 
+                                width="1200"
+                                height="800"
+                                loading="lazy" 
+                                decoding="async" 
+                                style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain', aspectRatio: '3/2' }}
+                            />
                             <div className="lightbox-info">
                                 <span>{attachment.file_name}</span>
                                 <button className="lightbox-download" onClick={handleDownload}>

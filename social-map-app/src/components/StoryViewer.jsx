@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { getAvatarHeadshot, getOptimizedStorageUrl } from '../utils/avatarUtils';
 import Toast from './Toast';
 
 const isVideo = (url) => {
@@ -347,7 +347,14 @@ export default function StoryViewer({
                         style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
                     />
                 ) : (
-                    <img src={currentStory.media_url} className="story-image" alt="Story" />
+                    <img 
+                        src={getOptimizedStorageUrl(currentStory.media_url, { width: 800 })} 
+                        className="story-image" 
+                        alt="Story"
+                        width="800"
+                        height="1200"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', aspectRatio: '800/1200' }}
+                    />
                 )}
                 
                 {/* Caption or Edit Input */}

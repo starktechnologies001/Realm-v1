@@ -50,6 +50,9 @@ const AttachmentPreview = ({ files, onRemove, onSend, onCancel, uploadProgress }
                                     <img 
                                         src={previewUrl} 
                                         alt={`Preview ${index + 1}`}
+                                        width="300"
+                                        height="300"
+                                        style={{ width: '100%', height: '100%', objectFit: 'contain', aspectRatio: '1/1' }}
                                     />
                                 ) : isVideo && previewUrl ? (
                                     <video

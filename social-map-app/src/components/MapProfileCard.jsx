@@ -650,7 +650,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
 
                                     return displayItems.map(item => {
                                         const reactorProfile = item.user || {};
-                                        const name = reactorProfile.full_name || reactorProfile.username || 'Unknown User';
+                                        const name = reactorProfile.username || reactorProfile.full_name || 'Unknown User';
                                         const username = reactorProfile.username ? `@${reactorProfile.username}` : '';
                                         const reactorAvatar = getAvatar2D(reactorProfile.avatar_url || (reactorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : DEFAULT_FEMALE_AVATAR));
                                         
@@ -725,7 +725,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                                     onClick={() => {
                                                                         onAction('cancel-poke', {
                                                                             id: reactorProfile.id,
-                                                                            name: reactorProfile.full_name || reactorProfile.username || 'User',
+                                                                            name: reactorProfile.username || reactorProfile.full_name || 'User',
                                                                             friendshipId: fData?.id
                                                                         });
                                                                     }}
@@ -738,7 +738,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                                     onClick={() => {
                                                                         onAction('poke', {
                                                                             id: reactorProfile.id,
-                                                                            name: reactorProfile.full_name || reactorProfile.username || 'User'
+                                                                            name: reactorProfile.username || reactorProfile.full_name || 'User'
                                                                         });
                                                                     }}
                                                                 >
@@ -751,7 +751,7 @@ export default function MapProfileCard({ user, onClose, onAction, currentUser, u
                                                                 onClick={() => {
                                                                     onAction('poke', {
                                                                         id: reactorProfile.id,
-                                                                        name: reactorProfile.full_name || reactorProfile.username || 'User'
+                                                                        name: reactorProfile.username || reactorProfile.full_name || 'User'
                                                                     });
                                                                 }}
                                                             >

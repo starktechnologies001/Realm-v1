@@ -789,7 +789,7 @@ export default function Profile() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {visitors.slice(0, 3).map((v, idx) => {
                                 const visitorProfile = v.visitor || {};
-                                const name = visitorProfile.full_name || visitorProfile.username || 'Visitor';
+                                const name = visitorProfile.username || visitorProfile.full_name || 'Visitor';
                                 const avatar = getAvatar2D(visitorProfile.avatar_url || (visitorProfile.gender === 'Male' ? DEFAULT_MALE_AVATAR : visitorProfile.gender === 'Female' ? DEFAULT_FEMALE_AVATAR : DEFAULT_GENERIC_AVATAR));
                                 const tier = visitorProfile.subscription_tier || 'free';
                                 return (

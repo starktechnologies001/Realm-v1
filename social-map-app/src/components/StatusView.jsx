@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { getAvatarHeadshot } from '../utils/avatarUtils';
+import { getAvatarHeadshot, getOptimizedStorageUrl } from '../utils/avatarUtils';
 import Toast from './Toast';
 import ImageCropper from './ImageCropper';
 
@@ -302,7 +302,14 @@ export default function StatusView({ currentUser, friends, onSelectFriend, refre
                             isVideo(editingStory.media_url) ? (
                                 <video src={editingStory.media_url} className="edit-caption-preview" controls={false} autoPlay loop muted />
                             ) : (
-                                <img src={editingStory.media_url} alt="Story" className="edit-caption-preview" />
+                                <img 
+                                    src={getOptimizedStorageUrl(editingStory.media_url, { width: 500 })} 
+                                    alt="Story" 
+                                    className="edit-caption-preview"
+                                    width="500"
+                                    height="500"
+                                    style={{ objectFit: 'contain', aspectRatio: '1/1' }}
+                                />
                             )
                         )}
                         <input

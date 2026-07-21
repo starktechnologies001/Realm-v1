@@ -1,6 +1,7 @@
 import React, { useRef, memo, useEffect, useState } from 'react';
 import { motion, useMotionValue, useTransform, useAnimation } from 'framer-motion';
 import MessageStatusTick from './MessageStatusTick';
+import { getOptimizedStorageUrl } from '../utils/avatarUtils';
 
 const formatAudioTime = (secs) => {
     if (isNaN(secs)) return '0:00';
@@ -344,7 +345,7 @@ const MessageBubble = ({
                     }}>
                         <div style={{ width: '32px', height: '42px', flexShrink: 0 }}>
                             <img 
-                                src={msg.reply_to_story.media_url} 
+                                src={getOptimizedStorageUrl(msg.reply_to_story.media_url, { width: 100, height: 100 })} 
                                 alt="Story"
                                 width="32"
                                 height="42"
@@ -426,14 +427,16 @@ const MessageBubble = ({
                             />
                         ) : (
                             <img 
-                                src={imageUrl} 
+                                src={getOptimizedStorageUrl(imageUrl, { width: 500 })} 
                                 alt="Sent" 
                                 className="sent-image" 
+                                width="300"
+                                height="200"
                                 onClick={() => onViewImage(imageUrl)}
                                 onLoad={onMediaLoad}
                                 loading="lazy"
                                 decoding="async"
-                                style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' ? '6px' : '0' }}
+                                style={{ cursor: 'pointer', borderRadius: '8px', marginBottom: msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' ? '6px' : '0', aspectRatio: '300/200', objectFit: 'cover' }}
                             />
                         )}
                         {msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' && (
