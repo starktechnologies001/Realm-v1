@@ -590,14 +590,18 @@ export function LocationProvider({ children }) {
               const userId = session.user.id;
 
               if (document.hidden) {
-                  // App backgrounded / tab hidden / exited: Mark offline immediately
-                  setOnline(userId, false);
+                  // Tab switched / backgrounded: Send final timestamp, preserve 2-5m grace period (do NOT set offline immediately)
+                  if (locationEnabled && visibilityModeRef.current !== 'ghost') {
+                      supabase.from("profiles").update({
+                          last_seen: new Date().toISOString()
+                      }).eq("id", userId).then();
+                  }
                   if (watchIdRef.current) {
                       try { navigator.geolocation.clearWatch(watchIdRef.current); } catch {}
                       watchIdRef.current = null;
                   }
               } else {
-                  // App foregrounded / opened / active: Mark online immediately
+                  // Tab foregrounded / returned: Immediately refresh heartbeat & resume tracking
                   setOnline(userId, true);
                   if (locationEnabled && !watchIdRef.current) {
                       startWatching();
