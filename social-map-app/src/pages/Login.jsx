@@ -420,7 +420,10 @@ export default function Login() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/confirm-email`,
+            emailRedirectTo:
+              import.meta.env.PROD
+                ? "https://nearo.co.in/confirm-email"
+                : `${window.location.origin}/confirm-email`,
             data: {
               username: username,
               full_name: username,
