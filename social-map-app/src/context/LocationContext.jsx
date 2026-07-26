@@ -3,7 +3,18 @@ import { supabase } from "../supabaseClient";
 import { distanceMetres, fuzzyLocationForDB } from "../utils/locationPrivacy";
 import { setOnline } from "../services/presenceService";
 
-const LocationContext = createContext();
+const defaultLocationContext = {
+  userLocation: null,
+  locationEnabled: false,
+  devicePermissionGranted: false,
+  checkingPermission: false,
+  loadingLocation: false,
+  toggleLocationService: () => {},
+  startLocation: () => {},
+  stopLocation: () => {},
+};
+
+const LocationContext = createContext(defaultLocationContext);
 
 export function LocationProvider({ children }) {
 
@@ -427,12 +438,20 @@ export function LocationProvider({ children }) {
                         .select("visibility_mode")
                         .eq("id", userId)
                         .maybeSingle()
-                        .then(({ data }) => {
+                        .then(({ data, error }) => {
+                            if (error) {
+                                console.warn("Visibility mode fetch warning:", error?.message || error);
+                                if (visibilityModeRef.current) {
+                                    performSync(visibilityModeRef.current);
+                                }
+                                return;
+                            }
                             const mode = data?.visibility_mode || 'public';
                             visibilityModeRef.current = mode;
                             visibilityLastFetched.current = now;
                             performSync(mode);
-                        });
+                        })
+                        .catch(err => console.warn("Visibility mode fetch error during sync:", err));
                 }
             }).catch(err => console.warn("Session error during location watch sync:", err));
           },
@@ -557,7 +576,11 @@ export function LocationProvider({ children }) {
           activity_status: 'live',
           is_online: true
         }).eq("id", userId).then(({ error }) => {
-          if (error) console.error("Heartbeat sync error:", error);
+          if (error) console.warn("Heartbeat sync warning (transient, will retry):", error?.message || error);
+        }).catch(err => {
+          // Swallow transient network errors (ERR_CONNECTION_CLOSED, ERR_NAME_NOT_RESOLVED)
+          // on localhost. Will retry on next 30s heartbeat tick.
+          console.warn("Heartbeat network error (transient):", err?.message || err);
         });
       }).catch(err => console.warn("Session error during heartbeat:", err));
     }, 30000); // 30s heartbeat
@@ -696,4 +719,4 @@ export function LocationProvider({ children }) {
   );
 }
 
-export const useLocationContext = () => useContext(LocationContext);
+export const useLocationContext = () => useContext(LocationContext) || defaultLocationContext;

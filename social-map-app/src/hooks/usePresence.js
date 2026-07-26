@@ -159,7 +159,7 @@ export const usePresence = (userId, viewerId) => {
     }, 60000); // Update every minute
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
       clearInterval(interval);
     };
   }, [userId, viewerId]);

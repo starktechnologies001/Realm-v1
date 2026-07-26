@@ -57,7 +57,7 @@ export const useIncomingCall = (userId) => {
 
     return () => {
       cleanup();
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [userId, isConnected, incomingCall]);
 

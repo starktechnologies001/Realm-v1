@@ -722,6 +722,26 @@ export default function MapHome() {
     useEffect(() => {
         globalNearbyUsersCache = nearbyUsers;
     }, [nearbyUsers]);
+
+    // ⏱️ Periodic cleanup: evict avatars that have exceeded the 15-minute grace period
+    // This fires every 60 seconds so avatars disappear on time even without a Realtime event
+    useEffect(() => {
+        const cleanupExpiredAvatars = () => {
+            const cutoff = Date.now() - 15 * 60 * 1000; // 15 minutes ago
+            setNearbyUsers(prev => {
+                const next = prev.filter(u => {
+                    if (!u.last_seen) return true; // no last_seen → keep (let Realtime handle)
+                    return new Date(u.last_seen).getTime() > cutoff;
+                });
+                return next.length !== prev.length ? next : prev; // avoid re-render if nothing changed
+            });
+        };
+
+        const timer = setInterval(cleanupExpiredAvatars, 60 * 1000); // run every 60s
+        return () => clearInterval(timer);
+    }, []);
+
+
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [diamondFilters, setDiamondFilters] = useState(() => {
@@ -1871,27 +1891,25 @@ export default function MapHome() {
                 });
             }
 
-            // Debug: Log raw fetch results
+            // Log raw fetch results — if error occurs, retain existing avatars instead of wiping them
             if (profilesData.error) {
-                console.error('❌ [MapHome] Fetch Error:', profilesData.error);
+                console.warn('⚠️ [MapHome] Fetch Warning (retaining existing avatars):', profilesData.error?.message || profilesData.error);
+                return;
             }
 
-            // Filter and map users (exclude blocked users, offline users, AND current user)
+            // Filter and map users (exclude blocked users, AND current user)
+            // Avatars remain visible for 15 minutes after last_seen — then disappear
             const validUsers = (profilesData.data || [])
                 .filter(u => {
                     const isBlocked = allBlockedIds.has(u.id);
                     const isMe = u.id === currentUser.id;
-                    
+
                     if (isBlocked || isMe) return false;
 
-                    // Step 9: Offline system
-                    if (u.activity_status === 'offline') return false;
-
+                    // Hide after 15 minutes of inactivity (last_seen too old)
                     if (u.last_seen) {
-                        const lastSeenDate = new Date(u.last_seen);
-                        const now = new Date();
-                        const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                        if (diffMinutes > 5) return false;
+                        const diffMinutes = (Date.now() - new Date(u.last_seen).getTime()) / (1000 * 60);
+                        if (diffMinutes > 15) return false;
                     }
 
                     // Filter if they have visibility_mode = 'ghost'
@@ -1903,9 +1921,6 @@ export default function MapHome() {
                             return false;
                         }
                     }
-
-                    // Check location enabled explicitly
-                    if (u.is_location_on === false) return false;
 
                     return true;
                 })
@@ -2059,10 +2074,10 @@ export default function MapHome() {
                 }
 
                 // Check visibility criteria
+                // Avatars linger for 15 minutes after last_seen — users who went offline
+                // remain visible and disappear only after the 15-minute grace period.
                 let isVisible = true;
-                if (updatedUser.activity_status === 'offline') isVisible = false;
                 if (updatedUser.visibility_mode === 'ghost') isVisible = false;
-                if (updatedUser.is_location_on === false) isVisible = false;
 
                 if (updatedUser.visibility_mode === 'friends' || updatedUser.visibility_mode === 'friend') {
                     const fData = friendshipsMapRef.current.get(updatedUser.id);
@@ -2072,10 +2087,8 @@ export default function MapHome() {
                 }
 
                 if (updatedUser.last_seen) {
-                    const lastSeenDate = new Date(updatedUser.last_seen);
-                    const now = new Date();
-                    const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                    if (diffMinutes > 5) isVisible = false;
+                    const diffMinutes = (Date.now() - new Date(updatedUser.last_seen).getTime()) / (1000 * 60);
+                    if (diffMinutes > 15) isVisible = false;
                 }
 
                 setNearbyUsers(prev => {

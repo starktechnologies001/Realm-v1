@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import BottomNav from './BottomNav';
 import { supabase } from '../supabaseClient';
 import { recordActivity } from '../utils/streakUtils';
@@ -8,6 +8,7 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 
 export default function Layout() {
+    const navigate = useNavigate();
     // 🚀 Instant render: if localStorage has a user, skip the auth gate entirely
     const hasStoredUser = !!localStorage.getItem('currentUser');
     const [checkingAuth, setCheckingAuth] = useState(!hasStoredUser);
@@ -84,7 +85,7 @@ export default function Layout() {
 
         initAuth();
 
-        // 2. Listen for auth changes (Handles OAuth Redirects)
+        // 2. Listen for auth changes (Handles OAuth Redirects, account deletions)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
              if (mounted) {
                  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -93,12 +94,13 @@ export default function Layout() {
                          setCurrentUserId(session.user.id);
                          setCheckingAuth(false);
                      }
-                 } else if (event === 'SIGNED_OUT') {
-                     // Optional: clear local storage
-                     // localStorage.removeItem('currentUser'); // Let MapHome handle redirect logic
-                     localStorage.removeItem('setup_complete'); // Fix: Ensure setup flow works for next user
+                 } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+                     // Fired when user signs out OR when their account is deleted from Supabase dashboard
+                     localStorage.removeItem('currentUser');
+                     localStorage.removeItem('setup_complete');
                      setCurrentUserId(null);
                      setCheckingAuth(false);
+                     navigate('/login', { replace: true });
                  }
              }
         });
