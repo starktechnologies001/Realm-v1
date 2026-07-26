@@ -581,7 +581,23 @@ const getFuzzyLocationForUser = (userId, latVal, lngVal) => {
     };
 };
 const globalViewCounts = {};
-let globalNearbyUsersCache = [];
+
+// 🚀 Seed in-memory cache from localStorage for instant avatar rendering on full-page refresh.
+// TTL: 15 minutes — stale entries are evicted on the next periodic cleanup anyway.
+const _restoreNearbyCache = () => {
+    try {
+        const raw = localStorage.getItem('nearo_nearby_users_cache');
+        if (!raw) return [];
+        const { ts, users } = JSON.parse(raw);
+        const ageMinutes = (Date.now() - ts) / (1000 * 60);
+        if (ageMinutes > 15) {
+            localStorage.removeItem('nearo_nearby_users_cache');
+            return [];
+        }
+        return Array.isArray(users) ? users : [];
+    } catch { return []; }
+};
+let globalNearbyUsersCache = _restoreNearbyCache();
 
 export default function MapHome() {
     // Map UI State
@@ -721,6 +737,38 @@ export default function MapHome() {
 
     useEffect(() => {
         globalNearbyUsersCache = nearbyUsers;
+        // Persist to localStorage so the next full-page refresh renders avatars instantly
+        if (nearbyUsers.length > 0) {
+            try {
+                // Only store the fields needed for immediate rendering (keep payload small)
+                const compact = nearbyUsers.map(u => ({
+                    id: u.id,
+                    name: u.name,
+                    lat: u.lat,
+                    lng: u.lng,
+                    avatar: u.avatar,
+                    originalAvatar: u.originalAvatar,
+                    status: u.status,
+                    thought: u.thought,
+                    visibility_mode: u.visibility_mode,
+                    last_seen: u.last_seen,
+                    lastActive: u.lastActive,
+                    activity_status: u.activity_status,
+                    subscription_tier: u.subscription_tier,
+                    avatar_effect: u.avatar_effect,
+                    is_verified: u.is_verified,
+                    friendshipStatus: u.friendshipStatus,
+                    hasStory: u.hasStory,
+                    hasUnseenStory: u.hasUnseenStory,
+                    gender: u.gender,
+                    hide_status: u.hide_status,
+                    relationshipStatus: u.relationshipStatus,
+                    mood: u.mood,
+                    is_public: u.is_public,
+                }));
+                localStorage.setItem('nearo_nearby_users_cache', JSON.stringify({ ts: Date.now(), users: compact }));
+            } catch { /* localStorage full or unavailable — skip silently */ }
+        }
     }, [nearbyUsers]);
 
     // ⏱️ Periodic cleanup: evict avatars that have exceeded the 15-minute grace period
@@ -1049,28 +1097,6 @@ export default function MapHome() {
         };
     }, [currentUser?.id]);
 
-    // ⏱️ 5-Minute Presence Timeout Cleanup (In-memory, zero DB queries)
-    // Automatically prunes users from the map if no heartbeat/update was received for > 5 minutes.
-    useEffect(() => {
-        const timeoutInterval = setInterval(() => {
-            const now = Date.now();
-            setNearbyUsers(prev => {
-                const filtered = prev.filter(u => {
-                    const lastSeenVal = u.last_seen || u.lastActive;
-                    if (lastSeenVal) {
-                        const lastSeenTime = new Date(lastSeenVal).getTime();
-                        if (!isNaN(lastSeenTime) && (now - lastSeenTime > 5 * 60 * 1000)) {
-                            return false; // Remove user after 5 minutes of inactivity
-                        }
-                    }
-                    return true;
-                });
-                return filtered.length !== prev.length ? filtered : prev;
-            });
-        }, 15000); // Check every 15 seconds
-
-        return () => clearInterval(timeoutInterval);
-    }, []);
 
     const handleToggleReaction = React.useCallback(async (thoughtUserId, reactionType) => {
         if (!currentUser) return;
@@ -2258,7 +2284,7 @@ export default function MapHome() {
                     const lastSeenDate = new Date(newUser.last_seen);
                     const now = new Date();
                     const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                    if (diffMinutes > 5) isVisible = false;
+                    if (diffMinutes > 15) isVisible = false;
                 }
 
                 if (isVisible) {

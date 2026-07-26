@@ -123,14 +123,18 @@ const setupActivityListeners = (userId) => {
     }
   };
 
-  // Mouse movement
+  // Mouse movement (desktop)
   document.addEventListener('mousemove', throttledUpdate);
   
-  // Keyboard input
+  // Keyboard input (desktop)
   document.addEventListener('keydown', throttledUpdate);
   
-  // Scroll events
+  // Scroll events (desktop + mobile)
   document.addEventListener('scroll', throttledUpdate);
+
+  // Touch events (mobile) — ensures mobile users register presence activity
+  document.addEventListener('touchstart', throttledUpdate, { passive: true });
+  document.addEventListener('touchmove', throttledUpdate, { passive: true });
 };
 
 /**
