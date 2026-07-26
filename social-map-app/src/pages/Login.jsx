@@ -604,7 +604,7 @@ export default function Login() {
                   placeholder="Username"
                   value={username}
                   onChange={(e) => { setUsername(e.target.value); clearFieldError('username'); }}
-                  style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.username ? { borderColor: '#ff453a' } : {})}}
+                  style={{ padding: '13px 36px 13px 14px', fontSize: '0.95rem', ...(fieldErrors.username ? { borderColor: '#ff453a' } : {})}}
                   required
                 />
                 {fieldErrors.username && <span style={{ fontSize: '0.8rem', color: '#ff453a', marginTop: '4px', display: 'block', marginLeft: '4px' }}>{fieldErrors.username}</span>}
@@ -616,7 +616,7 @@ export default function Login() {
                   placeholder="Password"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
-                  style={{ padding: '10px 36px 10px 12px', fontSize: '0.92rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
+                  style={{ padding: '13px 36px 13px 14px', fontSize: '0.95rem', ...(fieldErrors.password ? { borderColor: '#ff453a' } : {}) }}
                   required
                 />
                 <button
@@ -647,7 +647,7 @@ export default function Login() {
                   Forgot Password?
                 </span>
               </div>
-              <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '10px', fontSize: '0.92rem' }}>
+              <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '13px', fontSize: '0.95rem' }}>
                 {loading ? 'Logging In...' : 'Log In'}
               </button>
             </>
@@ -1142,7 +1142,7 @@ export default function Login() {
           -webkit-backdrop-filter: blur(24px);
           border: 1px solid var(--glass-border);
           border-radius: 32px;
-          padding: 24px 24px 28px;
+          padding: 30px 28px 36px;
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
@@ -1159,7 +1159,7 @@ export default function Login() {
         }
 
         @media (max-width: 480px) {
-          .login-card { padding: 12px 16px 14px; border-radius: 24px; margin: auto; }
+          .login-card { padding: 16px 18px 20px; border-radius: 24px; margin: auto; }
           .app-title-logo { height: 30px; margin: 0 auto 4px auto; }
           .app-subtitle { margin: 0 0 6px 0 !important; font-size: 0.8rem !important; }
           .auth-toggle { margin-bottom: 8px !important; }
@@ -1185,9 +1185,9 @@ export default function Login() {
         }
 
         .app-title-logo {
-          height: 40px;
+          height: 44px;
           width: auto;
-          margin: 0 auto 6px auto;
+          margin: 0 auto 10px auto;
           display: block;
           object-fit: contain;
         }
@@ -1195,7 +1195,7 @@ export default function Login() {
         .app-subtitle {
           color: var(--text-primary);
           font-size: 0.85rem;
-          margin: 0 0 10px 0;
+          margin: 0 0 18px 0;
           font-weight: 500;
           letter-spacing: -0.2px;
         }
@@ -1207,7 +1207,7 @@ export default function Login() {
           padding: 4px;
           border-radius: 100px;
           width: 100%;
-          margin-bottom: 18px;
+          margin-bottom: 26px;
         }
 
         .toggle-btn {
@@ -1234,7 +1234,7 @@ export default function Login() {
           width: 100%;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 14px;
         }
 
         .input-group {
@@ -1246,10 +1246,10 @@ export default function Login() {
           width: 100%;
           background: var(--input-bg);
           border: 1.5px solid var(--input-border);
-          padding: 10px 36px 10px 12px;
-          border-radius: 12px;
+          padding: 13px 36px 13px 14px;
+          border-radius: 14px;
           color: var(--text-primary);
-          font-size: 0.92rem;
+          font-size: 0.95rem;
           font-family: inherit;
           font-weight: 500;
           outline: none;
