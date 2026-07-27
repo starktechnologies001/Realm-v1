@@ -1,0 +1,254 @@
+/* Live Location View Styles */
+
+.live-location-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.live-location-header {
+    height: 60px;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 1000;
+}
+
+.live-back-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.live-back-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.live-header-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.live-header-title h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+}
+
+.live-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-top: 2px;
+}
+
+.live-status-pill.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10B981;
+}
+
+.live-status-pill.paused {
+    background: rgba(245, 158, 11, 0.15);
+    color: #F59E0B;
+}
+
+.pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulseGlow 1.5s infinite;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.live-map-container {
+    flex: 1;
+    position: relative;
+    width: 100%;
+}
+
+.live-recenter-btn {
+    position: absolute;
+    bottom: 24px;
+    right: 20px;
+    z-index: 999;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+}
+
+.live-bottom-card {
+    background: #1e293b;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 1000;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.live-user-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.live-card-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #3B82F6;
+}
+
+.live-card-info {
+    flex: 1;
+}
+
+.live-card-info h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: white;
+}
+
+.live-subtext {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+.text-warning {
+    color: #f59e0b;
+}
+
+.live-timer-badge {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.live-banner.warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+}
+
+.live-card-actions {
+    margin-top: 4px;
+}
+
+.live-stop-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 14px;
+    border: none;
+    background: #ef4444;
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.live-stop-btn:hover {
+    background: #dc2626;
+}
+
+.live-close-card-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+/* Custom Marker Styling */
+.custom-live-marker {
+    background: transparent;
+    border: none;
+}
+
+.live-marker-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.live-marker-frame {
+    border-radius: 50%;
+    overflow: hidden;
+    border: 3px solid #3B82F6;
+    background: #000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.live-marker-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.partner-pulse::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid #3B82F6;
+    animation: markerPulse 2s infinite ease-out;
+}
+
+@keyframes markerPulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+}

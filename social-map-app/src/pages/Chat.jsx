@@ -20,11 +20,13 @@ const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 const StatusView = React.lazy(() => import('../components/StatusView'));
 const StoryViewer = React.lazy(() => import('../components/StoryViewer'));
 const FullProfileModal = React.lazy(() => import('../components/FullProfileModal'));
+const LiveLocationView = React.lazy(() => import('../components/LiveLocationView'));
 import { useCall } from '../context/CallContext';
 import { useLocationContext } from '../context/LocationContext';
 import { mapEventChannel } from '../utils/mapEvents'; // Instant map updates
 import { parseThought } from '../utils/locationPrivacy';
 import { VerifiedBadgeInline } from '../utils/verifiedBadge.jsx';
+import { requestLiveLocation, acceptLiveLocation, declineLiveLocation, revokeLiveLocation, getShareById } from '../services/liveLocationService';
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID; // Moved to environment variable for security
 
@@ -2350,6 +2352,11 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const galleryInputRef = useRef(null);
     const documentInputRef = useRef(null);
 
+    // Live Location State
+    const [showLiveLocationDurationModal, setShowLiveLocationDurationModal] = useState(false);
+    const [showLiveLocationView, setShowLiveLocationView] = useState(false);
+    const [activeLiveLocationShareId, setActiveLiveLocationShareId] = useState(null);
+
     // Message context menu state (long-press) REPLACED by Selection Mode
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState(new Set());
@@ -3671,6 +3678,44 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         documentInputRef.current?.click();
     };
 
+    const handleSelectLiveLocation = () => {
+        setShowAttachmentPicker(false);
+        setShowLiveLocationDurationModal(true);
+    };
+
+    const handleSendLiveLocationRequest = async (durationMinutes) => {
+        setShowLiveLocationDurationModal(false);
+        try {
+            const shareId = await requestLiveLocation(targetUser.id, durationMinutes);
+            showToast("Live location request sent 📍");
+        } catch (err) {
+            console.error("Failed to request live location:", err);
+            showToast(err.message || "Failed to send live location request ❌");
+        }
+    };
+
+    const handleAcceptLiveLocationRequest = async (shareId) => {
+        try {
+            await acceptLiveLocation(shareId);
+            showToast("Accepted live location request 🟢");
+            setActiveLiveLocationShareId(shareId);
+            setShowLiveLocationView(true);
+        } catch (err) {
+            console.error("Failed to accept live location request:", err);
+            showToast(err.message || "Failed to accept ❌");
+        }
+    };
+
+    const handleDeclineLiveLocationRequest = async (shareId) => {
+        try {
+            await declineLiveLocation(shareId);
+            showToast("Declined live location request");
+        } catch (err) {
+            console.error("Failed to decline live location request:", err);
+            showToast(err.message || "Failed to decline ❌");
+        }
+    };
+
     const handleFileSelect = (e) => {
         let files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -4706,6 +4751,103 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                             msg.content
                                         )}
                                     </span>
+                                </div>
+                            </React.Fragment>
+                        );
+                    }
+
+                    // Live Location Request Message Rendering
+                    if (msg.message_type === 'live_location_request') {
+                        let parsedData = {};
+                        try {
+                            parsedData = typeof msg.content === 'string' ? JSON.parse(msg.content) : (msg.content || {});
+                        } catch (e) {
+                            parsedData = {};
+                        }
+
+                        const shareId = parsedData.share_id;
+                        const durationMins = parsedData.duration_minutes || 60;
+
+                        return (
+                            <React.Fragment key={`live-loc-${msg.id || i}`}>
+                                {dateHeader}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    margin: '12px 0',
+                                    width: '100%'
+                                }}>
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95))',
+                                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                                        borderRadius: '16px',
+                                        padding: '16px 20px',
+                                        maxWidth: '320px',
+                                        width: '100%',
+                                        color: '#ffffff',
+                                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+                                        backdropFilter: 'blur(10px)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                            <div style={{
+                                                width: '36px', height: '36px', borderRadius: '50%',
+                                                background: 'rgba(59, 130, 246, 0.2)', color: '#3B82F6',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                📍
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Live Location Request</div>
+                                                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Duration: {durationMins} minutes</div>
+                                            </div>
+                                        </div>
+
+                                        <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.4' }}>
+                                            {isMe
+                                                ? `You sent a live location request to ${partner?.username || targetUser?.username || 'friend'}.`
+                                                : `${partner?.username || targetUser?.username || 'Friend'} wants to share live location with you.`}
+                                        </p>
+
+                                        {!isMe ? (
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    onClick={() => handleAcceptLiveLocationRequest(shareId)}
+                                                    style={{
+                                                        flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
+                                                        background: '#10B981', color: 'white', fontWeight: 600, fontSize: '0.82rem',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Accept 🟢
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeclineLiveLocationRequest(shareId)}
+                                                    style={{
+                                                        padding: '8px 12px', borderRadius: '8px',
+                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                        background: 'transparent', color: '#94a3b8', fontSize: '0.82rem',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Decline
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    setActiveLiveLocationShareId(shareId);
+                                                    setShowLiveLocationView(true);
+                                                }}
+                                                style={{
+                                                    width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none',
+                                                    background: '#3B82F6', color: 'white', fontWeight: 600, fontSize: '0.82rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                View Live Location Map 🗺️
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </React.Fragment>
                         );
@@ -7062,6 +7204,69 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                         onSelectCamera={handleSelectCamera}
                         onSelectGallery={handleSelectGallery}
                         onSelectDocument={handleSelectDocument}
+                        onSelectLiveLocation={handleSelectLiveLocation}
+                    />
+                </React.Suspense>
+            )}
+
+            {/* Duration Picker Modal for Live Location */}
+            {showLiveLocationDurationModal && (
+                <div className="attachment-backdrop" onClick={() => setShowLiveLocationDurationModal(false)} style={{ zIndex: 99999 }}>
+                    <div className="attachment-picker" onClick={e => e.stopPropagation()} style={{ zIndex: 100000 }}>
+                        <div className="attachment-header">
+                            <h3>Share Live Location</h3>
+                            <button className="close-btn" onClick={() => setShowLiveLocationDurationModal(false)}>✕</button>
+                        </div>
+                        <p style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '16px' }}>
+                            Choose how long to share your exact location with {targetUser?.username || partner?.username || 'this friend'}:
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button
+                                onClick={() => handleSendLiveLocationRequest(15)}
+                                style={{
+                                    padding: '14px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    background: 'rgba(255, 255, 255, 0.05)', color: 'white', fontWeight: 600, fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
+                                }}
+                            >
+                                <span>⏱️ 15 Minutes</span>
+                                <span style={{ color: '#3B82F6', fontSize: '0.8rem' }}>Quick Share</span>
+                            </button>
+                            <button
+                                onClick={() => handleSendLiveLocationRequest(60)}
+                                style={{
+                                    padding: '14px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    background: 'rgba(59, 130, 246, 0.1)', color: 'white', fontWeight: 600, fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
+                                }}
+                            >
+                                <span>⏱️ 1 Hour</span>
+                                <span style={{ color: '#3B82F6', fontSize: '0.8rem' }}>Recommended</span>
+                            </button>
+                            <button
+                                onClick={() => handleSendLiveLocationRequest(480)}
+                                style={{
+                                    padding: '14px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    background: 'rgba(255, 255, 255, 0.05)', color: 'white', fontWeight: 600, fontSize: '0.9rem',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
+                                }}
+                            >
+                                <span>⏱️ 8 Hours</span>
+                                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>All Day</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Fullscreen Live Location View */}
+            {showLiveLocationView && (
+                <React.Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 99999 }}>Loading Live Location Map...</div>}>
+                    <LiveLocationView
+                        currentUser={currentUser}
+                        partnerUser={partner || targetUser}
+                        shareId={activeLiveLocationShareId}
+                        onClose={() => setShowLiveLocationView(false)}
                     />
                 </React.Suspense>
             )}

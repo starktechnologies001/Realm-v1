@@ -74,6 +74,10 @@
     gap: 12px;
 }
 
+.attachment-options.has-4-options {
+    grid-template-columns: repeat(4, 1fr);
+}
+
 .attachment-option {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.06);
@@ -126,6 +130,11 @@
 .document .option-icon {
     color: #43e97b;
     background: rgba(67, 233, 123, 0.1);
+}
+
+.live-location .option-icon {
+    color: #3B82F6;
+    background: rgba(59, 130, 246, 0.1);
 }
 
 .attachment-option:hover .option-icon {
