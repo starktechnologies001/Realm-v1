@@ -137,33 +137,36 @@ export function useLiveLocation({ currentUserId, partnerId, shareId = null }) {
     }, [activeShare?.expires_at, refreshShares]);
 
     // 4. Publishing Loop & Multi-Share Cleanup Logic
+    const userLat = userLocation?.lat ?? userLocation?.latitude;
+    const userLng = userLocation?.lng ?? userLocation?.longitude;
+
     useEffect(() => {
         const canPublish = Boolean(
             currentUserId &&
             locationEnabled &&
             !isGhostMode &&
             activeSharesCount > 0 &&
-            userLocation?.latitude != null &&
-            userLocation?.longitude != null
+            userLat != null &&
+            userLng != null
         );
 
         if (canPublish) {
             // Publish immediately
             publishExactLocation(
                 currentUserId,
-                userLocation.latitude,
-                userLocation.longitude,
-                userLocation.accuracy || null
+                userLat,
+                userLng,
+                userLocation?.accuracy || null
             );
 
             // Repeat every 10 seconds
             publishIntervalRef.current = setInterval(() => {
-                if (userLocation?.latitude != null && userLocation?.longitude != null) {
+                if (userLat != null && userLng != null) {
                     publishExactLocation(
                         currentUserId,
-                        userLocation.latitude,
-                        userLocation.longitude,
-                        userLocation.accuracy || null
+                        userLat,
+                        userLng,
+                        userLocation?.accuracy || null
                     );
                 }
             }, 10000);
@@ -186,7 +189,7 @@ export function useLiveLocation({ currentUserId, partnerId, shareId = null }) {
                 publishIntervalRef.current = null;
             }
         };
-    }, [currentUserId, locationEnabled, isGhostMode, activeSharesCount, userLocation]);
+    }, [currentUserId, locationEnabled, isGhostMode, activeSharesCount, userLat, userLng, userLocation]);
 
     // 5. Subscribe to Partner Location & Share Updates
     useEffect(() => {
@@ -245,6 +248,7 @@ export function useLiveLocation({ currentUserId, partnerId, shareId = null }) {
         activeShare,
         isSharingActive,
         partnerLocation,
+        myLocation: userLat != null && userLng != null ? { latitude: userLat, longitude: userLng } : null,
         isPartnerUnavailable,
         isPartnerLocationStale,
         remainingSeconds,

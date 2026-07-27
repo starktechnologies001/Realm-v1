@@ -45,6 +45,7 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
         activeShare,
         isSharingActive,
         partnerLocation,
+        myLocation,
         isPartnerUnavailable,
         remainingSeconds,
         isGhostMode,
@@ -62,12 +63,14 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
     useEffect(() => {
         if (partnerLocation?.latitude != null && partnerLocation?.longitude != null) {
             setMapCenter([partnerLocation.latitude, partnerLocation.longitude]);
+        } else if (myLocation?.latitude != null && myLocation?.longitude != null) {
+            setMapCenter([myLocation.latitude, myLocation.longitude]);
         } else if (currentUser?.latitude != null && currentUser?.longitude != null) {
             setMapCenter([currentUser.latitude, currentUser.longitude]);
         } else {
             setMapCenter([20.5937, 78.9629]); // Default fallback
         }
-    }, [partnerLocation, currentUser]);
+    }, [partnerLocation, myLocation, currentUser]);
 
     // Handle Stop Sharing
     const handleStopSharing = async () => {
@@ -112,9 +115,11 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
         ? [partnerLocation.latitude, partnerLocation.longitude]
         : null;
 
-    const myPos = currentUser?.latitude != null && currentUser?.longitude != null
-        ? [currentUser.latitude, currentUser.longitude]
-        : null;
+    const myPos = myLocation?.latitude != null && myLocation?.longitude != null
+        ? [myLocation.latitude, myLocation.longitude]
+        : (currentUser?.latitude != null && currentUser?.longitude != null
+            ? [currentUser.latitude, currentUser.longitude]
+            : null);
 
     return (
         <div className="live-location-fullscreen">

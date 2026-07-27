@@ -2356,6 +2356,7 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const [showLiveLocationDurationModal, setShowLiveLocationDurationModal] = useState(false);
     const [showLiveLocationView, setShowLiveLocationView] = useState(false);
     const [activeLiveLocationShareId, setActiveLiveLocationShareId] = useState(null);
+    const [sharesMap, setSharesMap] = useState({}); // shareId -> share object
 
     // Message context menu state (long-press) REPLACED by Selection Mode
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -3678,6 +3679,54 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
         documentInputRef.current?.click();
     };
 
+    // Fetch and subscribe to live_location_shares status for in-chat card status sync
+    useEffect(() => {
+        if (!messages || messages.length === 0) return;
+
+        const shareIds = messages
+            .filter(m => m.message_type === 'live_location_request')
+            .map(m => {
+                try {
+                    const parsed = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    return parsed?.share_id;
+                } catch { return null; }
+            })
+            .filter(Boolean);
+
+        if (shareIds.length === 0) return;
+
+        const fetchSharesStatus = async () => {
+            const { data } = await supabase
+                .from('live_location_shares')
+                .select('*')
+                .in('id', shareIds);
+
+            if (data) {
+                const newMap = {};
+                data.forEach(s => { newMap[s.id] = s; });
+                setSharesMap(prev => ({ ...prev, ...newMap }));
+            }
+        };
+
+        fetchSharesStatus();
+
+        const channel = supabase.channel(`shares_status_sync_${targetUser?.id}_${Date.now()}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'live_location_shares'
+            }, (payload) => {
+                if (payload.new && shareIds.includes(payload.new.id)) {
+                    setSharesMap(prev => ({ ...prev, [payload.new.id]: payload.new }));
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [messages, targetUser?.id]);
+
     const handleSelectLiveLocation = () => {
         setShowAttachmentPicker(false);
         setShowLiveLocationDurationModal(true);
@@ -3697,6 +3746,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const handleAcceptLiveLocationRequest = async (shareId) => {
         try {
             await acceptLiveLocation(shareId);
+            setSharesMap(prev => ({
+                ...prev,
+                [shareId]: { ...(prev[shareId] || {}), status: 'accepted', expires_at: new Date(Date.now() + 3600000).toISOString() }
+            }));
             showToast("Accepted live location request 🟢");
             setActiveLiveLocationShareId(shareId);
             setShowLiveLocationView(true);
@@ -3709,6 +3762,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
     const handleDeclineLiveLocationRequest = async (shareId) => {
         try {
             await declineLiveLocation(shareId);
+            setSharesMap(prev => ({
+                ...prev,
+                [shareId]: { ...(prev[shareId] || {}), status: 'declined' }
+            }));
             showToast("Declined live location request");
         } catch (err) {
             console.error("Failed to decline live location request:", err);
@@ -4767,6 +4824,10 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
 
                         const shareId = parsedData.share_id;
                         const durationMins = parsedData.duration_minutes || 60;
+                        const shareObj = sharesMap[shareId];
+                        const shareStatus = shareObj?.status || 'pending';
+                        const isExpired = shareObj?.expires_at ? new Date(shareObj.expires_at) <= new Date() : false;
+                        const isRevoked = Boolean(shareObj?.revoked_at || shareStatus === 'revoked');
 
                         return (
                             <React.Fragment key={`live-loc-${msg.id || i}`}>
@@ -4808,31 +4869,37 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                                 : `${partner?.username || targetUser?.username || 'Friend'} wants to share live location with you.`}
                                         </p>
 
-                                        {!isMe ? (
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button
-                                                    onClick={() => handleAcceptLiveLocationRequest(shareId)}
-                                                    style={{
-                                                        flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
-                                                        background: '#10B981', color: 'white', fontWeight: 600, fontSize: '0.82rem',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    Accept 🟢
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeclineLiveLocationRequest(shareId)}
-                                                    style={{
-                                                        padding: '8px 12px', borderRadius: '8px',
-                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                        background: 'transparent', color: '#94a3b8', fontSize: '0.82rem',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    Decline
-                                                </button>
-                                            </div>
-                                        ) : (
+                                        {shareStatus === 'pending' && !isExpired ? (
+                                            !isMe ? (
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button
+                                                        onClick={() => handleAcceptLiveLocationRequest(shareId)}
+                                                        style={{
+                                                            flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
+                                                            background: '#10B981', color: 'white', fontWeight: 600, fontSize: '0.82rem',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        Accept 🟢
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeclineLiveLocationRequest(shareId)}
+                                                        style={{
+                                                            padding: '8px 12px', borderRadius: '8px',
+                                                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                            background: 'transparent', color: '#94a3b8', fontSize: '0.82rem',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        Decline
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div style={{ textAlign: 'center', padding: '6px', fontSize: '0.8rem', color: '#94a3b8', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
+                                                    ⏳ Waiting for friend to accept...
+                                                </div>
+                                            )
+                                        ) : shareStatus === 'accepted' && !isExpired && !isRevoked ? (
                                             <button
                                                 onClick={() => {
                                                     setActiveLiveLocationShareId(shareId);
@@ -4846,6 +4913,14 @@ function ChatRoom({ currentUser, targetUser, onBack, allChats, replyToMessage: i
                                             >
                                                 View Live Location Map 🗺️
                                             </button>
+                                        ) : shareStatus === 'declined' ? (
+                                            <div style={{ textAlign: 'center', padding: '6px', fontSize: '0.8rem', color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
+                                                ❌ Request Declined
+                                            </div>
+                                        ) : (
+                                            <div style={{ textAlign: 'center', padding: '6px', fontSize: '0.8rem', color: '#94a3b8', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
+                                                ⏰ Live Sharing Ended / Expired
+                                            </div>
                                         )}
                                     </div>
                                 </div>
