@@ -431,7 +431,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
 
         let marker = markerRefs.current.get(currentUser.id);
         if (!marker) {
-            // First time spawn
+            // First time spawn or respawn when location re-enabled
             marker = L.marker([userLocation.lat, userLocation.lng], { icon: currentUserIcon, zIndexOffset: selfZIndex }).addTo(map);
             // Clicking your own avatar closes any open profile card — it does NOT open one for yourself
             marker.on('click', () => setSelectedUser(null));
@@ -446,9 +446,7 @@ function NativeMarkerSync({ users, currentUser, userLocation, currentUserIcon, c
             }
             marker.setZIndexOffset(selfZIndex);
         }
-    }, [currentUser?.id, currentUserIcon, map, handleMarkerClick, markerRefs]); 
-    // 🔥 CRITICAL: Removed `userLocation` from deps. 
-    // React should NEVER re-run this effect just because LocationContext updated the coordinates.
+    }, [currentUser?.id, currentUserIcon, map, handleMarkerClick, markerRefs, userLocation?.lat, userLocation?.lng]);
 
     return null;
 }
@@ -4287,10 +4285,6 @@ export default function MapHome() {
                 )}
                 <RecenterAutomatically lat={userLocation.lat} lng={userLocation.lng} mapMode={mapMode} />
 
-                {/* 📍 Pulsing "You Are Here" pin at real GPS location */}
-                {locationEnabled && userLocation?.lat && userLocation?.lng && (
-                    <MyLocationPin lat={userLocation.lat} lng={userLocation.lng} />
-                )}
                 <RecenterControl 
                     markerRefs={markerRefs}
                     currentUserId={currentUser?.id}
