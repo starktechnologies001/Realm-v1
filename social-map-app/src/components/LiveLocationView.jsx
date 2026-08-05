@@ -57,7 +57,20 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
     });
 
     const [mapCenter, setMapCenter] = useState(null);
+    const [mapMode, setMapMode] = useState('street'); // 'street' or 'satellite'
+    const [partnerAddress, setPartnerAddress] = useState(null);
+    const [loadingAddress, setLoadingAddress] = useState(false);
     const [revoking, setRevoking] = useState(false);
+
+    const partnerPos = partnerLocation?.latitude != null && partnerLocation?.longitude != null
+        ? [partnerLocation.latitude, partnerLocation.longitude]
+        : null;
+
+    const myPos = myLocation?.latitude != null && myLocation?.longitude != null
+        ? [myLocation.latitude, myLocation.longitude]
+        : (currentUser?.latitude != null && currentUser?.longitude != null
+            ? [currentUser.latitude, currentUser.longitude]
+            : null);
 
     // Initial map center determination
     useEffect(() => {
@@ -71,6 +84,55 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
             setMapCenter([20.5937, 78.9629]); // Default fallback
         }
     }, [partnerLocation, myLocation, currentUser]);
+
+    // Reverse Geocode: Shop name, Street name & Area name for partner location
+    useEffect(() => {
+        if (!partnerPos) {
+            setPartnerAddress(null);
+            return;
+        }
+
+        let isMounted = true;
+        setLoadingAddress(true);
+
+        const fetchAddress = async () => {
+            try {
+                const res = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${partnerPos[0]}&lon=${partnerPos[1]}&zoom=18&addressdetails=1`,
+                    { headers: { 'Accept-Language': 'en' } }
+                );
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data || !data.address) return;
+
+                const addr = data.address;
+                const placeName = addr.shop || addr.amenity || addr.building || addr.hospital || addr.office || addr.tourism || addr.commercial || null;
+                const street = addr.road || addr.pedestrian || addr.footway || null;
+                const area = addr.suburb || addr.neighbourhood || addr.residential || addr.city_district || addr.city || null;
+
+                const parts = [];
+                if (placeName) parts.push(placeName);
+                if (street) parts.push(street);
+                if (area) parts.push(area);
+
+                if (isMounted) {
+                    if (parts.length > 0) {
+                        setPartnerAddress(parts.join(' · '));
+                    } else if (data.display_name) {
+                        setPartnerAddress(data.display_name.split(',').slice(0, 3).join(','));
+                    }
+                }
+            } catch (err) {
+                console.warn('Address fetch error:', err);
+            } finally {
+                if (isMounted) setLoadingAddress(false);
+            }
+        };
+
+        fetchAddress();
+
+        return () => { isMounted = false; };
+    }, [partnerPos?.[0], partnerPos?.[1]]);
 
     // Handle Stop Sharing
     const handleStopSharing = async () => {
@@ -111,16 +173,6 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
         return `${diffMins}m ago`;
     };
 
-    const partnerPos = partnerLocation?.latitude != null && partnerLocation?.longitude != null
-        ? [partnerLocation.latitude, partnerLocation.longitude]
-        : null;
-
-    const myPos = myLocation?.latitude != null && myLocation?.longitude != null
-        ? [myLocation.latitude, myLocation.longitude]
-        : (currentUser?.latitude != null && currentUser?.longitude != null
-            ? [currentUser.latitude, currentUser.longitude]
-            : null);
-
     return (
         <div className="live-location-fullscreen">
             {/* Header Toolbar */}
@@ -143,13 +195,18 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
                 {mapCenter && (
                     <MapContainer
                         center={mapCenter}
-                        zoom={16}
+                        zoom={17}
                         zoomControl={false}
                         style={{ width: '100%', height: '100%' }}
                     >
+                        {/* High Resolution Google Maps Tiles with POIs, Shop names, Street names, and Area names */}
                         <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            attribution='&copy; Google Maps'
+                            url={mapMode === 'satellite'
+                                ? "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                                : "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"}
+                            maxNativeZoom={20}
+                            maxZoom={22}
                         />
 
                         {mapCenter && <MapRecenter center={mapCenter} />}
@@ -163,6 +220,7 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
                                 <Popup>
                                     <div className="map-popup-card">
                                         <strong>{partnerUser.full_name || partnerUser.username}</strong>
+                                        {partnerAddress && <p style={{ fontSize: '0.8rem', color: '#3B82F6', marginTop: 4 }}>📍 {partnerAddress}</p>}
                                         <p>{formatLastUpdated(partnerLocation?.updated_at)}</p>
                                     </div>
                                 </Popup>
@@ -178,6 +236,15 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
                         )}
                     </MapContainer>
                 )}
+
+                {/* Map Mode Switcher Button (Street / Satellite) */}
+                <button
+                    className="live-map-mode-btn"
+                    onClick={() => setMapMode(prev => prev === 'street' ? 'satellite' : 'street')}
+                    title="Toggle Map Style"
+                >
+                    {mapMode === 'street' ? '🛰️ Satellite' : '🗺️ Map'}
+                </button>
 
                 {/* Recenter Button */}
                 {partnerPos && (
@@ -213,6 +280,14 @@ export default function LiveLocationView({ currentUser, partnerUser, shareId, on
                         <span>⏳ {formatRemaining(remainingSeconds)}</span>
                     </div>
                 </div>
+
+                {/* Live Address Pill: Shop name, Street name, Area name */}
+                {partnerAddress && !isPartnerUnavailable && (
+                    <div className="live-address-pill">
+                        <span className="address-icon">📍</span>
+                        <span className="address-text">{partnerAddress}</span>
+                    </div>
+                )}
 
                 {isGhostMode && (
                     <div className="live-banner warning">

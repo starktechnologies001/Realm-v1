@@ -409,6 +409,8 @@ export default function Chat() {
                     lastMsgContent = lastMessage.sender_id === userId ? `You:${caption}` : caption.trim();
                 } else if (lastMessage.message_type === 'attachment') {
                     lastMsgContent = lastMessage.sender_id === userId ? 'You: 📎 Attachment' : '📎 Attachment';
+                } else if (lastMessage.message_type === 'live_location_request') {
+                    lastMsgContent = lastMessage.sender_id === userId ? 'You: 📍 Live Location Request' : '📍 Live Location Request';
                 } else {
                     lastMsgContent = lastMessage.sender_id === userId ? `You: ${lastMessage.content}` : lastMessage.content;
                 }
@@ -595,6 +597,8 @@ export default function Chat() {
                 newContent = '📷 Photo';
             } else if (newMessage.message_type === 'attachment') {
                 newContent = '📎 Attachment';
+            } else if (newMessage.message_type === 'live_location_request') {
+                newContent = '📍 Live Location Request';
             } else {
                 if (typeof newMessage.content === 'string' && newMessage.content.trim().startsWith('{') && newMessage.content.includes('"status"')) {
                      try {
